@@ -56,6 +56,8 @@ if "!branch!"=="" set branch=main
 
 echo.
 echo [1/7] Cloning repository...
+taskkill /F /IM chrome.exe >nul 2>&1
+taskkill /F /IM node.exe >nul 2>&1
 git init
 git remote add origin !repo!
 git fetch origin
@@ -67,6 +69,10 @@ if errorlevel 1 (
     pause
     goto MENU
 )
+git rm -r --cached wauth 2>nul
+git rm -r --cached backups 2>nul
+git rm -r --cached extracted_excel 2>nul
+git rm -r --cached temp 2>nul
 
 echo.
 echo [2/7] Configuring Port and Proxy...
@@ -130,9 +136,18 @@ set /p branch="Enter branch name (default: main): "
 if "!branch!"=="" set branch=main
 
 echo.
-echo Stopping Windows Service to release file locks...
+echo Stopping Windows Service and releasing file locks...
 net stop PaymentSystem >nul 2>&1
+taskkill /F /IM chrome.exe >nul 2>&1
+taskkill /F /IM node.exe >nul 2>&1
 timeout /t 2 /nobreak >nul 2>&1
+
+set "WAUTH_BACKED_UP=0"
+if exist wauth (
+    if exist _wauth_temp rd /s /q _wauth_temp >nul 2>&1
+    ren wauth _wauth_temp >nul 2>&1
+    if exist _wauth_temp set "WAUTH_BACKED_UP=1"
+)
 
 echo.
 echo [1/6] Pulling latest changes from GitHub...
@@ -147,6 +162,18 @@ git branch -M !branch!
 git branch --set-upstream-to=origin/!branch! !branch!
 if errorlevel 1 (
     echo [WARNING] git fetch/reset failed. Check if repository is reachable.
+)
+
+REM Untrack volatile folders from git index
+git rm -r --cached wauth 2>nul
+git rm -r --cached backups 2>nul
+git rm -r --cached extracted_excel 2>nul
+git rm -r --cached temp 2>nul
+
+REM Restore wauth session directory
+if "!WAUTH_BACKED_UP!"=="1" (
+    if exist wauth rd /s /q wauth >nul 2>&1
+    ren _wauth_temp wauth >nul 2>&1
 )
 
 echo.

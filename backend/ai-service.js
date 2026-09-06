@@ -742,9 +742,12 @@ ${additionalNotes ? additionalNotes : 'توضیحات اختیاری بیشتر�
 وظیفه شما:
 1. در اینترنت، وب‌سایت‌های معتبر صنعتی و تجاری ایران، سامانه‌های تامین کالا (نظیر ترب، ایمالز، دیجی‌کالا برای اقلام عمومی، و سایت‌ها و دایرکتوری‌های تخصصی ابزارآلات صنعتی، آهن‌آلات، قطعات یدکی، پتروشیمی، الکتریکال، پنوماتیک، هیدرولیک و تامین‌کنندگان بازارهای تهران، زنجان، اصفهان و سراسر کشور) جستجو کنید.
 2. حداقل ۳ تا ۶ تامین‌کننده، وب‌سایت یا فروشگاه معتبر پیدا کنید که این کالا یا مشخصات مشابه را موجود دارند یا تامین می‌کنند.
-3. مشخصات فنی، لینک مستقیم صفحه یا وب‌سایت، حدود قیمت تخمینی (به ریال یا تومان)، تلفن تماس، شهر تامین‌کننده و مزیت انتخاب آن‌ها را استخراج کنید.
-4. نکات فنی مهم و چک‌لیست کنترل کیفی قبل از خرید این کالا را ارائه دهید.
-5. یک متن رسمی، اداری و استاندارد استعلام قیمت و پیش‌فاکتور (RFQ) برای ارسال به تامین‌کنندگان از طریق واتساپ، بله، تلگرام یا فکس تنظیم کنید.
+3. مشخصات فنی، لینک مستقیم صفحه یا وب‌سایت، حدود قیمت تخمینی (به ریال یا تومان)، شماره همراه یا تلفن، شهر تامین‌کننده و مزیت انتخاب آن‌ها را استخراج کنید.
+4. تفکیک هوشمند شماره تماس (بسیار مهم):
+   - برای پیام‌رسان‌های واتساپ و بله، شماره همراه و موبایل مسئول فروش یا پشتیبانی (حتماً شروع با 09 مانند 0912xxxxxxx یا 0935xxxxxxx) لازم است چون تلفن‌های ثابت دفتر قابلیت دریافت واتساپ ندارند.
+   - تلفن ثابت دفتر مرکزی یا فروشگاه (شروع با 021 یا پیش‌شماره شهر) را در فیلد landline قرار دهید.
+5. نکات فنی مهم و چک‌لیست کنترل کیفی قبل از خرید این کالا را ارائه دهید.
+6. یک متن رسمی، اداری و استاندارد استعلام قیمت و پیش‌فاکتور (RFQ) برای ارسال به تامین‌کنندگان از طریق واتساپ، بله، تلگرام یا فکس تنظیم کنید.
 
 پاسخ را در قالب ساختار JSON زیر برگردانید:
 {
@@ -760,7 +763,9 @@ ${additionalNotes ? additionalNotes : 'توضیحات اختیاری بیشتر�
       "name": "نام شرکت یا فروشگاه یا پلتفرم (مثلاً: ابزارمارکت / صنعت گستر / ترب / پارت ماشین)",
       "title": "عنوان صفحه محصول یا معرفی تامین‌کننده",
       "website": "لینک کامل و معتبر اینترنتی با http یا https",
-      "phone": "شماره تلفن یا موبایل جهت تماس (در صورت موجود بودن)",
+      "mobile": "شماره موبایل و همراه واحد فروش یا واتساپ (حتماً شروع با 09 مانند 09121234567 - بسیار مهم)",
+      "landline": "تلفن ثابت دفتر یا فروشگاه با پیش‌شماره شهر (مثلاً: 021-55348899)",
+      "phone": "شماره تماس اصلی ترجیحاً موبایل یا در صورت عدم وجود تلفن ثابت",
       "city": "شهر (مثلاً تهران - بازار شادآباد / لاله زار / زنجان / آنلاین)",
       "estimatedPrice": "حدود قیمت تقریبی (مثلاً: ۵۵۰,۰۰۰ تومان یا ۱۲,۰۰۰,۰۰۰ ریال)",
       "stockStatus": "وضعیت موجودی (موجود / استعلامی / تحویل ۲ روزه)",
@@ -853,6 +858,14 @@ ${additionalNotes ? additionalNotes : 'توضیحات اختیاری بیشتر�
         }
     });
 
+    // Helper functions for Iranian phone validation
+    const cleanNum = (str) => String(str || '').replace(/[^\d+]/g, '');
+    const isIranianMobile = (num) => /^(?:\+98|0098|98|0)?9\d{9}$/.test(cleanNum(num));
+    const isIranianLandline = (num) => {
+        const c = cleanNum(num);
+        return /^(?:\+98|0098|98|0)?(?:21|26|31|24|51|71|41|13|86|34|61|77|54|87|81|83|66|58|45|28|44|17|25|38|74)\d{7,8}$/.test(c) || (/^0[1-8]/.test(c) && !/^09/.test(c));
+    };
+
     // Smart Local Database Enrichment (check previous proformas and contacts)
     try {
         const db = getDb();
@@ -860,13 +873,20 @@ ${additionalNotes ? additionalNotes : 'توضیحات اختیاری بیشتر�
         const contacts = db.contacts || [];
 
         // 1. Look for contacts marked as suppliers/vendors
-        contacts.filter(c => c.name && (c.phone || c.mobile)).slice(0, 3).forEach(c => {
+        contacts.filter(c => c.name && (c.phone || c.mobile)).slice(0, 4).forEach(c => {
+            const hasMobile = isIranianMobile(c.mobile) ? c.mobile : (isIranianMobile(c.phone) ? c.phone : '');
+            const hasLandline = isIranianLandline(c.phone) ? c.phone : (isIranianLandline(c.landline) ? c.landline : (!isIranianMobile(c.phone) ? c.phone : ''));
+
             if (!responseObj.suppliers.some(s => s.name === c.name || (c.phone && s.phone === c.phone))) {
                 responseObj.suppliers.push({
                     name: c.name,
                     title: `مخاطب ثبت‌شده در سیستم (${c.company || 'تامین‌کننده'})`,
                     website: '',
-                    phone: c.phone || c.mobile || '',
+                    mobile: hasMobile || '',
+                    landline: hasLandline || '',
+                    phone: hasMobile || hasLandline || c.phone || c.mobile || '',
+                    whatsappPhone: hasMobile || '',
+                    whatsappAvailable: !!hasMobile,
                     city: c.city || 'ثبت در سیستم',
                     estimatedPrice: 'استعلام از طریق سیستم',
                     stockStatus: 'مخاطب داخلی',
@@ -886,11 +906,17 @@ ${additionalNotes ? additionalNotes : 'توضیحات اختیاری بیشتر�
                 if (isMatch) {
                     p.proformas.forEach(prof => {
                         if (prof.vendorName && !responseObj.suppliers.some(s => s.name === prof.vendorName)) {
+                            const pMob = isIranianMobile(prof.vendorPhone) ? prof.vendorPhone : '';
+                            const pLand = !pMob ? (prof.vendorPhone || '') : '';
                             responseObj.suppliers.push({
                                 name: prof.vendorName,
                                 title: `تامین‌کننده سابقه خرید #${p.requestNumber || ''}`,
                                 website: '',
+                                mobile: pMob,
+                                landline: pLand,
                                 phone: prof.vendorPhone || '',
+                                whatsappPhone: pMob,
+                                whatsappAvailable: !!pMob,
                                 city: 'سابقه پیشین',
                                 estimatedPrice: prof.unitPrice ? `${Number(prof.unitPrice).toLocaleString('fa-IR')} ریال` : 'استعلام جدید',
                                 stockStatus: 'دارای سابقه معامله',
@@ -906,6 +932,36 @@ ${additionalNotes ? additionalNotes : 'توضیحات اختیاری بیشتر�
     } catch (dbErr) {
         console.warn("Local DB supplier lookup error:", dbErr.message);
     }
+
+    // Smart Post-Processing & Normalization of Supplier Contact Numbers
+    const processedSuppliers = (responseObj.suppliers || []).map(s => {
+        let mobile = s.mobile || '';
+        let landline = s.landline || '';
+        let phone = s.phone || '';
+
+        if (!mobile && isIranianMobile(phone)) {
+            mobile = phone;
+        }
+        if (!landline && isIranianLandline(phone)) {
+            landline = phone;
+        }
+        if (!mobile && isIranianMobile(landline)) {
+            mobile = landline;
+            landline = '';
+        }
+
+        const isMobAvail = isIranianMobile(mobile) || isIranianMobile(phone);
+
+        return {
+            ...s,
+            mobile: mobile || (isIranianMobile(phone) ? phone : ''),
+            landline: landline || (isIranianLandline(phone) ? phone : ''),
+            phone: mobile || landline || phone || '',
+            whatsappPhone: mobile || (isIranianMobile(phone) ? phone : ''),
+            whatsappAvailable: !!isMobAvail
+        };
+    });
+    responseObj.suppliers = processedSuppliers;
 
     // Curated default technical checklist if empty
     if (!responseObj.technicalTips || responseObj.technicalTips.length === 0) {

@@ -1464,6 +1464,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     const [pdfLoading, setPdfLoading] = useState(false);
     const [showProformaModal, setShowProformaModal] = useState(false);
     const [showAiAdvisorModal, setShowAiAdvisorModal] = useState(false);
+    const [aiAdvisorInitialIndex, setAiAdvisorInitialIndex] = useState<number>(0);
     const [prefilledProformaData, setPrefilledProformaData] = useState<any>(null);
     const [showSecurityModal, setShowSecurityModal] = useState(false);
     const [showQCModal, setShowQCModal] = useState(false);
@@ -1731,9 +1732,22 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                             <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-mono">{idx + 1}</span>
                                                             <span className="text-gray-800 dark:text-gray-200">{it.itemName}</span>
                                                         </span>
-                                                        <span className="text-xs font-black text-indigo-600 bg-white dark:bg-gray-900 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-gray-700">
-                                                            {it.quantity} {it.unit}
-                                                        </span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-xs font-black text-indigo-600 bg-white dark:bg-gray-900 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-gray-700">
+                                                                {it.quantity} {it.unit}
+                                                            </span>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setAiAdvisorInitialIndex(idx);
+                                                                    setShowAiAdvisorModal(true);
+                                                                }}
+                                                                className="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:text-purple-300 px-2 py-1 rounded-lg flex items-center gap-1 border border-purple-200 dark:border-purple-800 transition-all cursor-pointer"
+                                                                title="استعلام هوشمند برای این قلم"
+                                                            >
+                                                                <Sparkles size={11} className="text-yellow-500" />
+                                                                <span>استعلام AI</span>
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     {it.specifications && (
                                                         <div className="text-[11px] text-gray-600 dark:text-gray-400 bg-white/70 dark:bg-gray-900/60 p-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
@@ -1757,6 +1771,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                         <th className="p-3">نام قطعه / کالا</th>
                                                         <th className="p-3 w-28 text-center">تعداد / مقدار</th>
                                                         <th className="p-3">مشخصات فنی و ابعاد</th>
+                                                        <th className="p-3 w-32 text-center">استعلام و تامین‌کننده</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1766,6 +1781,19 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                             <td className="p-3 font-black text-gray-800 dark:text-gray-200">{it.itemName}</td>
                                                             <td className="p-3 text-center font-black text-indigo-600">{it.quantity} {it.unit}</td>
                                                             <td className="p-3 text-gray-600 dark:text-gray-400">{it.specifications || '---'}</td>
+                                                            <td className="p-3 text-center">
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        setAiAdvisorInitialIndex(idx);
+                                                                        setShowAiAdvisorModal(true);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:text-purple-300 rounded-xl border border-purple-200 dark:border-purple-800 transition-all active:scale-95 cursor-pointer"
+                                                                    title="استعلام هوشمند قیمت و تامین‌کنندگان این قلم"
+                                                                >
+                                                                    <Sparkles size={12} className="text-yellow-500" />
+                                                                    <span>استعلام این قلم</span>
+                                                                </button>
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -2260,6 +2288,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     <AiPurchaseAdvisorModal
                         request={request}
                         parts={parts}
+                        initialItemIndex={aiAdvisorInitialIndex}
                         onClose={() => setShowAiAdvisorModal(false)}
                         onApplyProforma={(data) => {
                             setPrefilledProformaData(data);

@@ -6505,12 +6505,30 @@ app.post(['/api/purchase/send-rfq-message', '/api/api/purchase/send-rfq-message'
         }
 
         const cleanTarget = String(target).trim();
+        const digitsOnly = cleanTarget.replace(/\D/g, '');
+        const isIranianLandline = /^(?:0)?(?:21|26|31|24|51|71|41|13|86|34|61|77|54|87|81|83|66|58|45|28|44|17|25|38|74)\d{7,8}$/.test(digitsOnly) || (/^0[1-8]/.test(digitsOnly) && !/^09/.test(digitsOnly));
+        const isIranianMobile = /^(?:0098|98|\+98|0)?(9\d{9})$/.test(digitsOnly);
+
+        if (platform === 'whatsapp' && isIranianLandline) {
+            return res.json({
+                success: false,
+                sent: false,
+                isLandline: true,
+                errorMsg: `شماره «${cleanTarget}» شماره تلفن ثابت دفتر است و در پیام‌رسان واتساپ فعال نمی‌باشد. لطفاً شماره موبایل مسئول فروش (شروع با 09) را وارد نمایید یا جهت استعلام، مستقیماً تماس تلفنی حاصل فرمایید.`,
+                directCallUrl: `tel:${cleanTarget.replace(/[^\d+]/g, '')}`,
+                platform,
+                target: cleanTarget,
+                supplierName,
+                requestNumber
+            });
+        }
+
         let sent = false;
         let directUrl = '';
         let errorMsg = null;
 
         if (platform === 'whatsapp') {
-            const rawPhone = cleanTarget.replace(/\D/g, '').replace(/^0/, '98');
+            const rawPhone = digitsOnly.replace(/^(?:0098|98|0)/, '98');
             directUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
             
             try {

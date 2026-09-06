@@ -5,12 +5,18 @@ export interface SupplierResult {
     title?: string;
     website?: string;
     phone?: string;
+    mobile?: string;
+    landline?: string;
+    whatsappPhone?: string;
+    whatsappAvailable?: boolean;
     city?: string;
     estimatedPrice?: string;
     stockStatus?: string;
     brand?: string;
     description?: string;
     pros?: string;
+    itemIndex?: number;
+    itemName?: string;
 }
 
 export interface AiPurchaseSearchResult {

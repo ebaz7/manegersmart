@@ -93,10 +93,36 @@ export const getLocalData = <T>(key: string, defaultData: T): T => {
     }
 };
 
-export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?: any, retries: number = 2): Promise<T> => {
+export interface ApiCallOptions {
+    method?: string;
+    body?: any;
+    retries?: number;
+    headers?: Record<string, string>;
+}
+
+export const apiCall = async <T>(
+    endpoint: string, 
+    methodOrOptions: string | ApiCallOptions = 'GET', 
+    body?: any, 
+    retries: number = 2
+): Promise<T> => {
+    let method = 'GET';
+    let requestBody = body;
+    let maxRetries = retries;
+
+    if (typeof methodOrOptions === 'object' && methodOrOptions !== null) {
+        method = methodOrOptions.method || 'GET';
+        requestBody = methodOrOptions.body !== undefined ? methodOrOptions.body : body;
+        if (typeof methodOrOptions.retries === 'number') {
+            maxRetries = methodOrOptions.retries;
+        }
+    } else if (typeof methodOrOptions === 'string') {
+        method = methodOrOptions;
+    }
+
     let lastError: any = null;
     
-    for (let attempt = 0; attempt <= retries; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             const controller = new AbortController();
             // Increased timeout significantly for mobile networks AND large file uploads (300s)
@@ -128,12 +154,18 @@ export const apiCall = async <T>(endpoint: string, method: string = 'GET', body?
             }
             const finalUrl = `${baseUrl}${safeEndpoint}`;
 
-            console.log(`API calling (attempt ${attempt + 1}/${retries + 1}): ${method} ${finalUrl}`); 
+            console.log(`API calling (attempt ${attempt + 1}/${maxRetries + 1}): ${method} ${finalUrl}`); 
+
+            const serializedBody = requestBody === undefined
+                ? undefined
+                : typeof requestBody === 'string'
+                    ? requestBody
+                    : JSON.stringify(requestBody);
 
             const response = await fetch(finalUrl, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: body ? JSON.stringify(body) : undefined,
+                body: serializedBody,
                 signal: controller.signal
             });
             clearTimeout(timeoutId);

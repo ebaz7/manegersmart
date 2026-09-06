@@ -1,0 +1,10 @@
+{
+  "name": "Remix Remix Copy of Copy of PaymentOrderPro6150",
+  "description": "A comprehensive payment order and bot management system with approval workflows, formal printing, and multi-platform bot integration.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

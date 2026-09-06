@@ -7,7 +7,7 @@ import { getUsers } from '../services/authService';
 import { generateUUID, formatCurrency, formatNumberString, deformatNumberString, parsePersianDate, formatDate, calculateDaysDiff, getStatusLabel } from '../constants';
 import FormattedNumberInput from './FormattedNumberInput';
 import { Container, Plus, Search, CheckCircle2, Save, Trash2, X, Package, ArrowRight, History, Banknote, Coins, Wallet, FileSpreadsheet, Shield, LayoutDashboard, Printer, FileDown, Paperclip, Building2, FolderOpen, Home, Calculator, FileText, Microscope, ListFilter, Warehouse, Calendar as CalendarIcon, PieChart, BarChart, Clock, Leaf, Scale, ShieldCheck, Percent, Truck, CheckSquare, Square, ToggleLeft, ToggleRight, DollarSign, UserCheck, Check, Archive, AlertCircle, RefreshCw, Box, Loader2, Share2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, CalendarDays, Info, ArrowLeftRight, ArrowRightLeft, Edit2, Edit, Undo2, Eye, EyeOff } from 'lucide-react';
-import { apiCall } from '../services/apiService';
+import { apiCall, LS_KEYS, getLocalData } from '../services/apiService';
 import { downloadAndOpenFile } from '../services/fileService';
 import AllocationReport from './AllocationReport';
 import CurrencyReport from './reports/CurrencyReport';
@@ -41,7 +41,14 @@ const CURRENCIES = [
 type ReportType = 'general' | 'allocation_queue' | 'allocated' | 'currency' | 'insurance' | 'shipping' | 'inspection' | 'clearance' | 'green_leaf' | 'company_performance' | 'insurance_ledger' | 'guarantee';
 
 const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
-    const [records, setRecords] = useState<TradeRecord[]>([]);
+    const [records, setRecords] = useState<TradeRecord[]>(() => {
+        try {
+            const cached = getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []);
+            return Array.isArray(cached) ? cached : [];
+        } catch {
+            return [];
+        }
+    });
     const [selectedRecord, setSelectedRecord] = useState<TradeRecord | null>(null);
     const [commodityGroups, setCommodityGroups] = useState<string[]>([]);
     const [availableBanks, setAvailableBanks] = useState<string[]>([]);
@@ -115,6 +122,19 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const [newAgentPayment, setNewAgentPayment] = useState<Partial<AgentPayment>>({ agentName: '', amount: 0, bank: '', date: '', part: '', description: '' });
 
     const [newLicenseTx, setNewLicenseTx] = useState<Partial<TradeTransaction>>({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' });
+    const [editingLicenseTxId, setEditingLicenseTxId] = useState<string | null>(null);
+    const [editingShippingDocId, setEditingShippingDocId] = useState<string | null>(null);
+    const [editingWarehouseReceiptId, setEditingWarehouseReceiptId] = useState<string | null>(null);
+    const [editingClearancePaymentId, setEditingClearancePaymentId] = useState<string | null>(null);
+    const [editingCustomsDutyId, setEditingCustomsDutyId] = useState<string | null>(null);
+    const [editingGuaranteeId, setEditingGuaranteeId] = useState<string | null>(null);
+    const [editingTaxId, setEditingTaxId] = useState<string | null>(null);
+    const [editingRoadTollId, setEditingRoadTollId] = useState<string | null>(null);
+    const [editingShippingPaymentId, setEditingShippingPaymentId] = useState<string | null>(null);
+    const [editingAgentPaymentId, setEditingAgentPaymentId] = useState<string | null>(null);
+    const [editingInspectionCertificateId, setEditingInspectionCertificateId] = useState<string | null>(null);
+    const [editingInspectionPaymentId, setEditingInspectionPaymentId] = useState<string | null>(null);
+    const [editingEndorsementId, setEditingEndorsementId] = useState<string | null>(null);
 
     const [currencyForm, setCurrencyForm] = useState<CurrencyPurchaseData>({
         payments: [], purchasedAmount: 0, purchasedCurrencyType: '', purchaseDate: '', brokerName: '', exchangeName: '', deliveredAmount: 0, deliveredCurrencyType: '', deliveryDate: '', recipientName: '', remittedAmount: 0, isDelivered: false, tranches: [], guaranteeCheque: undefined, guaranteeCheques: []
@@ -675,8 +695,65 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setEditingItemId(item.id); 
     };
     const handleRemoveItem = async (id: string) => { if (!selectedRecord) return; const updatedItems = selectedRecord.items.filter(i => i.id !== id); const updatedRecord = { ...selectedRecord, items: updatedItems }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleAddLicenseTx = async () => { if (!selectedRecord || !newLicenseTx.amount) return; const tx: TradeTransaction = { id: generateUUID(), date: newLicenseTx.date || '', amount: Number(newLicenseTx.amount), bank: newLicenseTx.bank || '', description: newLicenseTx.description || '' }; const currentLicenseData = selectedRecord.licenseData || { transactions: [] }; const updatedTransactions = [...(currentLicenseData.transactions || []), tx]; const updatedRecord = { ...selectedRecord, licenseData: { ...currentLicenseData, transactions: updatedTransactions } }; const totalCost = updatedTransactions.reduce((acc, t) => acc + t.amount, 0); if (!updatedRecord.stages[TradeStage.LICENSES]) updatedRecord.stages[TradeStage.LICENSES] = getStageData(updatedRecord, TradeStage.LICENSES); updatedRecord.stages[TradeStage.LICENSES].costRial = totalCost; updatedRecord.stages[TradeStage.LICENSES].isCompleted = totalCost > 0; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); setNewLicenseTx({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' }); };
-    const handleRemoveLicenseTx = async (id: string) => { if (!selectedRecord) return; const currentLicenseData = selectedRecord.licenseData || { transactions: [] }; const updatedTransactions = (currentLicenseData.transactions || []).filter(t => t.id !== id); const updatedRecord = { ...selectedRecord, licenseData: { ...currentLicenseData, transactions: updatedTransactions } }; const totalCost = updatedTransactions.reduce((acc, t) => acc + t.amount, 0); if (!updatedRecord.stages[TradeStage.LICENSES]) updatedRecord.stages[TradeStage.LICENSES] = getStageData(updatedRecord, TradeStage.LICENSES); updatedRecord.stages[TradeStage.LICENSES].costRial = totalCost; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
+    const handleEditLicenseTx = (tx: TradeTransaction) => {
+        setEditingLicenseTxId(tx.id);
+        setNewLicenseTx({
+            amount: tx.amount,
+            bank: tx.bank || '',
+            date: tx.date || '',
+            description: tx.description || 'هزینه ثبت سفارش'
+        });
+    };
+    const handleCancelEditLicenseTx = () => {
+        setEditingLicenseTxId(null);
+        setNewLicenseTx({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' });
+    };
+    const handleAddLicenseTx = async () => { 
+        if (!selectedRecord || !newLicenseTx.amount) return; 
+        const currentLicenseData = selectedRecord.licenseData || { transactions: [] }; 
+        let updatedTransactions: TradeTransaction[] = [];
+        if (editingLicenseTxId) {
+            updatedTransactions = (currentLicenseData.transactions || []).map(t =>
+                t.id === editingLicenseTxId ? {
+                    ...t,
+                    date: newLicenseTx.date || '',
+                    amount: Number(newLicenseTx.amount),
+                    bank: newLicenseTx.bank || '',
+                    description: newLicenseTx.description || ''
+                } : t
+            );
+        } else {
+            const tx: TradeTransaction = { 
+                id: generateUUID(), 
+                date: newLicenseTx.date || '', 
+                amount: Number(newLicenseTx.amount), 
+                bank: newLicenseTx.bank || '', 
+                description: newLicenseTx.description || '' 
+            }; 
+            updatedTransactions = [...(currentLicenseData.transactions || []), tx]; 
+        }
+        const updatedRecord = { ...selectedRecord, licenseData: { ...currentLicenseData, transactions: updatedTransactions } }; 
+        const totalCost = updatedTransactions.reduce((acc, t) => acc + t.amount, 0); 
+        if (!updatedRecord.stages[TradeStage.LICENSES]) updatedRecord.stages[TradeStage.LICENSES] = getStageData(updatedRecord, TradeStage.LICENSES); 
+        updatedRecord.stages[TradeStage.LICENSES].costRial = totalCost; 
+        updatedRecord.stages[TradeStage.LICENSES].isCompleted = totalCost > 0; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+        setEditingLicenseTxId(null);
+        setNewLicenseTx({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' }); 
+    };
+    const handleRemoveLicenseTx = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingLicenseTxId === id) handleCancelEditLicenseTx();
+        const currentLicenseData = selectedRecord.licenseData || { transactions: [] }; 
+        const updatedTransactions = (currentLicenseData.transactions || []).filter(t => t.id !== id); 
+        const updatedRecord = { ...selectedRecord, licenseData: { ...currentLicenseData, transactions: updatedTransactions } }; 
+        const totalCost = updatedTransactions.reduce((acc, t) => acc + t.amount, 0); 
+        if (!updatedRecord.stages[TradeStage.LICENSES]) updatedRecord.stages[TradeStage.LICENSES] = getStageData(updatedRecord, TradeStage.LICENSES); 
+        updatedRecord.stages[TradeStage.LICENSES].costRial = totalCost; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
     const handleSaveInsurance = async () => { 
         if (!selectedRecord) return; 
         const updatedRecord: TradeRecord = { ...selectedRecord, insuranceData: { ...insuranceForm } }; 
@@ -689,13 +766,38 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
         alert("اطلاعات بیمه و نمایندگی با موفقیت ذخیره شد."); 
     };
+    const handleEditEndorsement = (e: InsuranceEndorsement) => {
+        setEditingEndorsementId(e.id);
+        setEndorsementType(e.amount >= 0 ? 'increase' : 'refund');
+        setNewEndorsement({
+            amount: Math.abs(e.amount),
+            date: e.date,
+            description: e.description
+        });
+    };
+    const handleCancelEditEndorsement = () => {
+        setEditingEndorsementId(null);
+        setNewEndorsement({ amount: 0, description: '', date: '' });
+        setEndorsementType('increase');
+    };
     const handleAddEndorsement = async () => { 
         if (!selectedRecord || !newEndorsement.amount) return; 
         const amount = endorsementType === 'increase' ? Number(newEndorsement.amount) : -Number(newEndorsement.amount); 
-        const endorsement: InsuranceEndorsement = { id: generateUUID(), date: newEndorsement.date || '', amount: amount, description: newEndorsement.description || '' }; 
-        const updatedEndorsements = [...(insuranceForm.endorsements || []), endorsement]; 
+        let updatedEndorsements = [...(insuranceForm.endorsements || [])];
+        if (editingEndorsementId) {
+            updatedEndorsements = updatedEndorsements.map(e => e.id === editingEndorsementId ? {
+                ...e,
+                date: newEndorsement.date || '',
+                amount: amount,
+                description: newEndorsement.description || ''
+            } : e);
+        } else {
+            const endorsement: InsuranceEndorsement = { id: generateUUID(), date: newEndorsement.date || '', amount: amount, description: newEndorsement.description || '' }; 
+            updatedEndorsements.push(endorsement);
+        }
         const updatedForm = { ...insuranceForm, endorsements: updatedEndorsements }; 
         setInsuranceForm(updatedForm); 
+        setEditingEndorsementId(null);
         setNewEndorsement({ amount: 0, description: '', date: '' }); 
         const updatedRecord: TradeRecord = { ...selectedRecord, insuranceData: updatedForm }; 
         const totalCost = (Number(updatedForm.cost) || 0) + (updatedForm.endorsements || []).reduce((acc, e) => acc + e.amount, 0); 
@@ -708,6 +810,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     };
     const handleDeleteEndorsement = async (id: string) => { 
         if (!selectedRecord) return; 
+        if (editingEndorsementId === id) handleCancelEditEndorsement();
         const updatedEndorsements = (insuranceForm.endorsements || []).filter(e => e.id !== id); 
         const updatedForm = { ...insuranceForm, endorsements: updatedEndorsements }; 
         setInsuranceForm(updatedForm); 
@@ -720,16 +823,134 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setSelectedRecord(updatedRecord); 
         setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
-    const handleAddInspectionCertificate = async () => { if (!selectedRecord || !newInspectionCertificate.amount) return; const cert: InspectionCertificate = { id: generateUUID(), part: newInspectionCertificate.part || 'Part', company: newInspectionCertificate.company || '', certificateNumber: newInspectionCertificate.certificateNumber || '', amount: Number(newInspectionCertificate.amount), description: '' }; const updatedCertificates = [...(inspectionForm.certificates || []), cert]; const updatedData = { ...inspectionForm, certificates: updatedCertificates }; setInspectionForm(updatedData); setNewInspectionCertificate({ part: '', company: '', certificateNumber: '', amount: 0 }); const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); updatedRecord.stages[TradeStage.INSPECTION].isCompleted = updatedCertificates.length > 0; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleDeleteInspectionCertificate = async (id: string) => { if (!selectedRecord) return; const updatedCertificates = (inspectionForm.certificates || []).filter(c => c.id !== id); const updatedData = { ...inspectionForm, certificates: updatedCertificates }; setInspectionForm(updatedData); const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleAddInspectionPayment = async () => { if (!selectedRecord || !newInspectionPayment.amount) return; const payment: InspectionPayment = { id: generateUUID(), part: newInspectionPayment.part || 'Part', amount: Number(newInspectionPayment.amount), date: newInspectionPayment.date || '', bank: newInspectionPayment.bank || '', description: '' }; const updatedPayments = [...(inspectionForm.payments || []), payment]; const updatedData = { ...inspectionForm, payments: updatedPayments }; setInspectionForm(updatedData); setNewInspectionPayment({ part: '', amount: 0, date: '', bank: '' }); const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); updatedRecord.stages[TradeStage.INSPECTION].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleDeleteInspectionPayment = async (id: string) => { if (!selectedRecord) return; const updatedPayments = (inspectionForm.payments || []).filter(p => p.id !== id); const updatedData = { ...inspectionForm, payments: updatedPayments }; setInspectionForm(updatedData); const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); updatedRecord.stages[TradeStage.INSPECTION].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
+    const handleEditInspectionCertificate = (c: InspectionCertificate) => {
+        setEditingInspectionCertificateId(c.id);
+        setNewInspectionCertificate({
+            company: c.company,
+            certificateNumber: c.certificateNumber,
+            amount: c.amount,
+            part: c.part
+        });
+    };
+    const handleCancelEditInspectionCertificate = () => {
+        setEditingInspectionCertificateId(null);
+        setNewInspectionCertificate({ part: '', company: '', certificateNumber: '', amount: 0 });
+    };
+    const handleAddInspectionCertificate = async () => { 
+        if (!selectedRecord || !newInspectionCertificate.amount) return; 
+        let updatedCertificates = [...(inspectionForm.certificates || [])];
+        if (editingInspectionCertificateId) {
+            updatedCertificates = updatedCertificates.map(c => c.id === editingInspectionCertificateId ? {
+                ...c,
+                part: newInspectionCertificate.part || 'Part',
+                company: newInspectionCertificate.company || '',
+                certificateNumber: newInspectionCertificate.certificateNumber || '',
+                amount: Number(newInspectionCertificate.amount)
+            } : c);
+        } else {
+            const cert: InspectionCertificate = { id: generateUUID(), part: newInspectionCertificate.part || 'Part', company: newInspectionCertificate.company || '', certificateNumber: newInspectionCertificate.certificateNumber || '', amount: Number(newInspectionCertificate.amount), description: '' }; 
+            updatedCertificates.push(cert);
+        }
+        const updatedData = { ...inspectionForm, certificates: updatedCertificates }; 
+        setInspectionForm(updatedData); 
+        setEditingInspectionCertificateId(null);
+        setNewInspectionCertificate({ part: '', company: '', certificateNumber: '', amount: 0 }); 
+        const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); 
+        updatedRecord.stages[TradeStage.INSPECTION].isCompleted = updatedCertificates.length > 0; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleDeleteInspectionCertificate = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingInspectionCertificateId === id) handleCancelEditInspectionCertificate();
+        const updatedCertificates = (inspectionForm.certificates || []).filter(c => c.id !== id); 
+        const updatedData = { ...inspectionForm, certificates: updatedCertificates }; 
+        setInspectionForm(updatedData); 
+        const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleEditInspectionPayment = (p: InspectionPayment) => {
+        setEditingInspectionPaymentId(p.id);
+        setNewInspectionPayment({
+            bank: p.bank,
+            amount: p.amount,
+            date: p.date,
+            part: p.part
+        });
+    };
+    const handleCancelEditInspectionPayment = () => {
+        setEditingInspectionPaymentId(null);
+        setNewInspectionPayment({ part: '', amount: 0, date: '', bank: '' });
+    };
+    const handleAddInspectionPayment = async () => { 
+        if (!selectedRecord || !newInspectionPayment.amount) return; 
+        let updatedPayments = [...(inspectionForm.payments || [])];
+        if (editingInspectionPaymentId) {
+            updatedPayments = updatedPayments.map(p => p.id === editingInspectionPaymentId ? {
+                ...p,
+                part: newInspectionPayment.part || 'Part',
+                amount: Number(newInspectionPayment.amount),
+                date: newInspectionPayment.date || '',
+                bank: newInspectionPayment.bank || '',
+                description: ''
+            } : p);
+        } else {
+            const payment: InspectionPayment = { id: generateUUID(), part: newInspectionPayment.part || 'Part', amount: Number(newInspectionPayment.amount), date: newInspectionPayment.date || '', bank: newInspectionPayment.bank || '', description: '' }; 
+            updatedPayments.push(payment);
+        }
+        const updatedData = { ...inspectionForm, payments: updatedPayments }; 
+        setInspectionForm(updatedData); 
+        setEditingInspectionPaymentId(null);
+        setNewInspectionPayment({ part: '', amount: 0, date: '', bank: '' }); 
+        const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); 
+        updatedRecord.stages[TradeStage.INSPECTION].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleDeleteInspectionPayment = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingInspectionPaymentId === id) handleCancelEditInspectionPayment();
+        const updatedPayments = (inspectionForm.payments || []).filter(p => p.id !== id); 
+        const updatedData = { ...inspectionForm, payments: updatedPayments }; 
+        setInspectionForm(updatedData); 
+        const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); 
+        updatedRecord.stages[TradeStage.INSPECTION].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleEditWarehouseReceipt = (r: WarehouseReceipt) => {
+        setEditingWarehouseReceiptId(r.id);
+        setNewWarehouseReceipt({
+            number: r.number,
+            part: r.part,
+            issueDate: r.issueDate
+        });
+    };
+    const handleCancelEditWarehouseReceipt = () => {
+        setEditingWarehouseReceiptId(null);
+        setNewWarehouseReceipt({ number: '', part: '', issueDate: '' });
+    };
     const handleAddWarehouseReceipt = async () => { 
         if (!selectedRecord || !newWarehouseReceipt.number) return; 
-        const receipt: WarehouseReceipt = { id: generateUUID(), number: newWarehouseReceipt.number || '', part: newWarehouseReceipt.part || '', issueDate: newWarehouseReceipt.issueDate || '' }; 
-        const updatedReceipts = [...(clearanceForm.receipts || []), receipt]; 
+        let updatedReceipts = [...(clearanceForm.receipts || [])];
+        if (editingWarehouseReceiptId) {
+            updatedReceipts = updatedReceipts.map(r => r.id === editingWarehouseReceiptId ? {
+                ...r,
+                number: newWarehouseReceipt.number || '',
+                part: newWarehouseReceipt.part || '',
+                issueDate: newWarehouseReceipt.issueDate || ''
+            } : r);
+        } else {
+            const receipt: WarehouseReceipt = { id: generateUUID(), number: newWarehouseReceipt.number || '', part: newWarehouseReceipt.part || '', issueDate: newWarehouseReceipt.issueDate || '' }; 
+            updatedReceipts.push(receipt);
+        }
         const updatedData = { ...clearanceForm, receipts: updatedReceipts }; 
         setClearanceForm(updatedData); 
+        setEditingWarehouseReceiptId(null);
         setNewWarehouseReceipt({ number: '', part: '', issueDate: '' }); 
         const updatedRecord = { 
             ...selectedRecord, 
@@ -742,9 +963,70 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
     };
-    const handleDeleteWarehouseReceipt = async (id: string) => { if (!selectedRecord) return; const updatedReceipts = (clearanceForm.receipts || []).filter(r => r.id !== id); const updatedData = { ...clearanceForm, receipts: updatedReceipts }; setClearanceForm(updatedData); const updatedRecord = { ...selectedRecord, clearanceData: updatedData }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleAddClearancePayment = async () => { if (!selectedRecord || !newClearancePayment.amount) return; const payment: ClearancePayment = { id: generateUUID(), amount: Number(newClearancePayment.amount), part: newClearancePayment.part || '', bank: newClearancePayment.bank || '', date: newClearancePayment.date || '', payingBank: newClearancePayment.payingBank }; const updatedPayments = [...(clearanceForm.payments || []), payment]; const updatedData = { ...clearanceForm, payments: updatedPayments }; setClearanceForm(updatedData); setNewClearancePayment({ amount: 0, part: '', bank: '', date: '', payingBank: '' }); const totalCost = updatedPayments.reduce((acc, p) => acc + p.amount, 0); const updatedRecord = { ...selectedRecord, clearanceData: updatedData, isInCustoms: true, isInTransit: false }; if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleDeleteClearancePayment = async (id: string) => { if (!selectedRecord) return; const updatedPayments = (clearanceForm.payments || []).filter(p => p.id !== id); const updatedData = { ...clearanceForm, payments: updatedPayments }; setClearanceForm(updatedData); const totalCost = updatedPayments.reduce((acc, p) => acc + p.amount, 0); const updatedRecord = { ...selectedRecord, clearanceData: updatedData }; if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
+    const handleDeleteWarehouseReceipt = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingWarehouseReceiptId === id) handleCancelEditWarehouseReceipt();
+        const updatedReceipts = (clearanceForm.receipts || []).filter(r => r.id !== id); 
+        const updatedData = { ...clearanceForm, receipts: updatedReceipts }; 
+        setClearanceForm(updatedData); 
+        const updatedRecord = { ...selectedRecord, clearanceData: updatedData }; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleEditClearancePayment = (p: ClearancePayment) => {
+        setEditingClearancePaymentId(p.id);
+        setNewClearancePayment({
+            amount: p.amount,
+            bank: p.bank,
+            date: p.date,
+            part: p.part,
+            payingBank: p.payingBank
+        });
+    };
+    const handleCancelEditClearancePayment = () => {
+        setEditingClearancePaymentId(null);
+        setNewClearancePayment({ amount: 0, part: '', bank: '', date: '', payingBank: '' });
+    };
+    const handleAddClearancePayment = async () => { 
+        if (!selectedRecord || !newClearancePayment.amount) return; 
+        let updatedPayments = [...(clearanceForm.payments || [])];
+        if (editingClearancePaymentId) {
+            updatedPayments = updatedPayments.map(p => p.id === editingClearancePaymentId ? {
+                ...p,
+                amount: Number(newClearancePayment.amount),
+                part: newClearancePayment.part || '',
+                bank: newClearancePayment.bank || '',
+                date: newClearancePayment.date || '',
+                payingBank: newClearancePayment.payingBank
+            } : p);
+        } else {
+            const payment: ClearancePayment = { id: generateUUID(), amount: Number(newClearancePayment.amount), part: newClearancePayment.part || '', bank: newClearancePayment.bank || '', date: newClearancePayment.date || '', payingBank: newClearancePayment.payingBank }; 
+            updatedPayments.push(payment);
+        }
+        const updatedData = { ...clearanceForm, payments: updatedPayments }; 
+        setClearanceForm(updatedData); 
+        setEditingClearancePaymentId(null);
+        setNewClearancePayment({ amount: 0, part: '', bank: '', date: '', payingBank: '' }); 
+        const totalCost = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        const updatedRecord = { ...selectedRecord, clearanceData: updatedData, isInCustoms: true, isInTransit: false }; 
+        if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); 
+        updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleDeleteClearancePayment = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingClearancePaymentId === id) handleCancelEditClearancePayment();
+        const updatedPayments = (clearanceForm.payments || []).filter(p => p.id !== id); 
+        const updatedData = { ...clearanceForm, payments: updatedPayments }; 
+        setClearanceForm(updatedData); 
+        const totalCost = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        const updatedRecord = { ...selectedRecord, clearanceData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); 
+        updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
     // Calculate total Green Leaf cost (Duties + Taxes + Road Tolls).
     // Note: dutyCashAmount is the 10% cash prepayment of the customs duty/cottage (پیش‌پرداخت حقوق ورودی) 
     // and is already part of the total duty amount (d.amount), so it is NOT added as an extra/additional expense.
@@ -765,38 +1047,70 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
     };
-    const handleAddCustomsDuty = async () => { if (!newCustomsDuty.cottageNumber || !newCustomsDuty.amount) return; const duty: GreenLeafCustomsDuty = { id: generateUUID(), cottageNumber: newCustomsDuty.cottageNumber, part: newCustomsDuty.part || '', amount: Number(newCustomsDuty.amount), paymentMethod: (newCustomsDuty.paymentMethod as 'Bank' | 'Guarantee') || 'Bank', bank: newCustomsDuty.bank, date: newCustomsDuty.date }; const updatedDuties = [...greenLeafForm.duties, duty]; await updateGreenLeafRecord({ ...greenLeafForm, duties: updatedDuties }); setNewCustomsDuty({ cottageNumber: '', part: '', amount: 0, paymentMethod: 'Bank', bank: '', date: '' }); };
-    const handleDeleteCustomsDuty = async (id: string) => { const updatedDuties = greenLeafForm.duties.filter(d => d.id !== id); const updatedGuarantees = greenLeafForm.guarantees.filter(g => g.relatedDutyId !== id); await updateGreenLeafRecord({ ...greenLeafForm, duties: updatedDuties, guarantees: updatedGuarantees }); };
-    const handleAddGuarantee = async () => { 
-        if (!selectedDutyForGuarantee || !newGuaranteeDetails.guaranteeNumber) return; 
-        const duty = greenLeafForm.duties.find(d => d.id === selectedDutyForGuarantee); 
-        
-        const rawGuaranteeAmt = Number(newGuaranteeDetails.guaranteeAmount) || 0;
-        const rawCashAmt = Number(newGuaranteeDetails.cashAmount) || 0;
-        const rawDutyCashAmt = Number(newGuaranteeDetails.dutyCashAmount) || 0;
-        
-        const guarantee: GreenLeafGuarantee = { 
-            id: generateUUID(), 
-            relatedDutyId: selectedDutyForGuarantee, 
-            guaranteeNumber: newGuaranteeDetails.guaranteeNumber, 
-            sepamNumber: newGuaranteeDetails.sepamNumber || '',
-            guaranteeBank: newGuaranteeDetails.guaranteeBank || '',
-            guaranteeType: newGuaranteeDetails.guaranteeType || 'cheque',
-            guaranteeAmount: rawGuaranteeAmt,
-            dutyCashAmount: rawDutyCashAmt,
-            chequeNumber: newGuaranteeDetails.chequeNumber || '', 
-            chequeBank: newGuaranteeDetails.chequeBank || '', 
-            chequeDate: newGuaranteeDetails.chequeDate || '', 
-            chequeAmount: newGuaranteeDetails.guaranteeType === 'credit' ? 0 : rawGuaranteeAmt, 
-            isDelivered: false, 
-            cashAmount: rawCashAmt, 
-            cashBank: newGuaranteeDetails.cashBank || '', 
-            cashDate: newGuaranteeDetails.cashDate || '', 
-            part: duty?.part 
-        }; 
-        
-        const updatedGuarantees = [...greenLeafForm.guarantees, guarantee]; 
-        await updateGreenLeafRecord({ ...greenLeafForm, guarantees: updatedGuarantees }); 
+    const handleEditCustomsDuty = (d: GreenLeafCustomsDuty) => {
+        setEditingCustomsDutyId(d.id);
+        setNewCustomsDuty({
+            cottageNumber: d.cottageNumber,
+            part: d.part,
+            amount: d.amount,
+            paymentMethod: d.paymentMethod,
+            bank: d.bank,
+            date: d.date
+        });
+    };
+    const handleCancelEditCustomsDuty = () => {
+        setEditingCustomsDutyId(null);
+        setNewCustomsDuty({ cottageNumber: '', part: '', amount: 0, paymentMethod: 'Bank', bank: '', date: '' });
+    };
+    const handleAddCustomsDuty = async () => { 
+        if (!newCustomsDuty.cottageNumber || !newCustomsDuty.amount) return; 
+        let updatedDuties = [...greenLeafForm.duties];
+        if (editingCustomsDutyId) {
+            updatedDuties = updatedDuties.map(d => d.id === editingCustomsDutyId ? {
+                ...d,
+                cottageNumber: newCustomsDuty.cottageNumber || '',
+                part: newCustomsDuty.part || '',
+                amount: Number(newCustomsDuty.amount),
+                paymentMethod: (newCustomsDuty.paymentMethod as 'Bank' | 'Guarantee') || 'Bank',
+                bank: newCustomsDuty.bank,
+                date: newCustomsDuty.date
+            } : d);
+        } else {
+            const duty: GreenLeafCustomsDuty = { id: generateUUID(), cottageNumber: newCustomsDuty.cottageNumber, part: newCustomsDuty.part || '', amount: Number(newCustomsDuty.amount), paymentMethod: (newCustomsDuty.paymentMethod as 'Bank' | 'Guarantee') || 'Bank', bank: newCustomsDuty.bank, date: newCustomsDuty.date }; 
+            updatedDuties.push(duty);
+        }
+        await updateGreenLeafRecord({ ...greenLeafForm, duties: updatedDuties }); 
+        handleCancelEditCustomsDuty();
+    };
+    const handleDeleteCustomsDuty = async (id: string) => { 
+        if (editingCustomsDutyId === id) handleCancelEditCustomsDuty();
+        const updatedDuties = greenLeafForm.duties.filter(d => d.id !== id); 
+        const updatedGuarantees = greenLeafForm.guarantees.filter(g => g.relatedDutyId !== id); 
+        await updateGreenLeafRecord({ ...greenLeafForm, duties: updatedDuties, guarantees: updatedGuarantees }); 
+    };
+
+    const handleEditGuarantee = (g: GreenLeafGuarantee) => {
+        setEditingGuaranteeId(g.id);
+        setSelectedDutyForGuarantee(g.relatedDutyId || '');
+        setNewGuaranteeDetails({
+            guaranteeNumber: g.guaranteeNumber,
+            sepamNumber: g.sepamNumber,
+            guaranteeBank: g.guaranteeBank,
+            guaranteeType: g.guaranteeType,
+            guaranteeAmount: g.guaranteeAmount,
+            dutyCashAmount: g.dutyCashAmount,
+            chequeNumber: g.chequeNumber,
+            chequeBank: g.chequeBank,
+            chequeDate: g.chequeDate,
+            cashAmount: g.cashAmount,
+            cashBank: g.cashBank,
+            cashDate: g.cashDate,
+            chequeAmount: g.chequeAmount
+        });
+    };
+    const handleCancelEditGuarantee = () => {
+        setEditingGuaranteeId(null);
+        setSelectedDutyForGuarantee('');
         setNewGuaranteeDetails({ 
             guaranteeNumber: '', 
             sepamNumber: '',
@@ -811,19 +1125,240 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             cashBank: '', 
             cashDate: '', 
             chequeAmount: 0 
-        }); 
-        setSelectedDutyForGuarantee(''); 
+        });
     };
-    const handleDeleteGuarantee = async (id: string) => { const updatedGuarantees = greenLeafForm.guarantees.filter(g => g.id !== id); await updateGreenLeafRecord({ ...greenLeafForm, guarantees: updatedGuarantees }); };
+    const handleAddGuarantee = async () => { 
+        if (!selectedDutyForGuarantee || !newGuaranteeDetails.guaranteeNumber) return; 
+        const duty = greenLeafForm.duties.find(d => d.id === selectedDutyForGuarantee); 
+        const rawGuaranteeAmt = Number(newGuaranteeDetails.guaranteeAmount) || 0;
+        const rawCashAmt = Number(newGuaranteeDetails.cashAmount) || 0;
+        const rawDutyCashAmt = Number(newGuaranteeDetails.dutyCashAmount) || 0;
+        
+        let updatedGuarantees = [...greenLeafForm.guarantees];
+        if (editingGuaranteeId) {
+            updatedGuarantees = updatedGuarantees.map(g => g.id === editingGuaranteeId ? {
+                ...g,
+                relatedDutyId: selectedDutyForGuarantee,
+                guaranteeNumber: newGuaranteeDetails.guaranteeNumber || '',
+                sepamNumber: newGuaranteeDetails.sepamNumber || '',
+                guaranteeBank: newGuaranteeDetails.guaranteeBank || '',
+                guaranteeType: newGuaranteeDetails.guaranteeType || 'cheque',
+                guaranteeAmount: rawGuaranteeAmt,
+                dutyCashAmount: rawDutyCashAmt,
+                chequeNumber: newGuaranteeDetails.chequeNumber || '',
+                chequeBank: newGuaranteeDetails.chequeBank || '',
+                chequeDate: newGuaranteeDetails.chequeDate || '',
+                chequeAmount: newGuaranteeDetails.guaranteeType === 'credit' ? 0 : rawGuaranteeAmt,
+                cashAmount: rawCashAmt,
+                cashBank: newGuaranteeDetails.cashBank || '',
+                cashDate: newGuaranteeDetails.cashDate || '',
+                part: duty?.part
+            } : g);
+        } else {
+            const guarantee: GreenLeafGuarantee = { 
+                id: generateUUID(), 
+                relatedDutyId: selectedDutyForGuarantee, 
+                guaranteeNumber: newGuaranteeDetails.guaranteeNumber, 
+                sepamNumber: newGuaranteeDetails.sepamNumber || '',
+                guaranteeBank: newGuaranteeDetails.guaranteeBank || '',
+                guaranteeType: newGuaranteeDetails.guaranteeType || 'cheque',
+                guaranteeAmount: rawGuaranteeAmt,
+                dutyCashAmount: rawDutyCashAmt,
+                chequeNumber: newGuaranteeDetails.chequeNumber || '', 
+                chequeBank: newGuaranteeDetails.chequeBank || '', 
+                chequeDate: newGuaranteeDetails.chequeDate || '', 
+                chequeAmount: newGuaranteeDetails.guaranteeType === 'credit' ? 0 : rawGuaranteeAmt, 
+                isDelivered: false, 
+                cashAmount: rawCashAmt, 
+                cashBank: newGuaranteeDetails.cashBank || '', 
+                cashDate: newGuaranteeDetails.cashDate || '', 
+                part: duty?.part 
+            }; 
+            updatedGuarantees.push(guarantee);
+        }
+        await updateGreenLeafRecord({ ...greenLeafForm, guarantees: updatedGuarantees }); 
+        handleCancelEditGuarantee();
+    };
+    const handleDeleteGuarantee = async (id: string) => { 
+        if (editingGuaranteeId === id) handleCancelEditGuarantee();
+        const updatedGuarantees = greenLeafForm.guarantees.filter(g => g.id !== id); 
+        await updateGreenLeafRecord({ ...greenLeafForm, guarantees: updatedGuarantees }); 
+    };
     const handleToggleGuaranteeDelivery = async (id: string) => { const updatedGuarantees = greenLeafForm.guarantees.map(g => g.id === id ? { ...g, isDelivered: !g.isDelivered } : g); await updateGreenLeafRecord({ ...greenLeafForm, guarantees: updatedGuarantees }); };
-    const handleAddTax = async () => { if (!newTax.amount) return; const tax: GreenLeafTax = { id: generateUUID(), amount: Number(newTax.amount), part: newTax.part || '', bank: newTax.bank || '', date: newTax.date || '' }; const updatedTaxes = [...greenLeafForm.taxes, tax]; await updateGreenLeafRecord({ ...greenLeafForm, taxes: updatedTaxes }); setNewTax({ part: '', amount: 0, bank: '', date: '' }); };
-    const handleDeleteTax = async (id: string) => { const updatedTaxes = greenLeafForm.taxes.filter(t => t.id !== id); await updateGreenLeafRecord({ ...greenLeafForm, taxes: updatedTaxes }); };
-    const handleAddRoadToll = async () => { if (!newRoadToll.amount) return; const toll: GreenLeafRoadToll = { id: generateUUID(), amount: Number(newRoadToll.amount), part: newRoadToll.part || '', bank: newRoadToll.bank || '', date: newRoadToll.date || '' }; const updatedTolls = [...greenLeafForm.roadTolls, toll]; await updateGreenLeafRecord({ ...greenLeafForm, roadTolls: updatedTolls }); setNewRoadToll({ part: '', amount: 0, bank: '', date: '' }); };
-    const handleDeleteRoadToll = async (id: string) => { const updatedTolls = greenLeafForm.roadTolls.filter(t => t.id !== id); await updateGreenLeafRecord({ ...greenLeafForm, roadTolls: updatedTolls }); };
-    const handleAddShippingPayment = async () => { if (!selectedRecord || !newShippingPayment.amount) return; const payment: ShippingPayment = { id: generateUUID(), part: newShippingPayment.part || '', amount: Number(newShippingPayment.amount), date: newShippingPayment.date || '', bank: newShippingPayment.bank || '', description: newShippingPayment.description || '' }; const updatedPayments = [...(internalShippingForm.payments || []), payment]; const updatedData = { ...internalShippingForm, payments: updatedPayments }; setInternalShippingForm(updatedData); setNewShippingPayment({ part: '', amount: 0, date: '', bank: '', description: '' }); const updatedRecord = { ...selectedRecord, internalShippingData: updatedData }; if (!updatedRecord.stages[TradeStage.INTERNAL_SHIPPING]) updatedRecord.stages[TradeStage.INTERNAL_SHIPPING] = getStageData(updatedRecord, TradeStage.INTERNAL_SHIPPING); updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].isCompleted = updatedPayments.length > 0; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleDeleteShippingPayment = async (id: string) => { if (!selectedRecord) return; const updatedPayments = (internalShippingForm.payments || []).filter(p => p.id !== id); const updatedData = { ...internalShippingForm, payments: updatedPayments }; setInternalShippingForm(updatedData); const updatedRecord = { ...selectedRecord, internalShippingData: updatedData }; if (!updatedRecord.stages[TradeStage.INTERNAL_SHIPPING]) updatedRecord.stages[TradeStage.INTERNAL_SHIPPING] = getStageData(updatedRecord, TradeStage.INTERNAL_SHIPPING); updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleAddAgentPayment = async () => { if (!selectedRecord || !newAgentPayment.amount || !newAgentPayment.agentName) return; const payment: AgentPayment = { id: generateUUID(), agentName: newAgentPayment.agentName, amount: Number(newAgentPayment.amount), bank: newAgentPayment.bank || '', date: newAgentPayment.date || '', part: newAgentPayment.part || '', description: newAgentPayment.description || '' }; const updatedPayments = [...(agentForm.payments || []), payment]; const updatedData = { ...agentForm, payments: updatedPayments }; setAgentForm(updatedData); setNewAgentPayment({ agentName: newAgentPayment.agentName, amount: 0, bank: '', date: '', part: '', description: '' }); const updatedRecord = { ...selectedRecord, agentData: updatedData }; if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); updatedRecord.stages[TradeStage.AGENT_FEES].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleDeleteAgentPayment = async (id: string) => { if (!selectedRecord) return; const updatedPayments = (agentForm.payments || []).filter(p => p.id !== id); const updatedData = { ...agentForm, payments: updatedPayments }; setAgentForm(updatedData); const updatedRecord = { ...selectedRecord, agentData: updatedData }; if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); updatedRecord.stages[TradeStage.AGENT_FEES].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
+    
+    const handleEditTax = (t: GreenLeafTax) => {
+        setEditingTaxId(t.id);
+        setNewTax({ amount: t.amount, part: t.part, bank: t.bank, date: t.date });
+    };
+    const handleCancelEditTax = () => {
+        setEditingTaxId(null);
+        setNewTax({ part: '', amount: 0, bank: '', date: '' });
+    };
+    const handleAddTax = async () => { 
+        if (!newTax.amount) return; 
+        let updatedTaxes = [...greenLeafForm.taxes];
+        if (editingTaxId) {
+            updatedTaxes = updatedTaxes.map(t => t.id === editingTaxId ? {
+                ...t,
+                amount: Number(newTax.amount),
+                part: newTax.part || '',
+                bank: newTax.bank || '',
+                date: newTax.date || ''
+            } : t);
+        } else {
+            const tax: GreenLeafTax = { id: generateUUID(), amount: Number(newTax.amount), part: newTax.part || '', bank: newTax.bank || '', date: newTax.date || '' }; 
+            updatedTaxes.push(tax);
+        }
+        await updateGreenLeafRecord({ ...greenLeafForm, taxes: updatedTaxes }); 
+        handleCancelEditTax();
+    };
+    const handleDeleteTax = async (id: string) => { 
+        if (editingTaxId === id) handleCancelEditTax();
+        const updatedTaxes = greenLeafForm.taxes.filter(t => t.id !== id); 
+        await updateGreenLeafRecord({ ...greenLeafForm, taxes: updatedTaxes }); 
+    };
+
+    const handleEditRoadToll = (r: GreenLeafRoadToll) => {
+        setEditingRoadTollId(r.id);
+        setNewRoadToll({ amount: r.amount, part: r.part, bank: r.bank, date: r.date });
+    };
+    const handleCancelEditRoadToll = () => {
+        setEditingRoadTollId(null);
+        setNewRoadToll({ part: '', amount: 0, bank: '', date: '' });
+    };
+    const handleAddRoadToll = async () => { 
+        if (!newRoadToll.amount) return; 
+        let updatedTolls = [...greenLeafForm.roadTolls];
+        if (editingRoadTollId) {
+            updatedTolls = updatedTolls.map(t => t.id === editingRoadTollId ? {
+                ...t,
+                amount: Number(newRoadToll.amount),
+                part: newRoadToll.part || '',
+                bank: newRoadToll.bank || '',
+                date: newRoadToll.date || ''
+            } : t);
+        } else {
+            const toll: GreenLeafRoadToll = { id: generateUUID(), amount: Number(newRoadToll.amount), part: newRoadToll.part || '', bank: newRoadToll.bank || '', date: newRoadToll.date || '' }; 
+            updatedTolls.push(toll);
+        }
+        await updateGreenLeafRecord({ ...greenLeafForm, roadTolls: updatedTolls }); 
+        handleCancelEditRoadToll();
+    };
+    const handleDeleteRoadToll = async (id: string) => { 
+        if (editingRoadTollId === id) handleCancelEditRoadToll();
+        const updatedTolls = greenLeafForm.roadTolls.filter(t => t.id !== id); 
+        await updateGreenLeafRecord({ ...greenLeafForm, roadTolls: updatedTolls }); 
+    };
+
+    const handleEditShippingPayment = (p: ShippingPayment) => {
+        setEditingShippingPaymentId(p.id);
+        setNewShippingPayment({
+            part: p.part,
+            amount: p.amount,
+            date: p.date,
+            bank: p.bank,
+            description: p.description
+        });
+    };
+    const handleCancelEditShippingPayment = () => {
+        setEditingShippingPaymentId(null);
+        setNewShippingPayment({ part: '', amount: 0, date: '', bank: '', description: '' });
+    };
+    const handleAddShippingPayment = async () => { 
+        if (!selectedRecord || !newShippingPayment.amount) return; 
+        let updatedPayments = [...(internalShippingForm.payments || [])];
+        if (editingShippingPaymentId) {
+            updatedPayments = updatedPayments.map(p => p.id === editingShippingPaymentId ? {
+                ...p,
+                part: newShippingPayment.part || '',
+                amount: Number(newShippingPayment.amount),
+                date: newShippingPayment.date || '',
+                bank: newShippingPayment.bank || '',
+                description: newShippingPayment.description || ''
+            } : p);
+        } else {
+            const payment: ShippingPayment = { id: generateUUID(), part: newShippingPayment.part || '', amount: Number(newShippingPayment.amount), date: newShippingPayment.date || '', bank: newShippingPayment.bank || '', description: newShippingPayment.description || '' }; 
+            updatedPayments.push(payment);
+        }
+        const updatedData = { ...internalShippingForm, payments: updatedPayments }; 
+        setInternalShippingForm(updatedData); 
+        setEditingShippingPaymentId(null);
+        setNewShippingPayment({ part: '', amount: 0, date: '', bank: '', description: '' }); 
+        const updatedRecord = { ...selectedRecord, internalShippingData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.INTERNAL_SHIPPING]) updatedRecord.stages[TradeStage.INTERNAL_SHIPPING] = getStageData(updatedRecord, TradeStage.INTERNAL_SHIPPING); 
+        updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].isCompleted = updatedPayments.length > 0; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleDeleteShippingPayment = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingShippingPaymentId === id) handleCancelEditShippingPayment();
+        const updatedPayments = (internalShippingForm.payments || []).filter(p => p.id !== id); 
+        const updatedData = { ...internalShippingForm, payments: updatedPayments }; 
+        setInternalShippingForm(updatedData); 
+        const updatedRecord = { ...selectedRecord, internalShippingData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.INTERNAL_SHIPPING]) updatedRecord.stages[TradeStage.INTERNAL_SHIPPING] = getStageData(updatedRecord, TradeStage.INTERNAL_SHIPPING); 
+        updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+
+    const handleEditAgentPayment = (p: AgentPayment) => {
+        setEditingAgentPaymentId(p.id);
+        setNewAgentPayment({
+            agentName: p.agentName,
+            amount: p.amount,
+            bank: p.bank,
+            date: p.date,
+            part: p.part,
+            description: p.description
+        });
+    };
+    const handleCancelEditAgentPayment = () => {
+        setEditingAgentPaymentId(null);
+        setNewAgentPayment({ agentName: '', amount: 0, bank: '', date: '', part: '', description: '' });
+    };
+    const handleAddAgentPayment = async () => { 
+        if (!selectedRecord || !newAgentPayment.amount || !newAgentPayment.agentName) return; 
+        let updatedPayments = [...(agentForm.payments || [])];
+        if (editingAgentPaymentId) {
+            updatedPayments = updatedPayments.map(p => p.id === editingAgentPaymentId ? {
+                ...p,
+                agentName: newAgentPayment.agentName || '',
+                amount: Number(newAgentPayment.amount),
+                bank: newAgentPayment.bank || '',
+                date: newAgentPayment.date || '',
+                part: newAgentPayment.part || '',
+                description: newAgentPayment.description || ''
+            } : p);
+        } else {
+            const payment: AgentPayment = { id: generateUUID(), agentName: newAgentPayment.agentName, amount: Number(newAgentPayment.amount), bank: newAgentPayment.bank || '', date: newAgentPayment.date || '', part: newAgentPayment.part || '', description: newAgentPayment.description || '' }; 
+            updatedPayments.push(payment);
+        }
+        const updatedData = { ...agentForm, payments: updatedPayments }; 
+        setAgentForm(updatedData); 
+        setEditingAgentPaymentId(null);
+        setNewAgentPayment({ agentName: newAgentPayment.agentName, amount: 0, bank: '', date: '', part: '', description: '' }); 
+        const updatedRecord = { ...selectedRecord, agentData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
+        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
+    const handleDeleteAgentPayment = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingAgentPaymentId === id) handleCancelEditAgentPayment();
+        const updatedPayments = (agentForm.payments || []).filter(p => p.id !== id); 
+        const updatedData = { ...agentForm, payments: updatedPayments }; 
+        setAgentForm(updatedData); 
+        const updatedRecord = { ...selectedRecord, agentData: updatedData }; 
+        if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
+        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
     const handleAddCurrencyTranche = async () => { 
         if (!selectedRecord || !newCurrencyTranche.amountStr || !newCurrencyTranche.rialAmountStr) return; 
         
@@ -1192,7 +1727,18 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             description: shippingDocForm.description
         };
 
-        const updatedDocs = [...(selectedRecord.shippingDocuments || []), newDoc];
+        let updatedDocs = [...(selectedRecord.shippingDocuments || [])];
+        if (editingShippingDocId) {
+            updatedDocs = updatedDocs.map(d => d.id === editingShippingDocId ? {
+                ...d,
+                ...newDoc,
+                id: editingShippingDocId,
+                createdAt: d.createdAt || Date.now(),
+                createdBy: d.createdBy || currentUser.fullName
+            } : d);
+        } else {
+            updatedDocs.push(newDoc);
+        }
         const updatedRecord = { ...selectedRecord, shippingDocuments: updatedDocs };
 
         if (!updatedRecord.stages[TradeStage.SHIPPING_DOCS]) {
@@ -1207,6 +1753,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
         await updateTradeRecord(updatedRecord);
         setSelectedRecord(updatedRecord);
+        setEditingShippingDocId(null);
         setShippingDocForm({
             status: 'Draft',
             documentNumber: '',
@@ -1217,7 +1764,47 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             freightCost: 0
         });
     };
-    const handleDeleteShippingDoc = async (id: string) => { if (!selectedRecord) return; const updatedDocs = (selectedRecord.shippingDocuments || []).filter(d => d.id !== id); const updatedRecord = { ...selectedRecord, shippingDocuments: updatedDocs }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
+    const handleEditShippingDoc = (doc: ShippingDocument) => {
+        setEditingShippingDocId(doc.id);
+        setActiveShippingSubTab(doc.type);
+        setShippingDocForm({
+            status: doc.status || 'Draft',
+            documentNumber: doc.documentNumber || '',
+            documentDate: doc.documentDate || '',
+            attachments: doc.attachments || [],
+            invoiceItems: doc.invoiceItems || [],
+            packingItems: doc.packingItems || [],
+            freightCost: doc.freightCost || 0,
+            currency: doc.currency,
+            netWeight: doc.netWeight,
+            grossWeight: doc.grossWeight,
+            packagesCount: doc.packagesCount,
+            vesselName: doc.vesselName,
+            portOfLoading: doc.portOfLoading,
+            portOfDischarge: doc.portOfDischarge,
+            description: doc.description
+        });
+    };
+    const handleCancelEditShippingDoc = () => {
+        setEditingShippingDocId(null);
+        setShippingDocForm({
+            status: 'Draft',
+            documentNumber: '',
+            documentDate: '',
+            attachments: [],
+            invoiceItems: [],
+            packingItems: [],
+            freightCost: 0
+        });
+    };
+    const handleDeleteShippingDoc = async (id: string) => { 
+        if (!selectedRecord) return; 
+        if (editingShippingDocId === id) handleCancelEditShippingDoc();
+        const updatedDocs = (selectedRecord.shippingDocuments || []).filter(d => d.id !== id); 
+        const updatedRecord = { ...selectedRecord, shippingDocuments: updatedDocs }; 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+    };
     const handleSyncInvoiceToProforma = async () => { 
         if (!selectedRecord) return; 
         if (!confirm('آیا مطمئن هستید؟ این عملیات اقلام و هزینه حمل پروفرما را با مقادیر این اینویس جایگزین می‌کند و نسخه فعلی به عنوان سابقه و بایگانی در پرونده ذخیره خواهد شد.')) return; 
@@ -2302,13 +2889,30 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                              placeholder="۱۴۰۳/xx/xx"
                                          />
                                      </div>
-                                     <button type="button" onClick={handleAddLicenseTx} className="bg-purple-600 text-white p-2 rounded-lg hover:bg-purple-700 h-[38px]"><Plus size={18}/></button>
+                                     <div className="flex gap-1 items-center">
+                                         <button type="button" onClick={handleAddLicenseTx} className={`${editingLicenseTxId ? 'bg-amber-600 hover:bg-amber-700 text-xs px-3 font-bold' : 'bg-purple-600 hover:bg-purple-700'} text-white p-2 rounded-lg h-[38px] flex items-center justify-center gap-1 shadow-sm transition-all`} title={editingLicenseTxId ? 'ذخیره تغییرات هزینه' : 'افزودن هزینه'}>
+                                             {editingLicenseTxId ? <><Save size={16}/><span>ذخیره</span></> : <Plus size={18}/>}
+                                         </button>
+                                         {editingLicenseTxId && (
+                                             <button type="button" onClick={handleCancelEditLicenseTx} className="bg-gray-200 text-gray-700 px-3 p-2 rounded-lg hover:bg-gray-300 h-[38px] text-xs font-bold transition-all" title="انصراف">
+                                                 انصراف
+                                             </button>
+                                         )}
+                                     </div>
                                  </div>
                                  <div className="space-y-1">
                                      {selectedRecord.licenseData?.transactions.map(tx => (
-                                         <div key={tx.id} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm border">
-                                             <div className="flex gap-4"><span>{tx.description}</span><span className="text-gray-500">{tx.date}</span></div>
-                                             <div className="flex gap-4 items-center"><span className="font-bold text-purple-700 font-mono">{formatCurrency(tx.amount)}</span><button type="button" onClick={() => handleRemoveLicenseTx(tx.id)} className="text-red-500"><X size={14}/></button></div>
+                                         <div key={tx.id} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm border hover:bg-gray-100/60 transition-colors">
+                                             <div className="flex gap-4 items-center">
+                                                 <span className="font-medium text-gray-800">{tx.description}</span>
+                                                 {tx.date && <span className="text-gray-500 text-xs font-mono bg-gray-100 px-2 py-0.5 rounded">{tx.date}</span>}
+                                                 {tx.bank && <span className="text-purple-700 text-xs font-bold bg-purple-50 px-2 py-0.5 rounded">{tx.bank}</span>}
+                                             </div>
+                                             <div className="flex gap-2 items-center">
+                                                 <span className="font-bold text-purple-700 font-mono ml-2">{formatCurrency(tx.amount)}</span>
+                                                 <button type="button" onClick={() => handleEditLicenseTx(tx)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded transition-colors" title="ویرایش هزینه"><Edit size={15}/></button>
+                                                 <button type="button" onClick={() => handleRemoveLicenseTx(tx.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded transition-colors" title="حذف هزینه"><Trash2 size={15}/></button>
+                                             </div>
                                          </div>
                                      ))}
                                  </div>
@@ -2329,6 +2933,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                             setEndorsementType={setEndorsementType}
                             onAddEndorsement={handleAddEndorsement}
                             onDeleteEndorsement={handleDeleteEndorsement}
+                            editingEndorsementId={editingEndorsementId}
+                            onEditEndorsement={handleEditEndorsement}
+                            onCancelEditEndorsement={handleCancelEditEndorsement}
                         />
                     )}
 
@@ -2592,7 +3199,16 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                 
                                 <div><label className="text-xs font-bold block mb-1">فایل‌های ضمیمه</label><div className="flex items-center gap-2 mb-2"><input type="file" ref={docFileInputRef} className="hidden" onChange={handleDocFileChange} /><button type="button" onClick={() => docFileInputRef.current?.click()} disabled={uploadingDocFile} className="bg-gray-100 border px-3 py-1 rounded text-xs hover:bg-gray-200">{uploadingDocFile ? 'در حال آپلود...' : 'افزودن فایل'}</button></div><div className="space-y-1">{shippingDocForm.attachments?.map((att, i) => (<div key={i} className="flex justify-between items-center bg-gray-50 p-2 rounded text-xs"><button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setViewerUrl(att.url); setViewerName(att.fileName); setViewerOpen(true); }} className="text-blue-600 hover:underline text-right truncate max-w-[200px] flex items-center gap-1"><Eye size={12}/> {att.fileName}</button><div className="flex items-center gap-2"><button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); downloadAndOpenFile(att.url, att.fileName); }} className="text-gray-500 hover:text-gray-700 p-0.5" title="دانلود"><FileDown size={14}/></button><button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSendToChatAttachment({ fileName: att.fileName, url: att.url }); setSendToChatDefaultMsg(`سند حمل ${activeShippingSubTab} مربوط به پرونده ${selectedRecord.goodsName} (${selectedRecord.fileNumber})`); setSendToChatOpen(true); }} className="text-blue-500 hover:text-blue-700 p-0.5" title="ارسال به گفتگو"><Share2 size={13}/></button><button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShippingDocForm({...shippingDocForm, attachments: shippingDocForm.attachments?.filter((_, idx) => idx !== i)}); }} className="text-red-500"><X size={14}/></button></div></div>))}</div></div>
 
-                                <div className="flex justify-end pt-4 border-t"><button type="button" onClick={handleSaveShippingDoc} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700">ثبت سند</button></div>
+                                <div className="flex justify-end items-center gap-2 pt-4 border-t">
+                                    {editingShippingDocId && (
+                                        <button type="button" onClick={handleCancelEditShippingDoc} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors">
+                                            انصراف از ویرایش
+                                        </button>
+                                    )}
+                                    <button type="button" onClick={handleSaveShippingDoc} className={`${editingShippingDocId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-6 py-2 rounded-lg font-bold transition-colors`}>
+                                        {editingShippingDocId ? 'بروزرسانی سند' : 'ثبت سند'}
+                                    </button>
+                                </div>
                                 
                                 <div className="mt-6">
                                     <div className="flex items-center justify-between mb-3">
@@ -2683,6 +3299,14 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                                 >
                                                                     <Printer size={14}/>
                                                                     چاپ
+                                                                </button>
+                                                                <button type="button" 
+                                                                    onClick={() => handleEditShippingDoc(doc)} 
+                                                                    className="flex items-center gap-1.5 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg font-bold transition-all active:scale-95"
+                                                                    title="ویرایش سند"
+                                                                >
+                                                                    <Edit size={14}/>
+                                                                    ویرایش
                                                                 </button>
                                                                 <button type="button" 
                                                                     onClick={() => handleDeleteShippingDoc(doc.id)} 
@@ -2900,9 +3524,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                         <label className="text-xs font-bold text-gray-700">هزینه بازرسی (ریال)</label>
                                         <FormattedNumberInput className="w-full border rounded p-2 text-sm dir-ltr font-bold text-gray-800" value={newInspectionCertificate.amount} onChange={val => setNewInspectionCertificate({...newInspectionCertificate, amount: val})} />
                                     </div>
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت / توضیحات</label><div className="flex gap-1"><input className="w-full border rounded p-2 text-sm" value={newInspectionCertificate.part} onChange={e => setNewInspectionCertificate({...newInspectionCertificate, part: e.target.value})} /><button type="button" onClick={handleAddInspectionCertificate} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700"><Plus size={16}/></button></div></div>
+                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت / توضیحات</label><div className="flex gap-1"><input className="w-full border rounded p-2 text-sm" value={newInspectionCertificate.part} onChange={e => setNewInspectionCertificate({...newInspectionCertificate, part: e.target.value})} /><button type="button" onClick={handleAddInspectionCertificate} className={`${editingInspectionCertificateId ? "bg-amber-600 hover:bg-amber-700 px-3" : "bg-blue-600 hover:bg-blue-700"} text-white p-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 shadow-sm transition-all`} title={editingInspectionCertificateId ? "ذخیره گواهی" : "افزودن گواهی"}>{editingInspectionCertificateId ? <><Save size={15}/><span>ذخیره</span></> : <Plus size={16}/>}</button>{editingInspectionCertificateId && (<button type="button" onClick={handleCancelEditInspectionCertificate} className="bg-gray-200 text-gray-700 px-2 rounded-lg hover:bg-gray-300 text-xs font-bold transition-all" title="انصراف"><X size={15}/></button>)}</div></div>
                                 </div>
-                                <div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">شرکت</th><th className="p-3">شماره گواهی</th><th className="p-3">هزینه</th><th className="p-3">پارت</th><th className="p-3">حذف</th></tr></thead><tbody>{inspectionForm.certificates?.map(c => (<tr key={c.id} className="border-b hover:bg-gray-50"><td className="p-3">{c.company}</td><td className="p-3 font-mono">{c.certificateNumber}</td><td className="p-3 font-mono">{formatCurrency(c.amount)}</td><td className="p-3">{c.part}</td><td className="p-3"><button type="button" onClick={()=>handleDeleteInspectionCertificate(c.id)} className="text-red-500"><Trash2 size={16}/></button></td></tr>))}</tbody><tfoot className="bg-blue-50 font-bold"><tr><td colSpan={2} className="p-3 text-center">جمع کل هزینه‌های بازرسی</td><td className="p-3 font-mono text-blue-700">{formatCurrency(inspectionForm.certificates?.reduce((acc, c) => acc + c.amount, 0) || 0)}</td><td colSpan={2}></td></tr></tfoot></table></div>
+                                <div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">شرکت</th><th className="p-3">شماره گواهی</th><th className="p-3">هزینه</th><th className="p-3">پارت</th><th className="p-3 text-center">عملیات</th></tr></thead><tbody>{inspectionForm.certificates?.map(c => (<tr key={c.id} className="border-b hover:bg-gray-50"><td className="p-3">{c.company}</td><td className="p-3 font-mono">{c.certificateNumber}</td><td className="p-3 font-mono">{formatCurrency(c.amount)}</td><td className="p-3">{c.part}</td><td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={()=>handleEditInspectionCertificate(c)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteInspectionCertificate(c.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td></tr>))}</tbody><tfoot className="bg-blue-50 font-bold"><tr><td colSpan={2} className="p-3 text-center">جمع کل هزینه‌های بازرسی</td><td className="p-3 font-mono text-blue-700">{formatCurrency(inspectionForm.certificates?.reduce((acc, c) => acc + c.amount, 0) || 0)}</td><td colSpan={2}></td></tr></tfoot></table></div>
                             </div>
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                 <h3 className="font-bold text-gray-800">پرداخت‌های بازرسی</h3>
@@ -2920,9 +3544,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                             placeholder="۱۴۰۳/xx/xx"
                                         />
                                     </div>
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت</label><div className="flex gap-1"><input className="w-full border rounded p-2 text-sm" value={newInspectionPayment.part} onChange={e => setNewInspectionPayment({...newInspectionPayment, part: e.target.value})} /><button type="button" onClick={handleAddInspectionPayment} className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700"><Plus size={16}/></button></div></div>
+                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت</label><div className="flex gap-1"><input className="w-full border rounded p-2 text-sm" value={newInspectionPayment.part} onChange={e => setNewInspectionPayment({...newInspectionPayment, part: e.target.value})} /><button type="button" onClick={handleAddInspectionPayment} className={`${editingInspectionPaymentId ? "bg-amber-600 hover:bg-amber-700 px-3" : "bg-green-600 hover:bg-green-700"} text-white p-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 shadow-sm transition-all`} title={editingInspectionPaymentId ? "ذخیره پرداخت" : "افزودن پرداخت"}>{editingInspectionPaymentId ? <><Save size={15}/><span>ذخیره</span></> : <Plus size={16}/>}</button>{editingInspectionPaymentId && (<button type="button" onClick={handleCancelEditInspectionPayment} className="bg-gray-200 text-gray-700 px-2 rounded-lg hover:bg-gray-300 text-xs font-bold transition-all" title="انصراف"><X size={15}/></button>)}</div></div>
                                 </div>
-                                <div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">بانک</th><th className="p-3">مبلغ</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">حذف</th></tr></thead><tbody>{inspectionForm.payments?.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="p-3">{p.bank}</td><td className="p-3 font-mono">{formatCurrency(p.amount)}</td><td className="p-3">{p.date}</td><td className="p-3">{p.part}</td><td className="p-3"><button type="button" onClick={()=>handleDeleteInspectionPayment(p.id)} className="text-red-500"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div>
+                                <div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">بانک</th><th className="p-3">مبلغ</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">حذف</th></tr></thead><tbody>{inspectionForm.payments?.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="p-3">{p.bank}</td><td className="p-3 font-mono">{formatCurrency(p.amount)}</td><td className="p-3">{p.date}</td><td className="p-3">{p.part}</td><td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={()=>handleEditInspectionPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteInspectionPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td></tr>))}</tbody></table></div>
                             </div>
                         </div>
                     )}
@@ -2953,9 +3577,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                         />
                                     </div>
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت / توضیحات</label><input className="w-full border rounded p-2 text-sm" value={newWarehouseReceipt.part} onChange={e => setNewWarehouseReceipt({...newWarehouseReceipt, part: e.target.value})} /></div>
-                                    <button type="button" onClick={handleAddWarehouseReceipt} className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 h-[38px]"><Plus size={16} className="mx-auto"/></button>
+                                    <div className="flex gap-1"><button type="button" onClick={handleAddWarehouseReceipt} className={`flex-1 ${editingWarehouseReceiptId ? "bg-amber-600 hover:bg-amber-700 text-xs px-2" : "bg-indigo-600 hover:bg-indigo-700"} text-white p-2 rounded-lg h-[38px] font-bold flex items-center justify-center gap-1 shadow-sm transition-all`} title={editingWarehouseReceiptId ? "ذخیره قبض انبار" : "افزودن قبض انبار"}>{editingWarehouseReceiptId ? <><Save size={15}/><span>ذخیره</span></> : <Plus size={16} className="mx-auto"/>}</button>{editingWarehouseReceiptId && (<button type="button" onClick={handleCancelEditWarehouseReceipt} className="bg-gray-200 text-gray-700 px-2 rounded-lg hover:bg-gray-300 h-[38px] text-xs font-bold transition-all" title="انصراف"><X size={15}/></button>)}</div>
                                 </div>
-                                <div className="space-y-2">{clearanceForm.receipts?.map(r => (<div key={r.id} className="flex justify-between items-center border p-3 rounded-lg bg-gray-50"><div><span className="font-bold text-sm">شماره: {r.number}</span> <span className="text-xs text-gray-500 mx-2">تاریخ: {r.issueDate}</span> <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{r.part}</span></div><button type="button" onClick={()=>handleDeleteWarehouseReceipt(r.id)} className="text-red-500"><Trash2 size={16}/></button></div>))}</div>
+                                <div className="space-y-2">{clearanceForm.receipts?.map(r => (<div key={r.id} className="flex justify-between items-center border p-3 rounded-lg bg-gray-50"><div><span className="font-bold text-sm">شماره: {r.number}</span> <span className="text-xs text-gray-500 mx-2">تاریخ: {r.issueDate}</span> <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{r.part}</span></div><div className="flex gap-2 items-center"><button type="button" onClick={()=>handleEditWarehouseReceipt(r)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteWarehouseReceipt(r.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></div>))}</div>
                             </div>
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                 <h3 className="font-bold text-gray-800">هزینه‌های ترخیصیه ( کشتیرانی / ایجنت )</h3>
@@ -2972,9 +3596,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                             onChange={val => setNewClearancePayment({...newClearancePayment, date: val})} 
                                         />
                                     </div>
-                                    <button type="button" onClick={handleAddClearancePayment} className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 h-[38px]"><Plus size={16} className="mx-auto"/></button>
+                                    <div className="flex gap-1"><button type="button" onClick={handleAddClearancePayment} className={`flex-1 ${editingClearancePaymentId ? "bg-amber-600 hover:bg-amber-700 text-xs px-2" : "bg-green-600 hover:bg-green-700"} text-white p-2 rounded-lg h-[38px] font-bold flex items-center justify-center gap-1 shadow-sm transition-all`} title={editingClearancePaymentId ? "ذخیره پرداخت ترخیصیه" : "افزودن پرداخت ترخیصیه"}>{editingClearancePaymentId ? <><Save size={15}/><span>ذخیره</span></> : <Plus size={16} className="mx-auto"/>}</button>{editingClearancePaymentId && (<button type="button" onClick={handleCancelEditClearancePayment} className="bg-gray-200 text-gray-700 px-2 rounded-lg hover:bg-gray-300 h-[38px] text-xs font-bold transition-all" title="انصراف"><X size={15}/></button>)}</div>
                                 </div>
-                                <div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">بانک</th><th className="p-3">مبلغ</th><th className="p-3">تاریخ</th><th className="p-3">حذف</th></tr></thead><tbody>{clearanceForm.payments?.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="p-3">{p.bank}</td><td className="p-3 font-mono">{formatCurrency(p.amount)}</td><td className="p-3">{p.date}</td><td className="p-3"><button type="button" onClick={()=>handleDeleteClearancePayment(p.id)} className="text-red-500"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div>
+                                <div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">بانک</th><th className="p-3">مبلغ</th><th className="p-3">تاریخ</th><th className="p-3">حذف</th></tr></thead><tbody>{clearanceForm.payments?.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="p-3">{p.bank}</td><td className="p-3 font-mono">{formatCurrency(p.amount)}</td><td className="p-3">{p.date}</td><td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={()=>handleEditClearancePayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteClearancePayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td></tr>))}</tbody></table></div>
                             </div>
                         </div>
                     )}
@@ -2992,9 +3616,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     </div>
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">روش پرداخت</label><select className="w-full border rounded p-2 text-sm" value={newCustomsDuty.paymentMethod} onChange={e => setNewCustomsDuty({...newCustomsDuty, paymentMethod: e.target.value as 'Bank' | 'Guarantee'})}><option value="Bank">نقدی (بانک)</option><option value="Guarantee">ضمانت‌نامه</option></select></div>
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت</label><input className="w-full border rounded p-2 text-sm" value={newCustomsDuty.part} onChange={e => setNewCustomsDuty({...newCustomsDuty, part: e.target.value})} /></div>
-                                    <button type="button" onClick={handleAddCustomsDuty} className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 h-[38px]"><Plus size={16} className="mx-auto"/></button>
+                                    <div className="flex gap-1"><button type="button" onClick={handleAddCustomsDuty} className={`flex-1 ${editingCustomsDutyId ? "bg-amber-600 hover:bg-amber-700 text-xs px-2" : "bg-green-600 hover:bg-green-700"} text-white p-2 rounded-lg h-[38px] font-bold flex items-center justify-center gap-1 shadow-sm transition-all`} title={editingCustomsDutyId ? "ذخیره کوتاژ" : "افزودن کوتاژ"}>{editingCustomsDutyId ? <><Save size={15}/><span>ذخیره</span></> : <Plus size={16} className="mx-auto"/>}</button>{editingCustomsDutyId && (<button type="button" onClick={handleCancelEditCustomsDuty} className="bg-gray-200 text-gray-700 px-2 rounded-lg hover:bg-gray-300 h-[38px] text-xs font-bold transition-all" title="انصراف"><X size={15}/></button>)}</div>
                                 </div>
-                                <div className="space-y-2">{greenLeafForm.duties?.map(d => (<div key={d.id} className="flex justify-between items-center border p-3 rounded-lg bg-gray-50"><div><span className="font-bold text-sm">کوتاژ: {d.cottageNumber}</span> <span className="text-xs bg-gray-200 px-2 py-0.5 rounded mx-2">{d.paymentMethod === 'Bank' ? 'نقدی' : 'ضمانت‌نامه'}</span> <span className="font-mono font-bold text-green-700">{formatCurrency(d.amount)}</span></div><button type="button" onClick={()=>handleDeleteCustomsDuty(d.id)} className="text-red-500"><Trash2 size={16}/></button></div>))}</div>
+                                <div className="space-y-2">{greenLeafForm.duties?.map(d => (<div key={d.id} className="flex justify-between items-center border p-3 rounded-lg bg-gray-50"><div><span className="font-bold text-sm">کوتاژ: {d.cottageNumber}</span> <span className="text-xs bg-gray-200 px-2 py-0.5 rounded mx-2">{d.paymentMethod === 'Bank' ? 'نقدی' : 'ضمانت‌نامه'}</span> <span className="font-mono font-bold text-green-700">{formatCurrency(d.amount)}</span></div><div className="flex gap-2 items-center"><button type="button" onClick={()=>handleEditCustomsDuty(d)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteCustomsDuty(d.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></div>))}</div>
                             </div>
 
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
@@ -3075,7 +3699,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                         );
                                     })()}
 
-                                    <button type="button" onClick={handleAddGuarantee} className="w-full bg-orange-600 text-white p-2 rounded-lg font-bold hover:bg-orange-700">ثبت ضمانت‌نامه</button>
+                                    <div className="flex gap-2"><button type="button" onClick={handleAddGuarantee} className={`flex-1 ${editingGuaranteeId ? "bg-amber-600 hover:bg-amber-700" : "bg-orange-600 hover:bg-orange-700"} text-white p-2 rounded-lg font-bold flex items-center justify-center gap-1 shadow-sm transition-all`}>{editingGuaranteeId ? <><Save size={16}/><span>بروزرسانی ضمانت‌نامه</span></> : "ثبت ضمانت‌نامه"}</button>{editingGuaranteeId && (<button type="button" onClick={handleCancelEditGuarantee} className="bg-gray-200 text-gray-700 px-4 p-2 rounded-lg hover:bg-gray-300 text-xs font-bold transition-all" title="انصراف">انصراف</button>)}</div>
                                 </div>
                                 <div className="space-y-2">
                                     {greenLeafForm.guarantees?.map(g => (
@@ -3100,7 +3724,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                 <button type="button" onClick={() => handleToggleGuaranteeDelivery(g.id)} className={`text-xs px-2 py-1 rounded font-bold transition-colors ${g.isDelivered ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                                     {g.isDelivered ? 'عودت شد' : 'نزد سازمان'}
                                                 </button>
-                                                <button type="button" onClick={()=>handleDeleteGuarantee(g.id)} className="text-red-500 hover:text-red-700">
+                                                <button type="button" onClick={()=>handleEditGuarantee(g)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش ضمانت‌نامه"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteGuarantee(g.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف">
                                                     <Trash2 size={16}/>
                                                 </button>
                                             </div>
@@ -3114,17 +3738,17 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     <h3 className="font-bold text-gray-800">مالیات بر ارزش افزوده</h3>
                                     <div className="flex gap-2 items-end">
                                         <FormattedNumberInput className="flex-1 border rounded p-2 text-sm dir-ltr font-bold text-gray-800" placeholder="مبلغ (ریال)" value={newTax.amount} onChange={val => setNewTax({...newTax, amount: val})} />
-                                        <button type="button" onClick={handleAddTax} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 h-[38px] min-w-[38px] flex items-center justify-center"><Plus size={16}/></button>
+                                        <button type="button" onClick={handleAddTax} className={`${editingTaxId ? "bg-amber-600 hover:bg-amber-700 px-3 text-xs" : "bg-blue-600 hover:bg-blue-700"} text-white p-2 rounded h-[38px] min-w-[38px] flex items-center justify-center font-bold`} title={editingTaxId ? "ذخیره مالیات" : "افزودن مالیات"}>{editingTaxId ? <Save size={15}/> : <Plus size={16}/>}</button>{editingTaxId && (<button type="button" onClick={handleCancelEditTax} className="bg-gray-200 text-gray-700 px-2 rounded hover:bg-gray-300 h-[38px] text-xs font-bold" title="انصراف"><X size={15}/></button>)}
                                     </div>
-                                    <div className="space-y-1">{greenLeafForm.taxes?.map(t => (<div key={t.id} className="flex justify-between bg-gray-50 p-2 rounded text-sm"><span className="font-mono">{formatCurrency(t.amount)}</span><button type="button" onClick={()=>handleDeleteTax(t.id)} className="text-red-500"><X size={14}/></button></div>))}</div>
+                                    <div className="space-y-1">{greenLeafForm.taxes?.map(t => (<div key={t.id} className="flex justify-between bg-gray-50 p-2 rounded text-sm"><span className="font-mono">{formatCurrency(t.amount)}</span><div className="flex gap-1 items-center"><button type="button" onClick={()=>handleEditTax(t)} className="text-amber-600 hover:text-amber-800 p-0.5" title="ویرایش"><Edit size={14}/></button><button type="button" onClick={()=>handleDeleteTax(t.id)} className="text-red-500 hover:text-red-700 p-0.5" title="حذف"><X size={14}/></button></div></div>))}</div>
                                 </div>
                                 <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                     <h3 className="font-bold text-gray-800">عوارض راهداری / هلال احمر</h3>
                                     <div className="flex gap-2 items-end">
                                         <FormattedNumberInput className="flex-1 border rounded p-2 text-sm dir-ltr font-bold text-gray-800" placeholder="مبلغ (ریال)" value={newRoadToll.amount} onChange={val => setNewRoadToll({...newRoadToll, amount: val})} />
-                                        <button type="button" onClick={handleAddRoadToll} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 h-[38px] min-w-[38px] flex items-center justify-center"><Plus size={16}/></button>
+                                        <button type="button" onClick={handleAddRoadToll} className={`${editingRoadTollId ? "bg-amber-600 hover:bg-amber-700 px-3 text-xs" : "bg-blue-600 hover:bg-blue-700"} text-white p-2 rounded h-[38px] min-w-[38px] flex items-center justify-center font-bold`} title={editingRoadTollId ? "ذخیره عوارض" : "افزودن عوارض"}>{editingRoadTollId ? <Save size={15}/> : <Plus size={16}/>}</button>{editingRoadTollId && (<button type="button" onClick={handleCancelEditRoadToll} className="bg-gray-200 text-gray-700 px-2 rounded hover:bg-gray-300 h-[38px] text-xs font-bold" title="انصراف"><X size={15}/></button>)}
                                     </div>
-                                    <div className="space-y-1">{greenLeafForm.roadTolls?.map(t => (<div key={t.id} className="flex justify-between bg-gray-50 p-2 rounded text-sm"><span className="font-mono">{formatCurrency(t.amount)}</span><button type="button" onClick={()=>handleDeleteRoadToll(t.id)} className="text-red-500"><X size={14}/></button></div>))}</div>
+                                    <div className="space-y-1">{greenLeafForm.roadTolls?.map(t => (<div key={t.id} className="flex justify-between bg-gray-50 p-2 rounded text-sm"><span className="font-mono">{formatCurrency(t.amount)}</span><div className="flex gap-1 items-center"><button type="button" onClick={()=>handleEditRoadToll(t)} className="text-amber-600 hover:text-amber-800 p-0.5" title="ویرایش"><Edit size={14}/></button><button type="button" onClick={()=>handleDeleteRoadToll(t.id)} className="text-red-500 hover:text-red-700 p-0.5" title="حذف"><X size={14}/></button></div></div>))}</div>
                                 </div>
                             </div>
                             <div className="bg-green-100 p-4 rounded-lg flex justify-between items-center font-bold text-green-900 border border-green-200"><span>جمع کل هزینه‌های گمرکی (نقدی + سپرده + مالیات + عوارض)</span><span className="font-mono text-lg">{formatCurrency(calculateGreenLeafTotal(greenLeafForm))}</span></div>
@@ -3151,7 +3775,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     </div>
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">بانک</label><select className="w-full border rounded p-2 text-sm" value={newShippingPayment.bank} onChange={e => setNewShippingPayment({...newShippingPayment, bank: e.target.value})}><option value="">انتخاب بانک</option>{companySpecificBanks.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
                                     <div className="md:col-span-4 space-y-1"><label className="text-xs font-bold text-gray-700">توضیحات تکمیلی</label><input className="w-full border rounded p-2 text-sm" placeholder="توضیحات..." value={newShippingPayment.description} onChange={e => setNewShippingPayment({...newShippingPayment, description: e.target.value})} /></div>
-                                    <div className="md:col-span-4 flex justify-end"><button type="button" onClick={handleAddShippingPayment} className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-2"><Plus size={16}/> افزودن پرداخت</button></div>
+                                    <div className="md:col-span-4 flex justify-end gap-2">{editingShippingPaymentId && (<button type="button" onClick={handleCancelEditShippingPayment} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition-all">انصراف</button>)}<button type="button" onClick={handleAddShippingPayment} className={`${editingShippingPaymentId ? "bg-amber-600 hover:bg-amber-700" : "bg-indigo-600 hover:bg-indigo-700"} text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all`}>{editingShippingPaymentId ? <><Save size={16}/> بروزرسانی پرداخت</> : <><Plus size={16}/> افزودن پرداخت</>}</button></div>
                                 </div>
                                 
                                 <div className="overflow-x-auto">
@@ -3165,7 +3789,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                     <td className="p-3">{p.date}</td>
                                                     <td className="p-3">{p.bank}</td>
                                                     <td className="p-3 text-gray-500 text-xs">{p.description}</td>
-                                                    <td className="p-3"><button type="button" onClick={() => handleDeleteShippingPayment(p.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                                    <td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={() => handleEditShippingPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={() => handleDeleteShippingPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td>
                                                 </tr>
                                             ))}
                                             <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
@@ -3202,7 +3826,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     <div className="space-y-1"><label className="text-xs font-bold text-gray-700">بانک</label><select className="w-full border rounded p-2 text-sm" value={newAgentPayment.bank} onChange={e => setNewAgentPayment({...newAgentPayment, bank: e.target.value})}><option value="">انتخاب بانک</option>{companySpecificBanks.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
                                     <div className="md:col-span-2 space-y-1"><label className="text-xs font-bold text-gray-700">پارت / مرحله</label><input className="w-full border rounded p-2 text-sm" placeholder="مثال: پیش پرداخت" value={newAgentPayment.part} onChange={e => setNewAgentPayment({...newAgentPayment, part: e.target.value})} /></div>
                                     <div className="md:col-span-2 space-y-1"><label className="text-xs font-bold text-gray-700">توضیحات</label><input className="w-full border rounded p-2 text-sm" placeholder="..." value={newAgentPayment.description} onChange={e => setNewAgentPayment({...newAgentPayment, description: e.target.value})} /></div>
-                                    <div className="md:col-span-4 flex justify-end"><button type="button" onClick={handleAddAgentPayment} className="bg-teal-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-teal-700 flex items-center gap-2"><Plus size={16}/> ثبت پرداخت</button></div>
+                                    <div className="md:col-span-4 flex justify-end gap-2">{editingAgentPaymentId && (<button type="button" onClick={handleCancelEditAgentPayment} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition-all">انصراف</button>)}<button type="button" onClick={handleAddAgentPayment} className={`${editingAgentPaymentId ? "bg-amber-600 hover:bg-amber-700" : "bg-teal-600 hover:bg-teal-700"} text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all`}>{editingAgentPaymentId ? <><Save size={16}/> بروزرسانی پرداخت</> : <><Plus size={16}/> ثبت پرداخت</>}</button></div>
                                 </div>
                                 
                                 <div className="overflow-x-auto">
@@ -3217,7 +3841,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                     <td className="p-3">{p.date}</td>
                                                     <td className="p-3">{p.part}</td>
                                                     <td className="p-3 text-gray-500 text-xs">{p.description}</td>
-                                                    <td className="p-3"><button type="button" onClick={() => handleDeleteAgentPayment(p.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                                    <td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={() => handleEditAgentPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={() => handleDeleteAgentPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td>
                                                 </tr>
                                             ))}
                                             <tr className="bg-teal-50 font-bold border-t-2 border-teal-200">

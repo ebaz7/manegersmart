@@ -3,7 +3,7 @@ import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings } from '..
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit, getPreviousExitPermitStatusForReject } from '../services/storageService';
 import { exitPermitQueueService } from '../services/exitPermitQueueService';
 import { getUsers, getRolePermissions } from '../services/authService';
-import { apiCall } from '../services/apiService';
+import { apiCall, LS_KEYS, getLocalData } from '../services/apiService';
 import { formatDate, formatIranianPlate } from '../constants';
 import { 
     Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, 
@@ -20,8 +20,26 @@ import { isInFinancialYear } from '../utils/dateUtils';
 
 const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings, statusFilter?: any, financialYear?: string, mode?: 'INVOICE' | 'EXIT' }> = ({ currentUser, settings, statusFilter, financialYear, mode = 'EXIT' }) => {
     const isMobile = useIsMobile();
-    const [permits, setPermits] = useState<ExitPermit[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [permits, setPermits] = useState<ExitPermit[]>(() => {
+        try {
+            const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+            let safeData = Array.isArray(cached) ? cached : [];
+            if (financialYear && financialYear !== 'all') {
+                safeData = safeData.filter(p => isInFinancialYear(p.date, financialYear));
+            }
+            return safeData.sort((a, b) => ((b.createdAt || 0) - (a.createdAt || 0)) || ((b.permitNumber || 0) - (a.permitNumber || 0)));
+        } catch {
+            return [];
+        }
+    });
+    const [loading, setLoading] = useState<boolean>(() => {
+        try {
+            const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+            return !cached || cached.length === 0;
+        } catch {
+            return true;
+        }
+    });
     const [activeTab, setActiveTab] = useState<'CARTABLE' | 'PROFORMA_ARCHIVE' | 'EXIT_ARCHIVE'>('CARTABLE');
     const [searchTerm, setSearchTerm] = useState('');
     const [viewPermit, setViewPermit] = useState<ExitPermit | null>(null);
@@ -97,8 +115,10 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         return () => { window.dispatchEvent(new CustomEvent('UNREGISTER_BACK_ACTION')); };
     }, [viewPermit, editPermit, warehouseFinalize, securityFinalize]);
 
-    const loadData = async () => {
-        setLoading(true);
+    const loadData = async (forceShowSpinner = false) => {
+        if (forceShowSpinner) {
+            setLoading(true);
+        }
         try {
             const data = await getExitPermits();
             let safeData = Array.isArray(data) ? data : [];
@@ -108,7 +128,6 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             setPermits(safeData.sort((a, b) => ((b.createdAt || 0) - (a.createdAt || 0)) || ((b.permitNumber || 0) - (a.permitNumber || 0)) ));
         } catch (e) {
             console.error("Failed to load permits", e);
-            setPermits([]);
         } finally {
             setLoading(false);
         }
@@ -630,7 +649,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                         {mode === 'INVOICE' ? <FileText className="text-blue-600"/> : <Truck className="text-teal-600"/>} 
                         {mode === 'INVOICE' ? 'مدیریت فاکتورها' : 'مدیریت حواله خروج کارخانه'}
                     </h1>
-                    <button onClick={loadData} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><RefreshCw size={18} className={loading ? 'animate-spin' : ''}/></button>
+                    <button onClick={() => loadData(true)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><RefreshCw size={18} className={loading ? 'animate-spin' : ''}/></button>
                 </div>
                 
                 <div className="flex flex-wrap md:flex-nowrap p-1 bg-gray-200 rounded-xl gap-1 md:gap-0">
@@ -676,7 +695,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
 
             {/* List */}
             <div className={`${isMobile ? 'space-y-3' : 'space-y-4'} min-h-[300px]`}>
-                {loading ? (
+                {loading && permits.length === 0 ? (
                     <div className="text-center py-20 text-gray-400 flex flex-col items-center gap-2">
                         <Loader2 className="animate-spin text-blue-500"/> در حال بارگذاری...
                     </div>

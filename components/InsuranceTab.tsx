@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { TradeRecord, InsuranceEndorsement } from '../types';
-import { Save, Plus, Trash2 } from 'lucide-react';
+import { Save, Plus, Trash2, Edit, X } from 'lucide-react';
 import { formatNumberString, deformatNumberString, formatCurrency } from '../constants';
 import FormattedNumberInput from './FormattedNumberInput';
 
@@ -18,11 +18,15 @@ interface InsuranceTabProps {
     setEndorsementType: (val: any) => void;
     onAddEndorsement: () => void;
     onDeleteEndorsement: (id: string) => void;
+    editingEndorsementId?: string | null;
+    onEditEndorsement?: (end: InsuranceEndorsement) => void;
+    onCancelEditEndorsement?: () => void;
 }
 
 const InsuranceTab: React.FC<InsuranceTabProps> = ({ 
     form, setForm, companies, banks, onSave,
-    newEndorsement, setNewEndorsement, endorsementType, setEndorsementType, onAddEndorsement, onDeleteEndorsement
+    newEndorsement, setNewEndorsement, endorsementType, setEndorsementType, onAddEndorsement, onDeleteEndorsement,
+    editingEndorsementId, onEditEndorsement, onCancelEditEndorsement
 }) => {
     return (
         <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -93,7 +97,17 @@ const InsuranceTab: React.FC<InsuranceTabProps> = ({
             </div>
 
             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
-                <h3 className="font-bold text-gray-800">الحاقیه‌های بیمه</h3>
+                <div className="flex justify-between items-center">
+                    <h3 className="font-bold text-gray-800">الحاقیه‌های بیمه</h3>
+                    {editingEndorsementId && (
+                        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 rounded-lg text-xs font-bold">
+                            <span>در حال ویرایش الحاقیه</span>
+                            <button type="button" onClick={onCancelEditEndorsement} className="text-amber-700 hover:text-amber-900 flex items-center gap-1">
+                                <X size={13}/> انصراف
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <div className="bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200 p-4 rounded-lg flex flex-wrap gap-4 items-end">
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-gray-700">نوع الحاقیه</label>
@@ -114,9 +128,17 @@ const InsuranceTab: React.FC<InsuranceTabProps> = ({
                         <label className="text-xs font-bold text-gray-700">توضیحات</label>
                         <input className="w-full border rounded p-2 text-sm" value={newEndorsement.description || ''} onChange={e => setNewEndorsement({...newEndorsement, description: e.target.value})} placeholder="توضیحات..." />
                     </div>
-                    <button onClick={onAddEndorsement} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 h-[38px] flex items-center justify-center">
-                        <Plus size={16} />
-                    </button>
+                    <div className="flex gap-1 items-center">
+                        {editingEndorsementId && (
+                            <button type="button" onClick={onCancelEditEndorsement} className="bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 h-[38px] flex items-center justify-center" title="انصراف">
+                                <X size={16} />
+                            </button>
+                        )}
+                        <button onClick={onAddEndorsement} className={`${editingEndorsementId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-4 py-2 rounded-lg text-sm font-bold h-[38px] flex items-center justify-center gap-1 shadow transition-all`} title={editingEndorsementId ? 'ذخیره تغییرات الحاقیه' : 'افزودن الحاقیه'}>
+                            {editingEndorsementId ? <Save size={16} /> : <Plus size={16} />}
+                            <span>{editingEndorsementId ? 'ذخیره' : ''}</span>
+                        </button>
+                    </div>
                 </div>
                 <div className="space-y-2">
                     {form.endorsements?.map((end, idx) => (
@@ -132,9 +154,16 @@ const InsuranceTab: React.FC<InsuranceTabProps> = ({
                                     ({end.amount > 0 ? 'الحاقیه اضافی / افزایش هزینه' : 'الحاقیه برگشتی / کاهش هزینه'})
                                 </span>
                             </div>
-                            <button onClick={() => onDeleteEndorsement(end.id)} className="text-gray-400 hover:text-red-500 transition-colors">
-                                <Trash2 size={16}/>
-                            </button>
+                            <div className="flex gap-2 items-center">
+                                {onEditEndorsement && (
+                                    <button onClick={() => onEditEndorsement(end)} className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50 transition-colors" title="ویرایش الحاقیه">
+                                        <Edit size={16}/>
+                                    </button>
+                                )}
+                                <button onClick={() => onDeleteEndorsement(end.id)} className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors" title="حذف الحاقیه">
+                                    <Trash2 size={16}/>
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>

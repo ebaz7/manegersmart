@@ -102,7 +102,60 @@ webpush.setVapidDetails(
 const app = express();
 const PORT = process.argv.includes('--dev') ? 3000 : (process.env.PORT || 3000);
 
+app.disable('x-powered-by');
 app.use(cors()); 
+
+// --- ENTERPRISE SECURITY HEADERS ---
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
+
+// --- IN-MEMORY RATE LIMITING & BRUTE FORCE PROTECTION ---
+const loginAttempts = new Map(); // ip_user -> { count, blockedUntil }
+const apiRequestLimits = new Map(); // ip -> { count, resetTime }
+
+const cleanExpiredLimits = () => {
+    const now = Date.now();
+    for (const [key, val] of loginAttempts.entries()) {
+        if (val.blockedUntil && val.blockedUntil < now && val.count === 0) {
+            loginAttempts.delete(key);
+        }
+    }
+    for (const [ip, val] of apiRequestLimits.entries()) {
+        if (val.resetTime < now) {
+            apiRequestLimits.delete(ip);
+        }
+    }
+};
+setInterval(cleanExpiredLimits, 60000);
+
+const isIpRateLimited = (req, maxRequests = 400, windowMs = 10000) => {
+    const ip = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+    const now = Date.now();
+    let record = apiRequestLimits.get(ip);
+    if (!record || record.resetTime < now) {
+        apiRequestLimits.set(ip, { count: 1, resetTime: now + windowMs });
+        return false;
+    }
+    record.count++;
+    if (record.count > maxRequests) {
+        return true;
+    }
+    return false;
+};
+
+// Global API rate limit check
+app.use('/api', (req, res, next) => {
+    if (isIpRateLimited(req, 500, 10000)) {
+        return res.status(429).json({ error: 'Too Many Requests', message: 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً چند لحظه صبر کنید.' });
+    }
+    next();
+});
+
 // Maximum compression for speed
 app.use(compression({ level: 5 })); 
 // INCREASED LIMIT TO 1GB TO SUPPORT FULL SYSTEM RESTORE (Files + DB)
@@ -4804,6 +4857,19 @@ app.post('/api/login', (req, res) => {
         const { username, password } = req.body;
         if (!username || !password) return res.status(400).json({ error: 'Missing credentials' });
 
+        const ip = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+        const lockoutKey = `${ip}_${username.trim()}`;
+        const now = Date.now();
+
+        // Check if temporarily locked out
+        const attempt = loginAttempts.get(lockoutKey);
+        if (attempt && attempt.blockedUntil && attempt.blockedUntil > now) {
+            const remainingMinutes = Math.ceil((attempt.blockedUntil - now) / 60000);
+            return res.status(429).json({ 
+                error: `به دلیل تلاش‌های ناموفق مکرر، حساب شما موقتاً به مدت ${remainingMinutes} دقیقه قفل شده است.` 
+            });
+        }
+
         const db = getDb();
         if (!db.users || !Array.isArray(db.users)) {
             console.error("CRITICAL: Users table missing or invalid", db.users);
@@ -4812,6 +4878,9 @@ app.post('/api/login', (req, res) => {
 
         const user = db.users.find(u => u.username === username && u.password === password);
         if (user) { 
+            // Reset failed login tracking on success
+            loginAttempts.delete(lockoutKey);
+
             // Update Last Seen
             user.lastSeen = new Date().toISOString();
             saveDb(db);
@@ -4819,7 +4888,18 @@ app.post('/api/login', (req, res) => {
             const { password, ...userWithoutPass } = user; 
             res.json(userWithoutPass); 
         } else { 
-            res.status(401).json({ error: 'Invalid credentials' }); 
+            // Increment failed attempt count
+            const currentAttempt = attempt || { count: 0, blockedUntil: 0 };
+            currentAttempt.count = (currentAttempt.count || 0) + 1;
+            
+            // If 10 consecutive failed attempts, block for 10 minutes
+            if (currentAttempt.count >= 10) {
+                currentAttempt.blockedUntil = now + 10 * 60 * 1000;
+                console.warn(`[Security Alert] IP/User locked out due to failed attempts: ${lockoutKey}`);
+            }
+            loginAttempts.set(lockoutKey, currentAttempt);
+
+            res.status(401).json({ error: 'نام کاربری یا کلمه عبور نادرست است' }); 
         }
     } catch (e) {
         console.error("Login Error:", e);
@@ -7006,18 +7086,55 @@ app.get('/api/announcements', (req, res) => res.json(getDb().announcements || []
 app.post('/api/announcements', (req, res) => { const db = getDb(); if(!db.announcements) db.announcements=[]; db.announcements.push(req.body); saveDb(db); res.json(db.announcements); });
 app.delete('/api/announcements/:id', (req, res) => { const db = getDb(); db.announcements = db.announcements.filter(a => a.id !== req.params.id); saveDb(db); res.json(db.announcements); });
 
+// --- SAFE FILE SANITIZATION HELPER ---
+const FORBIDDEN_EXTENSIONS = new Set([
+    '.exe', '.bat', '.cmd', '.sh', '.ps1', '.vbs', '.js', '.mjs', '.cjs',
+    '.php', '.phtml', '.php3', '.php4', '.php5', '.py', '.elf', '.dll',
+    '.jar', '.jsp', '.cgi', '.scr', '.hta', '.msi', '.com', '.wsf', '.vbe'
+]);
+
+const getSafeFileName = (origName) => {
+    if (!origName || typeof origName !== 'string') return `file_${Date.now()}`;
+    const base = path.basename(origName).replace(/[\/\\]/g, '');
+    const ext = path.extname(base).toLowerCase();
+    if (FORBIDDEN_EXTENSIONS.has(ext)) {
+        throw new Error('فرمت فایل ارسالی به دلایل امنیتی مجاز نمی‌باشد.');
+    }
+    const cleanBase = base.replace(/[^a-zA-Z0-9._\-\u0600-\u06FF]/g, '_');
+    return cleanBase || `file_${Date.now()}`;
+};
+
 // 9. FILE UPLOAD
 app.post('/api/upload', (req, res) => {
-    const { fileName, fileData } = req.body;
-    if (!fileName || !fileData) return res.status(400).send('Missing data');
-    // Fix Regex to handle complex MIME types (e.g. audio/webm;codecs=opus)
-    const base64Data = fileData.replace(/^data:.*;base64,/, '');
-    const uniqueName = `${Date.now()}_${fileName}`;
-    const filePath = path.join(UPLOADS_DIR, uniqueName);
-    fs.writeFile(filePath, base64Data, 'base64', (err) => {
-        if (err) return res.status(500).send('Upload failed');
-        res.json({ fileName, url: `/uploads/${uniqueName}` });
-    });
+    try {
+        const { fileName, fileData } = req.body;
+        if (!fileName || !fileData) return res.status(400).send('Missing data');
+
+        let safeName;
+        try {
+            safeName = getSafeFileName(fileName);
+        } catch (verr) {
+            return res.status(400).json({ error: verr.message });
+        }
+
+        // Fix Regex to handle complex MIME types (e.g. audio/webm;codecs=opus)
+        const base64Data = fileData.replace(/^data:.*;base64,/, '');
+        const uniqueName = `${Date.now()}_${safeName}`;
+        const filePath = path.join(UPLOADS_DIR, uniqueName);
+
+        // Security check: ensure path stays strictly in uploads
+        if (!path.resolve(filePath).startsWith(path.resolve(UPLOADS_DIR))) {
+            return res.status(400).json({ error: 'مسیر فایل غیرمجاز است' });
+        }
+
+        fs.writeFile(filePath, base64Data, 'base64', (err) => {
+            if (err) return res.status(500).send('Upload failed');
+            res.json({ fileName: safeName, url: `/uploads/${uniqueName}` });
+        });
+    } catch (e) {
+        console.error("Upload error:", e);
+        res.status(500).json({ error: 'خطا در بارگذاری فایل' });
+    }
 });
 
 app.get('/api/upload-get-base64', (req, res) => {
@@ -7033,8 +7150,11 @@ app.get('/api/upload-get-base64', (req, res) => {
         filename = path.basename(fileUrl);
     }
 
-    const filePath = path.join(UPLOADS_DIR, filename);
-    if (!fs.existsSync(filePath)) {
+    // Path traversal check
+    const safeBase = path.basename(filename).replace(/[\/\\]/g, '');
+    const filePath = path.join(UPLOADS_DIR, safeBase);
+
+    if (!path.resolve(filePath).startsWith(path.resolve(UPLOADS_DIR)) || !fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'فایل یافت نشد' });
     }
 
@@ -7062,9 +7182,17 @@ if (!fs.existsSync(chunkTempDir)) fs.mkdirSync(chunkTempDir, { recursive: true }
 app.post('/api/upload-chunk', (req, res) => {
     const { uploadId, chunkIndex, chunkData } = req.body;
     if (!uploadId || chunkIndex === undefined || !chunkData) return res.status(400).send('Missing chunk data');
+    const safeUploadId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeIndex = parseInt(chunkIndex, 10);
+    if (isNaN(safeIndex)) return res.status(400).send('Invalid chunk index');
+
     const base64Data = chunkData.replace(/^data:.*;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
-    const filePath = path.join(chunkTempDir, `${uploadId}_${chunkIndex}`);
+    const filePath = path.join(chunkTempDir, `${safeUploadId}_${safeIndex}`);
+    
+    if (!path.resolve(filePath).startsWith(path.resolve(chunkTempDir))) {
+        return res.status(400).send('Invalid path');
+    }
     fs.writeFileSync(filePath, buffer);
     res.json({ success: true });
 });
@@ -7072,23 +7200,36 @@ app.post('/api/upload-chunk', (req, res) => {
 app.post('/api/upload-finish', async (req, res) => {
     const { uploadId, fileName, totalChunks } = req.body;
     if (!uploadId || !fileName || !totalChunks) return res.status(400).send('Missing finish data');
-    const uniqueName = `${Date.now()}_${fileName}`;
+    
+    const safeUploadId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+    let safeName;
+    try {
+        safeName = getSafeFileName(fileName);
+    } catch (verr) {
+        return res.status(400).json({ error: verr.message });
+    }
+
+    const uniqueName = `${Date.now()}_${safeName}`;
     const finalPath = path.join(UPLOADS_DIR, uniqueName);
+    if (!path.resolve(finalPath).startsWith(path.resolve(UPLOADS_DIR))) {
+        return res.status(400).send('Invalid destination path');
+    }
+
     const writeStream = fs.createWriteStream(finalPath);
     
     // Append all chunks sequentially, using async/await to avoid blocking event loop
     try {
         // Verify all chunks exist first
         for(let i = 0; i < totalChunks; i++) {
-            const chunkPath = path.join(chunkTempDir, `${uploadId}_${i}`);
+            const chunkPath = path.join(chunkTempDir, `${safeUploadId}_${i}`);
             if(!fs.existsSync(chunkPath)) {
-                console.error(`Missing chunk ${i} for upload ${uploadId}`);
+                console.error(`Missing chunk ${i} for upload ${safeUploadId}`);
                 return res.status(400).send(`Chunk ${i} missing. Please try again.`);
             }
         }
 
         for(let i = 0; i < totalChunks; i++) {
-            const chunkPath = path.join(chunkTempDir, `${uploadId}_${i}`);
+            const chunkPath = path.join(chunkTempDir, `${safeUploadId}_${i}`);
             await new Promise((resolve, reject) => {
                 const readStream = fs.createReadStream(chunkPath);
                 readStream.pipe(writeStream, { end: false });
@@ -7102,7 +7243,7 @@ app.post('/api/upload-finish', async (req, res) => {
         writeStream.end();
         
         writeStream.on('finish', () => {
-            res.json({ fileName, url: `/uploads/${uniqueName}` });
+            res.json({ fileName: safeName, url: `/uploads/${uniqueName}` });
         });
         writeStream.on('error', (err) => {
             res.status(500).send('Finalize failed');

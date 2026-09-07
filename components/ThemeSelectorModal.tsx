@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, Sparkles, LayoutGrid, Box, Feather, Zap, Image, Layers, Moon, Sun } from 'lucide-react';
 
 export type AppThemeMode = 'light-aurora' | 'theme-bento' | 'theme-claymorphism' | 'theme-skeuomorphism' | 'theme-minimalism' | 'theme-maximalism' | 'theme-gold-noir';
@@ -99,6 +100,9 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+
       const saved = localStorage.getItem('app_enable_bg_image');
       if (saved === 'true') {
         setBgEnabled(true);
@@ -108,6 +112,10 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({
         setBgEnabled(currentTheme === 'light-aurora');
       }
       setLowSpecMode(localStorage.getItem('app_low_spec_mode') === 'true');
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
     }
   }, [isOpen, currentTheme]);
 
@@ -145,13 +153,22 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[100000] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" dir="rtl">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
+  const modalContent = (
+    <div 
+      className="fixed inset-0 z-[9999999] flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-md animate-fadeIn" 
+      dir="rtl"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div 
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl max-w-2xl w-full max-h-[88vh] overflow-hidden flex flex-col shadow-2xl transform transition-all"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+        <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/70 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-md">
+            <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-md shrink-0">
               <Sparkles size={22} />
             </div>
             <div>
@@ -168,7 +185,7 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({
         </div>
 
         {/* Options & Settings */}
-        <div className="p-5 overflow-y-auto space-y-4 flex-1">
+        <div className="p-5 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
           {/* Low-Spec / Ultra-Performance Mode Toggle */}
           <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 shadow-sm ${
             lowSpecMode 
@@ -301,7 +318,7 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex items-center justify-between">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex items-center justify-between shrink-0">
           <span className="text-xs text-slate-500">تغییرات بلافاصله ذخیره می‌شود.</span>
           <button
             onClick={onClose}
@@ -313,5 +330,7 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };
 

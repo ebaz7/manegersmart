@@ -244,6 +244,16 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     if (userObject?.canManageTrade) {
         perms.canManageTrade = true;
     }
+    if (userObject?.canManageSales) {
+        perms.canManageSales = true;
+    }
+    if (userObject?.canManagePurchase) {
+        perms.canManagePurchase = true;
+        perms.canView = true;
+    }
+    if (userObject?.canManageParts) {
+        perms.canManageParts = true;
+    }
 
     return perms;
 };

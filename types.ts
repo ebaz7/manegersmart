@@ -27,6 +27,8 @@ export interface User {
   baleChatId?: string;
   canManageTrade?: boolean;
   canManageSales?: boolean;
+  canManagePurchase?: boolean;
+  canManageParts?: boolean;
   canAccessSecretariat?: boolean;
   secretariatAllowedCompanies?: string[];
   canManageSecretariatSettings?: boolean;
@@ -167,6 +169,7 @@ export interface RolePermissions {
   canApproveMeeting?: boolean;
   canManageMeetings?: boolean;
   canManagePurchase?: boolean;
+  canManageParts?: boolean;
   canViewNotifications?: boolean;
   canCreateNotifications?: boolean;
   canCreateAnnouncements?: boolean;
@@ -497,6 +500,7 @@ export interface PurchaseRolePermissions {
   canApproveFactoryFinal?: boolean;
   canWarehouseFinalize?: boolean;
   canCommercialFinalize?: boolean;
+  canManageParts?: boolean;
 }
 
 export interface BirthdayGreetingTemplate {

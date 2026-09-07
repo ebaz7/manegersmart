@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
 import { getUsers, saveUser, updateUser, deleteUser } from '../services/authService';
 import { getSettings, uploadFile } from '../services/storageService'; 
-import { UserPlus, Trash2, Shield, User as UserIcon, Download, Pencil, X, Save, Container, Camera, Send, Phone, BellRing, Info, Package } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User as UserIcon, Download, Pencil, X, Save, Container, Camera, Send, Phone, BellRing, Info, Package, ShoppingCart } from 'lucide-react';
 import { generateUUID } from '../constants';
 import { apiCall } from '../services/apiService';
 
@@ -19,9 +19,11 @@ const ManageUsers: React.FC = () => {
     roles: [UserRole.USER] as string[],
     canManageTrade: false, 
     canManageSales: false, 
+    canManagePurchase: false,
+    canManageParts: false,
     receiveNotifications: true, 
     canAccessSecretariat: false,
-    secretariatAllowedCompanies: [],
+    secretariatAllowedCompanies: [] as string[],
     canManageSecretariatSettings: false,
     avatar: '', 
     signatureUrl: '', // New signature field
@@ -79,6 +81,8 @@ const ManageUsers: React.FC = () => {
           roles: [UserRole.USER],
           canManageTrade: false, 
           canManageSales: false, 
+          canManagePurchase: false,
+          canManageParts: false,
           receiveNotifications: true, 
           canAccessSecretariat: false,
           canManageSecretariatSettings: false,
@@ -102,6 +106,8 @@ const ManageUsers: React.FC = () => {
           roles: rolesArray,
           canManageTrade: user.canManageTrade || false, 
           canManageSales: user.canManageSales || false, 
+          canManagePurchase: user.canManagePurchase || false,
+          canManageParts: user.canManageParts || false,
           receiveNotifications: user.receiveNotifications !== false, 
           canAccessSecretariat: user.canAccessSecretariat || false,
           canManageSecretariatSettings: user.canManageSecretariatSettings || false,
@@ -125,6 +131,8 @@ const ManageUsers: React.FC = () => {
           roles: [UserRole.USER],
           canManageTrade: false, 
           canManageSales: false, 
+          canManagePurchase: false,
+          canManageParts: false,
           receiveNotifications: true, 
           canAccessSecretariat: false,
           secretariatAllowedCompanies: [],
@@ -321,6 +329,14 @@ const ManageUsers: React.FC = () => {
                   <input type="checkbox" checked={formData.canManageSales} onChange={e => setFormData({...formData, canManageSales: e.target.checked})} className="w-4 h-4 text-sky-600" />
                   <span>دسترسی مدیر فروش (پنل بات)</span>
               </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700 bg-blue-50 px-2 py-1.5 rounded cursor-pointer border border-blue-200">
+                  <input type="checkbox" checked={formData.canManagePurchase} onChange={e => setFormData({...formData, canManagePurchase: e.target.checked})} className="w-4 h-4 text-blue-600" />
+                  <span>دسترسی ماژول درخواست خرید</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700 bg-amber-50 px-2 py-1.5 rounded cursor-pointer border border-amber-200">
+                  <input type="checkbox" checked={formData.canManageParts} onChange={e => setFormData({...formData, canManageParts: e.target.checked})} className="w-4 h-4 text-amber-600" />
+                  <span>تعریف و کدینگ کالا (درخواست خرید / انبار)</span>
+              </label>
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-green-50 px-2 py-1.5 rounded cursor-pointer border border-green-200">
                   <input type="checkbox" checked={formData.receiveNotifications} onChange={e => setFormData({...formData, receiveNotifications: e.target.checked})} className="w-4 h-4 text-green-600" />
                   <span>دریافت پیام‌های اطلاع‌رسانی</span>
@@ -373,7 +389,7 @@ const ManageUsers: React.FC = () => {
         <div className="p-6 border-b border-gray-100"><h2 className="text-lg font-bold text-gray-800">لیست کاربران سیستم</h2></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-right"><thead className="bg-gray-5 text-gray-600"><tr><th className="px-6 py-3">تصویر</th><th className="px-6 py-3">نام و نام خانوادگی</th><th className="px-6 py-3">نام کاربری</th><th className="px-6 py-3">شماره تماس</th><th className="px-6 py-3">نقش‌ها</th><th className="px-6 py-3">دسترسی‌ها</th><th className="px-6 py-3 text-center">عملیات</th></tr></thead>
-            <tbody className="divide-y divide-gray-100">{users.map((user) => (<tr key={user.id} className={`hover:bg-gray-50 transition-colors ${editingId === user.id ? 'bg-amber-50' : ''}`}><td className="px-6 py-4"><div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={20}/></div>}</div></td><td className="px-6 py-4 flex items-center gap-2">{user.fullName}</td><td className="px-6 py-4 font-mono text-gray-500">{user.username}</td><td className="px-6 py-4 font-mono text-gray-500" dir="ltr">{user.phoneNumber || '-'}</td><td className="px-6 py-4"><div className="flex flex-wrap gap-1">{(user.roles && user.roles.length > 0 ? user.roles : [user.role]).map((r, i) => (<span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${r === UserRole.ADMIN ? 'bg-purple-100/70 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>{r === UserRole.ADMIN && <Shield size={10} />}{getRoleLabel(r)}</span>))}</div></td><td className="px-6 py-4 flex gap-1 flex-wrap">{user.canManageTrade && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Container size={10} /> بازرگانی</span>)}{user.canManageSales && (<span className="flex items-center gap-1 text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> فروش</span>)}{user.receiveNotifications !== false && (<span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded w-fit"><BellRing size={10} /> اعلان‌ها</span>)}{user.canAccessSecretariat && (<span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> دبیرخانه</span>)}{user.canManageSecretariatSettings && (<span className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> مدیریت دبیرخانه</span>)}</td><td className="px-6 py-4 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => handleEditClick(user)} className="text-amber-500 hover:text-amber-700 p-1 hover:bg-amber-50 rounded transition-colors" title="ویرایش / تغییر رمز"><Pencil size={16} /></button>{user.username !== 'admin' && (<button onClick={() => handleDeleteUser(user.id)} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors" title="حذف کاربر"><Trash2 size={16} /></button>)}</div></td></tr>))}</tbody>
+            <tbody className="divide-y divide-gray-100">{users.map((user) => (<tr key={user.id} className={`hover:bg-gray-50 transition-colors ${editingId === user.id ? 'bg-amber-50' : ''}`}><td className="px-6 py-4"><div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={20}/></div>}</div></td><td className="px-6 py-4 flex items-center gap-2">{user.fullName}</td><td className="px-6 py-4 font-mono text-gray-500">{user.username}</td><td className="px-6 py-4 font-mono text-gray-500" dir="ltr">{user.phoneNumber || '-'}</td><td className="px-6 py-4"><div className="flex flex-wrap gap-1">{(user.roles && user.roles.length > 0 ? user.roles : [user.role]).map((r, i) => (<span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${r === UserRole.ADMIN ? 'bg-purple-100/70 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>{r === UserRole.ADMIN && <Shield size={10} />}{getRoleLabel(r)}</span>))}</div></td><td className="px-6 py-4 flex gap-1 flex-wrap">{user.canManageTrade && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Container size={10} /> بازرگانی</span>)}{user.canManageSales && (<span className="flex items-center gap-1 text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> فروش</span>)}{user.canManagePurchase && (<span className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded w-fit"><ShoppingCart size={10} /> خرید</span>)}{user.canManageParts && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> کدینگ کالا</span>)}{user.receiveNotifications !== false && (<span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded w-fit"><BellRing size={10} /> اعلان‌ها</span>)}{user.canAccessSecretariat && (<span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> دبیرخانه</span>)}{user.canManageSecretariatSettings && (<span className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> مدیریت دبیرخانه</span>)}</td><td className="px-6 py-4 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => handleEditClick(user)} className="text-amber-500 hover:text-amber-700 p-1 hover:bg-amber-50 rounded transition-colors" title="ویرایش / تغییر رمز"><Pencil size={16} /></button>{user.username !== 'admin' && (<button onClick={() => handleDeleteUser(user.id)} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors" title="حذف کاربر"><Trash2 size={16} /></button>)}</div></td></tr>))}</tbody>
           </table>
         </div>
       </div>

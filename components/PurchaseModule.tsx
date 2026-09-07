@@ -2607,9 +2607,26 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
 
     const hasPurchasePerm = (perm: string) => {
         if (currentUser.role === UserRole.ADMIN) return true;
-        const rolePerms = settings?.purchaseRolePermissions?.[currentUser.role] || {};
-        return !!(rolePerms as any)[perm];
+        if (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN)) return true;
+        if ((currentUser as any)[perm] === true) return true;
+        
+        const rolesList = currentUser.roles && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
+        for (const r of rolesList) {
+            if (r === UserRole.ADMIN) return true;
+            const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
+            if (!!(rolePerms as any)[perm]) return true;
+            const generalRolePerms = settings?.rolePermissions?.[r] || {};
+            if (!!(generalRolePerms as any)[perm]) return true;
+        }
+        return false;
     };
+
+    const canManageParts = hasPurchasePerm('canManageParts') || 
+                           hasPurchasePerm('canManageWarehouse') || 
+                           hasPurchasePerm('canWarehouseFinalize') || 
+                           currentUser.role === UserRole.ADMIN || 
+                           (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN)) ||
+                           !!currentUser.canManageParts;
 
     const filtered = parts.filter((p: PartMasterData) => 
         p.name.includes(searchTerm) || 
@@ -2668,7 +2685,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                     <input className="w-full glass-panel border border-gray-200 rounded-xl p-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-indigo-100" placeholder="جستجوی کالا، گروه یا زیرگروه..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setSelectedCategory(null); setSelectedSubCategory(null); }} />
                     <Search className="absolute right-3 top-3.5 text-gray-400" size={18}/>
                 </div>
-                {hasPurchasePerm('canManageWarehouse') && (
+                {canManageParts && (
                     <div className="flex gap-2 w-full md:w-auto">
                         <label className="bg-green-600 text-white p-3 rounded-xl shadow-lg shadow-green-100 flex justify-center items-center gap-2 font-bold text-sm cursor-pointer hover:bg-green-700 transition">
                             <UploadCloud size={20}/> اکسل
@@ -2740,8 +2757,12 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                                 </button>
                                             </>
                                         )}
-                                        <button onClick={() => { setEditingPart(p); setShowModal(true); }} className="p-2 bg-gray-50 text-emerald-600 rounded-lg hover:bg-emerald-100" title="ویرایش کالا"><Edit size={16}/></button>
-                                        <button onClick={async () => { if(confirm('حذف شود؟')) { await deletePartMasterData(p.id); onPartUpdate(); } }} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="حذف کالا"><Trash2 size={16}/></button>
+                                        {canManageParts && (
+                                            <>
+                                                <button onClick={() => { setEditingPart(p); setShowModal(true); }} className="p-2 bg-gray-50 text-emerald-600 rounded-lg hover:bg-indigo-100" title="ویرایش کالا"><Edit size={16}/></button>
+                                                <button onClick={async () => { if(confirm('حذف شود؟')) { await deletePartMasterData(p.id); onPartUpdate(); } }} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="حذف کالا"><Trash2 size={16}/></button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -2816,7 +2837,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                                     </button>
                                                 </>
                                             )}
-                                            {hasPurchasePerm('canManageWarehouse') && (
+                                            {canManageParts && (
                                                 <>
                                                     <button onClick={() => { setEditingPart(p); setShowModal(true); }} className="p-2 bg-gray-50 text-emerald-600 rounded-lg hover:bg-emerald-100" title="ویرایش کالا"><Edit size={16}/></button>
                                                     <button onClick={async () => { if(confirm('حذف شود؟')) { await deletePartMasterData(p.id); onPartUpdate(); } }} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="حذف کالا"><Trash2 size={16}/></button>
@@ -2873,7 +2894,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                                 </button>
                                             </>
                                         )}
-                                        {hasPurchasePerm('canManageWarehouse') && (
+                                        {canManageParts && (
                                             <>
                                                 <button onClick={() => { setEditingPart(p); setShowModal(true); }} className="p-2 bg-gray-50 text-emerald-600 rounded-lg hover:bg-emerald-100" title="ویرایش کالا"><Edit size={16}/></button>
                                                 <button onClick={async () => { if(confirm('حذف شود؟')) { await deletePartMasterData(p.id); onPartUpdate(); } }} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100" title="حذف کالا"><Trash2 size={16}/></button>

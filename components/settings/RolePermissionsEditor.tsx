@@ -30,6 +30,7 @@ const PERMISSION_GROUPS = [
             { id: 'canApproveFactoryFinal', label: 'تایید نهایی مدیر کارخانه (بعد از ورود)' },
             { id: 'canWarehouseFinalize', label: 'صدور رسید انبار نهایی' },
             { id: 'canCommercialFinalize', label: 'تایید نهایی و بایگانی بازرگانی' },
+            { id: 'canManageParts', label: 'تعریف و کدینگ کالا (ثبت، ویرایش و اکسل کالا)' },
         ] 
     },
     { 

@@ -1668,10 +1668,10 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
             {/* Cartable Action Modal */}
             {viewCartableItem && typeof document !== 'undefined' && createPortal(
-                <div className="fixed inset-0 bg-black/80 z-[99999] flex flex-col items-center justify-between p-2 md:p-4 overflow-hidden animate-fade-in touch-manipulation">
-                    <div className="w-full max-w-7xl flex items-center justify-between bg-gray-900/90 text-white p-3 rounded-2xl shadow-xl mb-2 no-print shrink-0 border border-white/10">
+                <div className="fixed inset-0 bg-black/80 z-[99999] flex flex-col items-center justify-between p-2 md:p-4 pt-12 md:pt-4 overflow-hidden animate-fade-in touch-manipulation">
+                    <div className="w-full max-w-7xl flex items-center justify-between bg-gray-900/90 text-white p-3 rounded-2xl shadow-xl mb-2 no-print shrink-0 border border-white/10 flex-wrap gap-2">
                         <div className="font-black text-sm md:text-base px-2">{viewCartableItem.type === 'daily_approval' || viewCartableItem.type === 'daily_archive' ? `گزارش روزانه - ${formatDate(viewCartableItem.date)}` : 'بررسی'}</div>
-                        <div className="flex gap-2 items-center">
+                        <div className="flex gap-2 items-center flex-wrap">
                              <button onClick={handleSendToChat} disabled={isGeneratingPdf} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-black shadow flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer" title="ارسال مستقیم گزارش به گفتگو">
                                  {isGeneratingPdf ? <Loader2 size={16} className="animate-spin"/> : <MessageSquare size={16}/>} ارسال به گفتگو
                              </button>

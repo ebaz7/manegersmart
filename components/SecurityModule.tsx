@@ -1638,10 +1638,10 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
             {/* Print Preview Modal */}
             {showPrintModal && printTarget && typeof document !== 'undefined' && createPortal(
-                <div className="fixed inset-0 bg-black/80 z-[99999] flex flex-col items-center justify-between p-2 md:p-4 overflow-hidden animate-fade-in touch-manipulation">
-                    <div className="w-full max-w-7xl flex items-center justify-between bg-gray-900/90 text-white p-3 rounded-2xl shadow-xl mb-2 no-print shrink-0 border border-white/10">
+                <div className="fixed inset-0 bg-black/80 z-[99999] flex flex-col items-center justify-between p-2 md:p-4 pt-12 md:pt-4 overflow-hidden animate-fade-in touch-manipulation">
+                    <div className="w-full max-w-7xl flex items-center justify-between bg-gray-900/90 text-white p-3 rounded-2xl shadow-xl mb-2 no-print shrink-0 border border-white/10 flex-wrap gap-2">
                         <span className="font-black text-sm md:text-base px-2">پیش‌نمایش گزارش انتظامات</span>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                             <button onClick={handleSendToChat} disabled={isGeneratingPdf} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow transition-all active:scale-95 cursor-pointer" title="ارسال مستقیم گزارش انتظامات به گفتگو">
                                 {isGeneratingPdf ? <Loader2 size={16} className="animate-spin"/> : <MessageSquare size={16}/>} ارسال به گفتگو
                             </button>
@@ -1781,11 +1781,11 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             {/* Input Modal */}
             {showModal && typeof document !== 'undefined' && createPortal(
                 <div 
-                    className="fixed inset-0 bg-black/75 backdrop-blur-xs z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in touch-manipulation"
+                    className="fixed inset-0 bg-black/75 backdrop-blur-xs z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 pt-12 sm:pt-4 animate-fade-in touch-manipulation"
                     onClick={resetForms}
                 >
                     <div 
-                        className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[95dvh] sm:max-h-[85dvh] overflow-hidden border border-gray-200/80 dark:border-gray-800 modal-container"
+                        className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100dvh-3rem)] sm:max-h-[85dvh] overflow-hidden border border-gray-200/80 dark:border-gray-800 modal-container"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Fixed Header */}
@@ -1830,29 +1830,6 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     <div><label className="text-xs font-bold block mb-1">ساعت ورود</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={logForm.entryTime || ''} onChange={e=>setLogForm({...logForm, entryTime: e.target.value})}/></div>
                                     <div><label className="text-xs font-bold block mb-1">ساعت خروج</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={logForm.exitTime || ''} onChange={e=>setLogForm({...logForm, exitTime: e.target.value})}/></div>
                                 </div>
-                                {recentDrivers.length > 0 && (
-                                    <div className="p-2.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200/60 dark:border-blue-900/40 space-y-1.5">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
-                                                <Clock size={13} className="text-blue-600 dark:text-blue-400" />
-                                                رانندگان اخیر (فراخوانی و پر شدن خودکار با یک کلیک):
-                                            </span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {recentDrivers.map((d, idx) => (
-                                                <button
-                                                    key={d.id || idx}
-                                                    type="button"
-                                                    onClick={() => handleSelectDriverMemory(d)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-200 transition-all shadow-2xs cursor-pointer"
-                                                >
-                                                    <span>{d.driverName}</span>
-                                                    {d.plateNumber && <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">({d.plateNumber})</span>}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="relative">

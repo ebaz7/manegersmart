@@ -369,7 +369,7 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
   const totalWeight = items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-md overflow-hidden animate-fade-in">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 pt-12 sm:pt-4 bg-black/60 backdrop-blur-md overflow-hidden animate-fade-in">
       {/* Hidden Render for Auto Send with Watermark */}
       {tempPermitForCapture && (
         <div className="hidden-print-export" style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '800px', zIndex: -1 }}>
@@ -381,7 +381,7 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
 
       <div 
         ref={containerRef}
-        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95dvh] overflow-y-auto relative border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200"
+        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[calc(100dvh-3rem)] sm:max-h-[90dvh] overflow-y-auto relative border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200"
       >
         {/* Sticky Header */}
         <div className="p-5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md z-20">

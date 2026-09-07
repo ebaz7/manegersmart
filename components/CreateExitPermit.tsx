@@ -594,8 +594,8 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
 
                 {/* Lead Merge Modal */}
                 {showMergeModal && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-2 md:p-4 overflow-hidden animate-fade-in">
-                        <div className="glass-panel w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col max-h-[95dvh] shadow-2xl animate-fade-in border border-white/20">
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-2 md:p-4 pt-12 md:pt-4 overflow-hidden animate-fade-in">
+                        <div className="glass-panel w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-3rem)] md:max-h-[85dvh] shadow-2xl animate-fade-in border border-white/20">
                             <div className="bg-teal-900 p-4 text-white flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                     <Users size={20}/>

@@ -235,8 +235,8 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 bg-black/75 sm:backdrop-blur-sm overflow-hidden animate-fade-in">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-2xl max-h-[95dvh] flex flex-col shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-200 overflow-hidden">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 pt-12 md:pt-4 bg-black/75 sm:backdrop-blur-sm overflow-hidden animate-fade-in">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-2xl max-h-[calc(100dvh-3rem)] md:max-h-[85dvh] flex flex-col shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-200 overflow-hidden">
         {/* Modal Header */}
         <div className="p-4 md:p-5 border-b flex justify-between items-center bg-gradient-to-r from-blue-700 to-indigo-800 text-white shrink-0">
           <div className="flex items-center gap-3">
@@ -307,26 +307,6 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
                 </div>
               )}
             </div>
-
-            {/* Recent Drivers Quick Chips */}
-            {recentDrivers.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1 shrink-0 font-medium">
-                  <History size={12} /> اخیراً:
-                </span>
-                {recentDrivers.map(d => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => selectDriver(d)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-white/90 dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800 text-blue-900 dark:text-blue-200 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95"
-                  >
-                    <span>{d.driverName}</span>
-                    {d.plateNumber && <span className="text-[10px] text-gray-500 font-mono">({d.plateNumber.slice(0, 8)})</span>}
-                  </button>
-                ))}
-              </div>
-            )}
 
             {/* Recalled Notice */}
             {recalledNotice && (

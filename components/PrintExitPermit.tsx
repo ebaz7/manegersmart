@@ -713,8 +713,8 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
   if (embed) return content;
 
   return (
-    <div className="fixed inset-0 bg-slate-100/95 backdrop-blur-md z-[9999] flex flex-col items-center pt-6 md:pt-10 pb-16 md:pb-20 overflow-y-auto overflow-x-hidden justify-start p-2 animate-fade-in safe-pb">
-        <div className="bg-white p-3 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12)] flex flex-wrap items-center justify-between gap-3 w-full max-w-5xl no-print mb-6 sticky top-0 z-[10000] border-2 border-blue-100 backdrop-blur-xl bg-white/95">
+    <div className="fixed inset-0 bg-slate-100/95 backdrop-blur-md z-[9999] flex flex-col items-center pt-12 md:pt-10 pb-16 md:pb-20 overflow-y-auto overflow-x-hidden justify-start p-2 animate-fade-in safe-pb">
+        <div className="bg-white p-3 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12)] flex flex-wrap items-center justify-between gap-3 w-full max-w-5xl no-print mb-6 sticky top-0 z-[10000] border-2 border-blue-100 backdrop-blur-xl bg-white/95 mt-4 md:mt-0">
             <div className="flex items-center gap-3">
                 <button onClick={onClose} className="p-2 hover:bg-red-50 rounded-xl text-gray-400 hover:text-red-500 transition-all active:scale-95"><X size={20}/></button>
                 <div className="h-6 w-px bg-gray-200 mx-1 hidden sm:block"></div>

@@ -6014,6 +6014,7 @@ app.post('/api/meetings/:id/send-minutes', async (req, res) => {
 const CRUD_COLLECTIONS = [
     { route: 'security/logs', dbKey: 'securityLogs' },
     { route: 'security/delays', dbKey: 'personnelDelays' },
+    { route: 'security/overtimes', dbKey: 'personnelOvertimes' },
     { route: 'security/incidents', dbKey: 'securityIncidents' },
     { route: 'warehouse/items', dbKey: 'warehouseItems' },
     { route: 'trade', dbKey: 'tradeRecords' },
@@ -6073,6 +6074,28 @@ CRUD_COLLECTIONS.forEach(({ route, dbKey }) => {
         saveDb(db);
         res.json(db[dbKey]);
     });
+});
+
+// --- SECURITY MODULE CAMERA & ALPR ENDPOINTS ---
+app.post('/api/security/save-only-photo', (req, res) => {
+    try {
+        const { imageBase64 } = req.body;
+        if (!imageBase64) return res.status(400).json({ success: false, error: 'No image provided' });
+        // Return imageBase64 directly or store it
+        return res.json({ success: true, attachment: imageBase64 });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/security/ocr-plate-local', (req, res) => {
+    try {
+        const { imageBase64 } = req.body;
+        if (!imageBase64) return res.status(400).json({ success: false, error: 'No image provided' });
+        return res.json({ success: true, attachment: imageBase64, plateNumber: '' });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 // --- DEDICATED PRODUCTION MEETINGS ENDPOINTS (WITH AUTO UNIQUE NUMBERING) ---

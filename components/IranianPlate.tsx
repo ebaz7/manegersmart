@@ -13,23 +13,57 @@ export const toEnglishDigits = (str: string): string => {
   if (!str) return '';
   return str
     .replace(/[۰-۹]/g, d => (d.charCodeAt(0) - 1776).toString())
-    .replace(/[0-9]/g, d => (d.charCodeAt(0) - 1632).toString());
+    .replace(/[٠-٩]/g, d => (d.charCodeAt(0) - 1632).toString());
 };
 
 // Parse a raw plate string into 4 components
 export const parsePlateParts = (plateStr: string) => {
   if (!plateStr) return { p1: '', char: '', p2: '', city: '' };
   
-  const clean = toEnglishDigits(plateStr).replace(/\s/g, '').replace(/-/g, '').replace(/ایران/g, '');
+  const raw = toEnglishDigits(plateStr).trim();
+  const clean = raw.replace(/\s+/g, '').replace(/[-|/_]/g, '').replace(/ایران/g, '');
   
-  // Pattern match: 2 digits + 1 Persian/Latin character + 3 digits + 2 digits
-  const match = clean.match(/^(\d{2})([آابپتثجچحخدذرزژسشصضطظعغفقکگلمنوهیa-zA-Z]{1,3})(\d{3})(\d{2})$/);
-  if (match) {
+  // Pattern 1: Standard order: 2 digits + 1+ Persian/Latin characters + 3 digits + 2 digits (e.g. 12ب34567 or 12الف34567)
+  const match1 = clean.match(/^(\d{2})([^\d\s]{1,5})(\d{3})(\d{2})$/);
+  if (match1) {
     return {
-      p1: match[1],
-      char: match[2],
-      p2: match[3],
-      city: match[4]
+      p1: match1[1],
+      char: match1[2],
+      p2: match1[3],
+      city: match1[4]
+    };
+  }
+
+  // Pattern 2: Reversed order (3 digits + char + 2 digits + 2 digits, e.g. "345 ق 15 57")
+  const match2 = clean.match(/^(\d{3})([^\d\s]{1,5})(\d{2})(\d{2})$/);
+  if (match2) {
+    return {
+      p1: match2[3],
+      char: match2[2],
+      p2: match2[1],
+      city: match2[4]
+    };
+  }
+
+  // Pattern 3: Standard without city code (e.g. 12ب345)
+  const match3 = clean.match(/^(\d{2})([^\d\s]{1,5})(\d{3})$/);
+  if (match3) {
+    return {
+      p1: match3[1],
+      char: match3[2],
+      p2: match3[3],
+      city: ''
+    };
+  }
+
+  // Pattern 4: Reversed without city code (e.g. 345ب12)
+  const match4 = clean.match(/^(\d{3})([^\d\s]{1,5})(\d{2})$/);
+  if (match4) {
+    return {
+      p1: match4[3],
+      char: match4[2],
+      p2: match4[1],
+      city: ''
     };
   }
   
@@ -39,7 +73,7 @@ export const parsePlateParts = (plateStr: string) => {
   
   return {
     p1: digits.slice(0, 2),
-    char: chars.slice(0, 3) || 'ب',
+    char: chars.slice(0, 5) || 'ب',
     p2: digits.slice(2, 5),
     city: digits.slice(5, 7)
   };
@@ -58,7 +92,7 @@ interface IranianPlateDisplayProps {
   char?: string;
   p2?: string;
   city?: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg';
+  size?: 'nano' | 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
 }
 
@@ -86,8 +120,18 @@ export const IranianPlateDisplay: React.FC<IranianPlateDisplayProps> = ({
 
   // Size styling maps
   const sizeStyles = {
+    nano: {
+      container: 'h-5 text-[8px] rounded border border-gray-800 shrink-0',
+      flagWidth: 'w-2',
+      flagText: 'text-[3px]',
+      p1Width: 'w-3.5',
+      charWidth: 'w-3.5',
+      p2Width: 'w-5',
+      cityWidth: 'w-4',
+      cityText: 'text-[5px]',
+    },
     xs: {
-      container: 'h-6 text-[10px] rounded',
+      container: 'h-6 text-[10px] rounded shrink-0',
       flagWidth: 'w-3',
       flagText: 'text-[4px]',
       p1Width: 'w-5',
@@ -286,33 +330,60 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData('text');
+    if (text) {
+      e.preventDefault();
+      const p = parsePlateParts(text);
+      if (p.p1 || p.char || p.p2 || p.city) {
+        updateAll(p.p1, p.char || 'ب', p.p2, p.city);
+      }
+    }
+  };
+
+  const [directText, setDirectText] = useState('');
+  const [showDirect, setShowDirect] = useState(false);
+
+  const handleDirectChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setDirectText(val);
+    const p = parsePlateParts(val);
+    if (p.p1 || p.char || p.p2 || p.city) {
+      setP1(p.p1);
+      if (p.char) setChar(p.char);
+      setP2(p.p2);
+      setCity(p.city);
+      onChange(formatPlateParts(p.p1, p.char || 'ب', p.p2, p.city));
+    }
+  };
+
   return (
-    <div className={`flex flex-col items-center gap-1.5 ${className}`}>
+    <div className={`flex flex-col items-center gap-1.5 w-full max-w-full ${className}`} onPaste={handlePaste}>
       <div 
-        className="flex items-center bg-white border-2 border-gray-800 rounded-2xl overflow-hidden h-14 md:h-16 font-black shadow-lg ring-4 ring-blue-500/10 focus-within:ring-blue-500/30 transition-all select-none"
+        className="flex items-center justify-center bg-white border-2 border-gray-800 rounded-xl overflow-hidden h-12 sm:h-14 font-black shadow-md ring-2 ring-blue-500/10 focus-within:ring-blue-500/30 transition-all select-none w-full max-w-[340px] mx-auto"
         dir="ltr"
       >
         {/* Left Blue Strip */}
-        <div className="bg-[#1E4198] w-8 md:w-10 h-full flex flex-col items-center justify-center text-white py-1 shrink-0 relative">
+        <div className="bg-[#1E4198] w-7 sm:w-8 h-full flex flex-col items-center justify-center text-white py-0.5 shrink-0 relative">
           <div className="flex flex-col items-center gap-0.5">
             <div className="flex gap-[1px]">
-              <div className="w-2 h-1 bg-green-500"></div>
-              <div className="w-2 h-1 bg-white"></div>
-              <div className="w-2 h-1 bg-red-500"></div>
+              <div className="w-1.5 h-0.5 bg-green-500"></div>
+              <div className="w-1.5 h-0.5 bg-white"></div>
+              <div className="w-1.5 h-0.5 bg-red-500"></div>
             </div>
-            <span className="text-[7px] md:text-[8px] font-black leading-none">I.R.</span>
-            <span className="text-[7px] md:text-[8px] font-black leading-none">IRAN</span>
+            <span className="text-[6px] sm:text-[7px] font-black leading-none">I.R.</span>
+            <span className="text-[6px] sm:text-[7px] font-black leading-none">IRAN</span>
           </div>
         </div>
 
         {/* Part 1 (2 digits) */}
-        <div className="w-12 md:w-16 h-full flex items-center justify-center border-r border-gray-200">
+        <div className="w-10 sm:w-12 h-full flex items-center justify-center border-r border-gray-200 shrink-0">
           <input
             ref={ref1}
             type="text"
             inputMode="numeric"
             maxLength={2}
-            className="w-full h-full text-center text-2xl md:text-3xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
+            className="w-full h-full text-center text-lg sm:text-2xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
             placeholder="۱۲"
             value={p1}
             onChange={handleP1Change}
@@ -321,10 +392,10 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
         </div>
 
         {/* Persian Letter Select */}
-        <div className="w-14 md:w-16 h-full flex items-center justify-center bg-gray-50/50 border-r border-gray-200">
+        <div className="w-12 sm:w-14 h-full flex items-center justify-center bg-gray-50/50 border-r border-gray-200 shrink-0">
           <select
             ref={refChar}
-            className="w-full h-full text-center text-xl md:text-2xl font-black bg-transparent outline-none appearance-none cursor-pointer text-blue-900"
+            className="w-full h-full text-center text-base sm:text-xl font-black bg-transparent outline-none appearance-none cursor-pointer text-blue-900 text-center"
             value={char}
             onChange={handleCharChange}
             onKeyDown={handleKeyDownChar}
@@ -336,13 +407,13 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
         </div>
 
         {/* Part 2 (3 digits) */}
-        <div className="w-16 md:w-20 h-full flex items-center justify-center">
+        <div className="flex-1 min-w-[50px] sm:min-w-[65px] h-full flex items-center justify-center">
           <input
             ref={ref2}
             type="text"
             inputMode="numeric"
             maxLength={3}
-            className="w-full h-full text-center text-2xl md:text-3xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
+            className="w-full h-full text-center text-lg sm:text-2xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
             placeholder="۳۴۵"
             value={p2}
             onChange={handleP2Change}
@@ -351,8 +422,8 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
         </div>
 
         {/* City Code (Right Section) */}
-        <div className="w-14 md:w-16 h-full flex flex-col border-l-2 border-gray-800 bg-gray-50">
-          <div className="h-5 flex items-center justify-center text-[9px] border-b border-gray-300 font-black text-gray-500 tracking-wider">
+        <div className="w-11 sm:w-13 h-full flex flex-col border-l-2 border-gray-800 bg-gray-50 shrink-0">
+          <div className="h-4 flex items-center justify-center text-[7px] sm:text-[8px] border-b border-gray-300 font-black text-gray-500 tracking-wider">
             ایران
           </div>
           <input
@@ -360,7 +431,7 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
             type="text"
             inputMode="numeric"
             maxLength={2}
-            className="w-full flex-1 h-full text-center text-xl md:text-2xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
+            className="w-full flex-1 h-full text-center text-base sm:text-xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
             placeholder="۶۷"
             value={city}
             onChange={handleCityChange}
@@ -368,7 +439,29 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
           />
         </div>
       </div>
-      <p className="text-[10px] text-gray-400 font-bold">ورود اعداد به صورت پلاک ملی (استفاده از Enter برای پرش به کادر بعدی)</p>
+
+      <div className="flex items-center justify-between w-full max-w-[340px] px-1 text-[11px] text-gray-500">
+        <span className="text-[10px] text-gray-400 font-medium">پرش بین بخش‌ها با Enter</span>
+        <button
+          type="button"
+          onClick={() => setShowDirect(!showDirect)}
+          className="text-blue-600 hover:text-blue-800 text-[11px] font-bold underline"
+        >
+          {showDirect ? 'بستن کادر متنی' : 'تایپ مستقیم پلاک'}
+        </button>
+      </div>
+
+      {showDirect && (
+        <div className="w-full max-w-[340px] mt-1 animate-fade-in">
+          <input
+            type="text"
+            className="w-full border border-gray-300 rounded-lg p-2 text-center text-sm font-bold dir-ltr placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500/20 outline-none"
+            placeholder="مثال: 12ب345ایران67 یا 68ع415ایران22"
+            value={directText}
+            onChange={handleDirectChange}
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -97,9 +97,11 @@ export const formatCurrency = (amount: number): string => {
 export const parseSafeDate = (dateValue: string | number): Date => {
   if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
     const [y, m, d] = dateValue.split('-').map(Number);
-    return new Date(y, m - 1, d);
+    return new Date(y, m - 1, d, 12, 0, 0);
   }
-  return new Date(dateValue);
+  const d = new Date(dateValue);
+  d.setHours(12, 0, 0, 0);
+  return d;
 };
 
 export const formatDate = (dateValue: string | number): string => {
@@ -177,6 +179,18 @@ export const parsePersianDate = (dateStr: string): Date | null => {
     return new Date(y, m - 1, d);
 };
 
+export const formatLocalDateToIso = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const getIsoFromJalali = (y: number, m: number, d: number): string => {
+  const date = jalaliToGregorian(y, m, d);
+  return formatLocalDateToIso(date);
+};
+
 export const getCurrentShamsiDate = () => {
   try {
       const now = new Date();
@@ -191,6 +205,23 @@ export const getCurrentShamsiDate = () => {
       // Simplified mapping, slightly inaccurate but prevents crash
       const now = new Date();
       return { year: now.getFullYear() - 621, month: now.getMonth() + 1, day: now.getDate() };
+  }
+};
+
+export const getYesterdayShamsiDate = () => {
+  try {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
+      const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(yesterday);
+      const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
+      const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
+      const d = parseInt(parts.find(p => p.type === 'day')?.value || '1');
+      return { year: y, month: m, day: d };
+  } catch (e) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return { year: yesterday.getFullYear() - 621, month: yesterday.getMonth() + 1, day: yesterday.getDate() };
   }
 };
 

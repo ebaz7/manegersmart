@@ -120,7 +120,7 @@ const PrintPersonnelDelayForm: React.FC<Props> = ({ delays, date, meta }) => {
                                 <col style={{ width: '50px' }} />
                                 <col />
                                 <col style={{ width: '140px' }} />
-                                <col style={{ width: '100px' }} />
+                                <col style={{ width: '90px' }} />
                                 <col />
                             </colgroup>
                             <thead>
@@ -129,12 +129,12 @@ const PrintPersonnelDelayForm: React.FC<Props> = ({ delays, date, meta }) => {
                                     <th style={{ border: '1px solid black', padding: '2px' }}>نام و نام خانوادگی</th>
                                     <th style={{ border: '1px solid black', padding: '2px' }}>واحد</th>
                                     <th style={{ border: '1px solid black', padding: '2px' }}>تعداد تکرار</th>
-                                    <th style={{ border: '1px solid black', padding: '2px' }}>دستور مدیریت / اقدام انجام شده</th>
+                                    <th style={{ border: '1px solid black', padding: '2px' }}>اقدام انجام شده / توضیحات</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {displayRepeat.map((d, i) => (
-                                    <tr key={i} style={{ height: '40px' }}>
+                                    <tr key={i} style={{ height: '36px' }}>
                                         <td style={{ border: '1px solid black' }}>{d.id ? i + 1 : ''}</td>
                                         <td style={{ border: '1px solid black', fontWeight: 'bold', textAlign: 'right', paddingRight: '10px' }}>{d.personnelName}</td>
                                         <td style={{ border: '1px solid black' }}>{d.unit}</td>
@@ -145,6 +145,17 @@ const PrintPersonnelDelayForm: React.FC<Props> = ({ delays, date, meta }) => {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Dedicated Management Directive Box (دستور مدیریت) */}
+                    <div style={{ borderTop: '2px solid black', padding: '8px 12px', minHeight: '65px', backgroundColor: '#fdfcfe', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '900', color: '#1f2937', marginBottom: '4px', textAlign: 'right', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ backgroundColor: '#4338ca', color: 'white', padding: '1px 6px', borderRadius: '4px', fontSize: '10px' }}>دستور اختصاصی مدیریت</span>
+                            <span>دستور و نظر مدیریت در خصوص تاخیرات ثبت شده:</span>
+                        </div>
+                        <div style={{ flex: 1, textAlign: 'right', fontSize: '12px', lineHeight: '1.6', color: '#111827', minHeight: '32px', whiteSpace: 'pre-wrap', padding: '2px 4px' }}>
+                            {delays.find(d => d.managementInstruction)?.managementInstruction || '...................................................................................................................................................................................................'}
+                        </div>
+                    </div>
                 </div>
 
                 {/* 4. FOOTER SIGNATURES */}
@@ -152,7 +163,7 @@ const PrintPersonnelDelayForm: React.FC<Props> = ({ delays, date, meta }) => {
                     <div style={{ width: '25%', borderLeft: '2px solid black', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ fontWeight: 'bold', borderBottom: '1px solid #9ca3af', width: '100%', textAlign: 'center', paddingBottom: '4px' }}>امضا نگهبان شیفت</div>
                         <div style={{ fontWeight: 'bold', color: '#374151', textAlign: 'center', fontSize: '13px', height: '30px', display: 'flex', alignItems: 'center' }}>
-                            {delays.length > 0 ? delays[0].registrant : ''}
+                            {delays.length > 0 && delays[0].registrant ? delays[0].registrant : 'مقصود محمدی'}
                         </div>
                         <div style={{ fontSize: '10px', color: '#9ca3af' }}>محل امضا</div>
                     </div>

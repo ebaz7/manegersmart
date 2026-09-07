@@ -1,11 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, SecurityLog, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings } from '../types';
-import { getSecurityLogs, saveSecurityLog, updateSecurityLog, deleteSecurityLog, getPersonnelDelays, savePersonnelDelay, updatePersonnelDelay, deletePersonnelDelay, getSecurityIncidents, saveSecurityIncident, updateSecurityIncident, deleteSecurityIncident, getSettings, saveSettings } from '../services/storageService';
-import { generateUUID, getCurrentShamsiDate, jalaliToGregorian, formatDate, getShamsiDateFromIso } from '../constants';
-import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare } from 'lucide-react';
-import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport } from './security/SecurityPrints';
+import { User, SecurityLog, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings, PersonnelOvertime, SecurityGoodsItem } from '../types';
+import { 
+    getSecurityLogs, saveSecurityLog, updateSecurityLog, deleteSecurityLog, 
+    getPersonnelDelays, savePersonnelDelay, updatePersonnelDelay, deletePersonnelDelay, 
+    getPersonnelOvertimes, savePersonnelOvertime, updatePersonnelOvertime, deletePersonnelOvertime,
+    getSecurityIncidents, saveSecurityIncident, updateSecurityIncident, deleteSecurityIncident, 
+    getSettings, saveSettings 
+} from '../services/storageService';
+import { generateUUID, getCurrentShamsiDate, getYesterdayShamsiDate, jalaliToGregorian, formatDate, getShamsiDateFromIso, formatLocalDateToIso, getIsoFromJalali } from '../constants';
+import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck } from 'lucide-react';
+import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport, PrintPersonnelOvertime } from './security/SecurityPrints';
 import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
+import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, SavedDriver } from '../services/driverMemoryService';
 import { getRolePermissions } from '../services/authService';
 import { generatePdf } from '../utils/pdfGenerator';
 import { isInFinancialYear } from '../utils/dateUtils';
@@ -16,58 +23,267 @@ interface Props {
     financialYear?: string;
 }
 
-// --- HELPER FOR SCALING ---
+// --- ENHANCED INTERACTIVE SCALED & ZOOMABLE CONTAINER ---
 const ScaledContainer: React.FC<{ children: React.ReactNode, isLandscape?: boolean }> = ({ children, isLandscape }) => {
-    const [scale, setScale] = useState(1);
-    const wrapperRef = useRef<HTMLDivElement>(null);
+    const [baseScale, setBaseScale] = useState(1);
+    const [zoomMultiplier, setZoomMultiplier] = useState(1);
+    const containerWrapperRef = useRef<HTMLDivElement>(null);
+
+    // Touch & Drag state refs
+    const isDraggingRef = useRef(false);
+    const dragStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+    const touchStartDistRef = useRef<number | null>(null);
+    const touchStartMultiplierRef = useRef<number>(1);
+    const lastTapRef = useRef<number>(0);
+
+    const calculateBaseScale = () => {
+        const wrapper = containerWrapperRef.current;
+        if (wrapper) {
+            const wrapperWidth = wrapper.clientWidth;
+            const wrapperHeight = wrapper.clientHeight || (window.innerHeight - 80);
+            
+            // A4 Landscape = 297mm (~1123px width, ~794px height), Portrait = 210mm (~794px width, ~1123px height)
+            const targetWidth = isLandscape ? 1123 : 794; 
+            const targetHeight = isLandscape ? 794 : 1123;
+
+            const scaleX = (wrapperWidth - 24) / targetWidth;
+            const scaleY = (wrapperHeight - 24) / targetHeight;
+            
+            const calculated = Math.min(scaleX, scaleY, 1.0);
+            const finalBase = Math.max(calculated, 0.25);
+            setBaseScale(finalBase);
+        }
+    };
 
     useEffect(() => {
+        calculateBaseScale();
         const handleResize = () => {
-            const wrapper = wrapperRef.current;
-            if (wrapper) {
-                const wrapperWidth = wrapper.clientWidth;
-                const wrapperHeight = wrapper.clientHeight || (window.innerHeight - 80);
-                
-                // A4 Landscape = 297mm (~1123px width, ~794px height), Portrait = 210mm (~794px width, ~1123px height)
-                const targetWidth = isLandscape ? 1123 : 794; 
-                const targetHeight = isLandscape ? 794 : 1123;
-
-                const scaleX = (wrapperWidth - 16) / targetWidth;
-                const scaleY = (wrapperHeight - 16) / targetHeight;
-                
-                const calculatedScale = Math.min(scaleX, scaleY, 1.0);
-                setScale(Math.max(calculatedScale, 0.25));
-            }
+            calculateBaseScale();
         };
-        handleResize();
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, [isLandscape]);
 
-    const targetWidth = isLandscape ? '296mm' : '210mm';
-    const targetHeight = isLandscape ? '209mm' : '296mm';
+    const effectiveScale = Math.max(0.2, Math.min(3.5, baseScale * zoomMultiplier));
+
+    const handleZoomIn = () => {
+        setZoomMultiplier(prev => Math.min(3.5, Number((prev + 0.2).toFixed(2))));
+    };
+
+    const handleZoomOut = () => {
+        setZoomMultiplier(prev => Math.max(0.4, Number((prev - 0.2).toFixed(2))));
+    };
+
+    const handleResetZoom = () => {
+        setZoomMultiplier(1);
+        if (containerWrapperRef.current) {
+            containerWrapperRef.current.scrollLeft = 0;
+            containerWrapperRef.current.scrollTop = 0;
+        }
+    };
+
+    const handleToggle100 = () => {
+        if (Math.abs(effectiveScale - 1.0) < 0.05) {
+            handleResetZoom();
+        } else {
+            const desiredMultiplier = 1.0 / baseScale;
+            setZoomMultiplier(Number(desiredMultiplier.toFixed(2)));
+        }
+    };
+
+    // --- Mouse Drag to Pan ---
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button !== 0) return;
+        const el = containerWrapperRef.current;
+        if (!el) return;
+        isDraggingRef.current = true;
+        dragStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            scrollLeft: el.scrollLeft,
+            scrollTop: el.scrollTop,
+        };
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isDraggingRef.current) return;
+        const el = containerWrapperRef.current;
+        if (!el) return;
+        e.preventDefault();
+        const dx = e.clientX - dragStartRef.current.x;
+        const dy = e.clientY - dragStartRef.current.y;
+        el.scrollLeft = dragStartRef.current.scrollLeft - dx;
+        el.scrollTop = dragStartRef.current.scrollTop - dy;
+    };
+
+    const handleMouseUp = () => {
+        isDraggingRef.current = false;
+    };
+
+    // --- Wheel Zoom (Ctrl + Wheel or Wheel) ---
+    const handleWheel = (e: React.WheelEvent) => {
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.12 : 0.88;
+            setZoomMultiplier(prev => Math.max(0.4, Math.min(3.5, Number((prev * factor).toFixed(2)))));
+        }
+    };
+
+    // --- Touch Gestures (Pinch to Zoom, Double Tap, Pan) ---
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (e.touches.length === 2) {
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            touchStartDistRef.current = dist;
+            touchStartMultiplierRef.current = zoomMultiplier;
+        } else if (e.touches.length === 1) {
+            const now = Date.now();
+            if (now - lastTapRef.current < 300) {
+                if (zoomMultiplier > 1.2) {
+                    handleResetZoom();
+                } else {
+                    setZoomMultiplier(1.6);
+                }
+            }
+            lastTapRef.current = now;
+        }
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+            const currentDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            const ratio = currentDist / touchStartDistRef.current;
+            const targetMultiplier = Math.min(3.5, Math.max(0.4, Number((touchStartMultiplierRef.current * ratio).toFixed(2))));
+            setZoomMultiplier(targetMultiplier);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        touchStartDistRef.current = null;
+    };
+
+    const targetWidthMm = isLandscape ? 297 : 210;
+    const targetHeightMm = isLandscape ? 210 : 297;
+    // Base pixel dimensions at 96 DPI: ~3.779527559 px/mm
+    const baseWidthPx = isLandscape ? 1123 : 794;
+    const baseHeightPx = isLandscape ? 794 : 1123;
 
     return (
-        <div ref={wrapperRef} className="w-full h-full flex justify-center items-center overflow-hidden">
-            <div style={{
-                transform: `scale(${scale})`,
-                transformOrigin: 'center center',
-                width: targetWidth,
-                height: targetHeight,
-                flexShrink: 0
-            }}>
-                {children}
+        <div className="relative w-full h-full flex flex-col items-center overflow-hidden">
+            {/* Floating Quick Zoom Toolbar */}
+            <div className="absolute top-2.5 z-30 flex items-center gap-1 bg-gray-900/90 dark:bg-black/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-white/20 shadow-xl select-none no-print">
+                <button 
+                    onClick={handleZoomOut} 
+                    className="p-1 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer active:scale-95"
+                    title="کوچک‌نمایی (-)"
+                >
+                    <ZoomOut size={15}/>
+                </button>
+                
+                <button 
+                    onClick={handleToggle100}
+                    className="text-[11px] font-mono font-bold text-white px-2 py-0.5 hover:bg-white/10 rounded-md transition-colors min-w-[46px] text-center cursor-pointer"
+                    title="کلیک برای زوم ۱۰۰٪ / تناسب"
+                >
+                    {Math.round(effectiveScale * 100)}%
+                </button>
+                
+                <button 
+                    onClick={handleZoomIn} 
+                    className="p-1 text-gray-300 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer active:scale-95"
+                    title="بزرگ‌نمایی (+)"
+                >
+                    <ZoomIn size={15}/>
+                </button>
+
+                <div className="h-3.5 w-px bg-white/20 mx-0.5" />
+
+                <button 
+                    onClick={handleResetZoom} 
+                    className="px-2 py-0.5 text-[11px] font-bold text-emerald-300 hover:bg-white/10 rounded-md transition-colors flex items-center gap-1 cursor-pointer active:scale-95"
+                    title="بازنشانی به تناسب صفحه"
+                >
+                    <RotateCcw size={12}/>
+                    <span>تناسب</span>
+                </button>
+            </div>
+
+            {/* Scrollable / Draggable Container */}
+            <div 
+                ref={containerWrapperRef}
+                dir="ltr"
+                className="w-full h-full overflow-auto cursor-grab active:cursor-grabbing select-none"
+                style={{ 
+                    WebkitOverflowScrolling: 'touch',
+                    touchAction: 'pan-x pan-y pinch-zoom'
+                }}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onWheel={handleWheel}
+            >
+                <div 
+                    className="min-w-full min-h-full flex p-3 md:p-6"
+                    style={{ width: 'max-content', height: 'max-content' }}
+                >
+                    <div style={{
+                        width: `${baseWidthPx * effectiveScale}px`,
+                        height: `${baseHeightPx * effectiveScale}px`,
+                        position: 'relative',
+                        flexShrink: 0,
+                        margin: 'auto',
+                        transition: isDraggingRef.current ? 'none' : 'width 0.08s ease-out, height 0.08s ease-out'
+                    }}>
+                        <div 
+                            dir="rtl"
+                            style={{
+                                width: `${targetWidthMm}mm`,
+                                height: `${targetHeightMm}mm`,
+                                transform: `scale(${effectiveScale})`,
+                                transformOrigin: 'top left',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                boxShadow: '0 10px 35px rgba(0,0,0,0.35)'
+                            }}
+                            className="bg-white rounded"
+                        >
+                            {children}
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
 };
 
 const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
-    const [activeTab, setActiveTab] = useState<'logs' | 'delays' | 'incidents' | 'cartable' | 'archive' | 'in_progress'>('logs');
+    const [activeTab, setActiveTab] = useState<'logs' | 'delays' | 'overtimes' | 'incidents' | 'cartable' | 'archive' | 'in_progress'>('logs');
     const [subTab, setSubTab] = useState<'current' | 'archived'>('current');
     const [deletingItemKey, setDeletingItemKey] = useState<string | null>(null);
-    const currentShamsi = getCurrentShamsiDate();
-    const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
+    const yesterdayShamsi = getYesterdayShamsiDate();
+    const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : yesterdayShamsi.year, month: yesterdayShamsi.month, day: yesterdayShamsi.day });
+
+    const [overtimes, setOvertimes] = useState<PersonnelOvertime[]>([]);
+    const [overtimeForm, setOvertimeForm] = useState<Partial<PersonnelOvertime>>({ registrant: 'مقصود محمدی' });
+    const [driverSuggestions, setDriverSuggestions] = useState<SavedDriver[]>([]);
+    const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
+    const [approvalManagementNote, setApprovalManagementNote] = useState('');
+    const [loginTime] = useState<string>(() => {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+    });
 
     // --- WEBCAM & AI ALPR STATES ---
     const [isCameraActive, setIsCameraActive] = useState(false);
@@ -456,8 +672,8 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null); 
     const [logForm, setLogForm] = useState<Partial<SecurityLog>>({});
-    const [delayForm, setDelayForm] = useState<Partial<PersonnelDelay>>({});
-    const [incidentForm, setPartialIncidentForm] = useState<Partial<SecurityIncident>>({});
+    const [delayForm, setDelayForm] = useState<Partial<PersonnelDelay>>({ registrant: 'مقصود محمدی' });
+    const [incidentForm, setPartialIncidentForm] = useState<Partial<SecurityIncident>>({ registrant: 'مقصود محمدی' });
     const [metaForm, setMetaForm] = useState<DailySecurityMeta>({});
     const permissions = settings ? getRolePermissions(currentUser.role, settings, currentUser) : null;
 
@@ -491,34 +707,114 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
     const loadData = async () => {
         try {
-            const [l, d, i, s] = await Promise.all([getSecurityLogs(), getPersonnelDelays(), getSecurityIncidents(), getSettings()]);
+            const [l, d, o, i, s] = await Promise.all([
+                getSecurityLogs(), 
+                getPersonnelDelays(), 
+                getPersonnelOvertimes(),
+                getSecurityIncidents(), 
+                getSettings()
+            ]);
             
             let safeL = Array.isArray(l) ? l : [];
             let safeD = Array.isArray(d) ? d : [];
+            let safeO = Array.isArray(o) ? o : [];
             let safeI = Array.isArray(i) ? i : [];
             
             if (financialYear && financialYear !== 'all') {
                 safeL = safeL.filter(x => isInFinancialYear(x.date, financialYear));
                 safeD = safeD.filter(x => isInFinancialYear(x.date, financialYear));
+                safeO = safeO.filter(x => isInFinancialYear(x.date, financialYear));
                 safeI = safeI.filter(x => isInFinancialYear(x.date || new Date(x.createdAt).toISOString().split('T')[0], financialYear));
             }
             
             setLogs(safeL);
             setDelays(safeD);
+            setOvertimes(safeO);
             setIncidents(safeI);
             setSettings(s);
         } catch(e) { console.error(e); }
     };
 
-    const getIsoSelectedDate = (): string => { try { const d = jalaliToGregorian(selectedDate.year, selectedDate.month, selectedDate.day); return d.toISOString().split('T')[0]; } catch { return new Date().toISOString().split('T')[0]; } };
-    
+    const getIsoSelectedDate = (): string => { 
+        try { 
+            return getIsoFromJalali(selectedDate.year, selectedDate.month, selectedDate.day); 
+        } catch { 
+            return formatLocalDateToIso(new Date()); 
+        } 
+    };
+
+    const getCurrentTimeStr = (): string => {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+    };
+
+    const calculateOvertimeDuration = (start: string, end: string): string => {
+        if (!start || !end) return '';
+        const [h1, m1] = start.split(':').map(Number);
+        const [h2, m2] = end.split(':').map(Number);
+        if (isNaN(h1) || isNaN(m1) || isNaN(h2) || isNaN(m2)) return '';
+        let totalMinutes = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (totalMinutes < 0) totalMinutes += 24 * 60; // crossover midnight
+        const hrs = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        if (hrs > 0 && mins > 0) return `${hrs} ساعت و ${mins} دقیقه`;
+        if (hrs > 0) return `${hrs} ساعت`;
+        return `${mins} دقیقه`;
+    };
+
+    const handleAddGoodsItem = () => {
+        const currentItems = Array.isArray(logForm.goodsItems) ? [...logForm.goodsItems] : [];
+        const updated = [...currentItems, { name: '', quantity: '', unit: 'عدد' }];
+        setLogForm({ ...logForm, goodsItems: updated });
+    };
+
+    const handleUpdateGoodsItem = (index: number, field: keyof SecurityGoodsItem, val: string) => {
+        const currentItems = Array.isArray(logForm.goodsItems) ? [...logForm.goodsItems] : [];
+        if (!currentItems[index]) return;
+        currentItems[index] = { ...currentItems[index], [field]: val };
+        const summaryName = currentItems.map(i => i.name).filter(Boolean).join('، ');
+        const summaryQty = currentItems.map(i => `${i.quantity || ''} ${i.unit || ''}`.trim()).filter(Boolean).join(' + ');
+        setLogForm({ ...logForm, goodsItems: currentItems, goodsName: summaryName || logForm.goodsName, quantity: summaryQty || logForm.quantity });
+    };
+
+    const handleRemoveGoodsItem = (index: number) => {
+        const currentItems = Array.isArray(logForm.goodsItems) ? [...logForm.goodsItems] : [];
+        const updated = currentItems.filter((_, i) => i !== index);
+        const summaryName = updated.map(i => i.name).filter(Boolean).join('، ');
+        const summaryQty = updated.map(i => `${i.quantity || ''} ${i.unit || ''}`.trim()).filter(Boolean).join(' + ');
+        setLogForm({ ...logForm, goodsItems: updated, goodsName: summaryName, quantity: summaryQty });
+    };
+
+    const handleDriverNameChange = (name: string) => {
+        setLogForm(prev => ({ ...prev, driverName: name }));
+        if (name.trim().length > 0) {
+            const matches = searchSavedDrivers(name);
+            setDriverSuggestions(matches);
+            setShowDriverSuggestions(matches.length > 0);
+        } else {
+            setShowDriverSuggestions(false);
+        }
+    };
+
+    const handleSelectDriverMemory = (driver: SavedDriver) => {
+        setLogForm(prev => ({
+            ...prev,
+            driverName: driver.driverName,
+            driverPhone: driver.driverPhone || prev.driverPhone,
+            plateNumber: driver.plateNumber || prev.plateNumber
+        }));
+        setShowDriverSuggestions(false);
+    };
+
     useEffect(() => { const isoDate = getIsoSelectedDate(); if (settings?.dailySecurityMeta && settings.dailySecurityMeta[isoDate]) { setMetaForm(settings.dailySecurityMeta[isoDate]); } else { setMetaForm({ dailyDescription: '', morningGuard: { name: '', entry: '', exit: '' }, eveningGuard: { name: '', entry: '', exit: '' }, nightGuard: { name: '', entry: '', exit: '' } }); } }, [selectedDate, settings]);
 
-    const handleJumpToEdit = (e: React.MouseEvent, type: 'log' | 'delay' | 'incident', item: any) => {
+    const handleJumpToEdit = (e: React.MouseEvent, type: 'log' | 'delay' | 'overtime' | 'incident', item: any) => {
         e.stopPropagation();
         const dateParts = getShamsiDateFromIso(item.date);
         setSelectedDate(dateParts);
-        setActiveTab(type === 'log' ? 'logs' : type === 'delay' ? 'delays' : 'incidents');
+        setActiveTab(type === 'log' ? 'logs' : type === 'delay' ? 'delays' : type === 'overtime' ? 'overtimes' : 'incidents');
         handleEditItem(item, type);
     };
 
@@ -537,6 +833,11 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const dailyDelaysActive = allDailyDelays.filter(d => d.status !== SecurityStatus.ARCHIVED);
     const dailyDelaysArchived = allDailyDelays.filter(d => d.status === SecurityStatus.ARCHIVED);
     const displayDelays = subTab === 'current' ? dailyDelaysActive : dailyDelaysArchived;
+
+    const allDailyOvertimes = overtimes.filter(o => o.date.startsWith(getIsoSelectedDate()));
+    const dailyOvertimesActive = allDailyOvertimes.filter(o => o.status !== SecurityStatus.ARCHIVED);
+    const dailyOvertimesArchived = allDailyOvertimes.filter(o => o.status === SecurityStatus.ARCHIVED);
+    const displayOvertimes = subTab === 'current' ? dailyOvertimesActive : dailyOvertimesArchived;
 
     const allDailyIncidents = incidents.filter(i => i.date.startsWith(getIsoSelectedDate()));
 
@@ -566,70 +867,103 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const getCartableItems = () => {
         let items: any[] = [];
         
-        // 1. Logs Pending Factory (Daily Sheets)
-        // Group logs by date
-        const logsByDate: Record<string, SecurityLog[]> = {};
-        logs.filter(l => l.status === SecurityStatus.PENDING_FACTORY).forEach(l => {
-            if(!logsByDate[l.date]) logsByDate[l.date] = [];
-            logsByDate[l.date].push(l);
-        });
+        // Group items by date for multi-record batch approval
+        const logsByDatePendingSup: Record<string, SecurityLog[]> = {};
+        const delaysByDatePendingSup: Record<string, PersonnelDelay[]> = {};
+        const overtimesByDatePendingSup: Record<string, PersonnelOvertime[]> = {};
 
-        // 2. Delays Pending Factory
-        const delaysByDate: Record<string, PersonnelDelay[]> = {};
-        delays.filter(d => d.status === SecurityStatus.PENDING_FACTORY).forEach(d => {
-            if(!delaysByDate[d.date]) delaysByDate[d.date] = [];
-            delaysByDate[d.date].push(d);
-        });
+        const logsByDatePendingFactory: Record<string, SecurityLog[]> = {};
+        const delaysByDatePendingFactory: Record<string, PersonnelDelay[]> = {};
+        const overtimesByDatePendingFactory: Record<string, PersonnelOvertime[]> = {};
 
-        // FACTORY MANAGER CARTABLE
-        if (currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN) {
-             Object.keys(logsByDate).forEach(date => {
-                 items.push({ type: 'daily_approval', category: 'log', date, count: logsByDate[date].length, status: SecurityStatus.PENDING_FACTORY });
-             });
-             Object.keys(delaysByDate).forEach(date => {
-                 items.push({ type: 'daily_approval', category: 'delay', date, count: delaysByDate[date].length, status: SecurityStatus.PENDING_FACTORY });
-             });
-             // Incidents
-             incidents.filter(i => i.status === SecurityStatus.PENDING_FACTORY).forEach(inc => {
-                 items.push({ type: 'incident', ...inc });
-             });
-        }
+        const logsByDatePendingCeo: Record<string, SecurityLog[]> = {};
+        const delaysByDatePendingCeo: Record<string, PersonnelDelay[]> = {};
+        const overtimesByDatePendingCeo: Record<string, PersonnelOvertime[]> = {};
 
-        // CEO CARTABLE
-        if (currentUser.role === UserRole.CEO || currentUser.role === UserRole.ADMIN) {
-            // Logs Pending CEO
-            const logsCeo = logs.filter(l => l.status === SecurityStatus.PENDING_CEO);
-            const logsCeoByDate: Record<string, SecurityLog[]> = {};
-            logsCeo.forEach(l => { if(!logsCeoByDate[l.date]) logsCeoByDate[l.date]=[]; logsCeoByDate[l.date].push(l); });
-            Object.keys(logsCeoByDate).forEach(date => {
-                 items.push({ type: 'daily_approval', category: 'log', date, count: logsCeoByDate[date].length, status: SecurityStatus.PENDING_CEO });
-            });
-
-            // Delays Pending CEO
-            const delaysCeo = delays.filter(d => d.status === SecurityStatus.PENDING_CEO);
-            const delaysCeoByDate: Record<string, PersonnelDelay[]> = {};
-            delaysCeo.forEach(d => { if(!delaysCeoByDate[d.date]) delaysCeoByDate[d.date]=[]; delaysCeoByDate[d.date].push(d); });
-            Object.keys(delaysCeoByDate).forEach(date => {
-                 items.push({ type: 'daily_approval', category: 'delay', date, count: delaysCeoByDate[date].length, status: SecurityStatus.PENDING_CEO });
-            });
-
-             // Incidents
-             incidents.filter(i => i.status === SecurityStatus.PENDING_CEO).forEach(inc => {
-                 items.push({ type: 'incident', ...inc });
-             });
-        }
-
-        // SUPERVISOR CARTABLE (Incidents / Delays Pending Supervisor)
-        if (currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN) {
-            // Delays Pending Supervisor
-            const delaysSup = delays.filter(d => d.status === SecurityStatus.PENDING_SUPERVISOR);
-            if (delaysSup.length > 0) {
-                 // Group by date or show individually? Usually individual for delays
-                 delaysSup.forEach(d => items.push({ type: 'delay', ...d }));
+        logs.forEach(l => {
+            if (l.status === SecurityStatus.PENDING_SUPERVISOR) {
+                if (!logsByDatePendingSup[l.date]) logsByDatePendingSup[l.date] = [];
+                logsByDatePendingSup[l.date].push(l);
+            } else if (l.status === SecurityStatus.PENDING_FACTORY) {
+                if (!logsByDatePendingFactory[l.date]) logsByDatePendingFactory[l.date] = [];
+                logsByDatePendingFactory[l.date].push(l);
+            } else if (l.status === SecurityStatus.PENDING_CEO) {
+                if (!logsByDatePendingCeo[l.date]) logsByDatePendingCeo[l.date] = [];
+                logsByDatePendingCeo[l.date].push(l);
             }
-            // Incidents Pending Supervisor
+        });
+
+        delays.forEach(d => {
+            if (d.status === SecurityStatus.PENDING_SUPERVISOR) {
+                if (!delaysByDatePendingSup[d.date]) delaysByDatePendingSup[d.date] = [];
+                delaysByDatePendingSup[d.date].push(d);
+            } else if (d.status === SecurityStatus.PENDING_FACTORY) {
+                if (!delaysByDatePendingFactory[d.date]) delaysByDatePendingFactory[d.date] = [];
+                delaysByDatePendingFactory[d.date].push(d);
+            } else if (d.status === SecurityStatus.PENDING_CEO) {
+                if (!delaysByDatePendingCeo[d.date]) delaysByDatePendingCeo[d.date] = [];
+                delaysByDatePendingCeo[d.date].push(d);
+            }
+        });
+
+        overtimes.forEach(o => {
+            if (o.status === SecurityStatus.PENDING_SUPERVISOR) {
+                if (!overtimesByDatePendingSup[o.date]) overtimesByDatePendingSup[o.date] = [];
+                overtimesByDatePendingSup[o.date].push(o);
+            } else if (o.status === SecurityStatus.PENDING_FACTORY) {
+                if (!overtimesByDatePendingFactory[o.date]) overtimesByDatePendingFactory[o.date] = [];
+                overtimesByDatePendingFactory[o.date].push(o);
+            } else if (o.status === SecurityStatus.PENDING_CEO) {
+                if (!overtimesByDatePendingCeo[o.date]) overtimesByDatePendingCeo[o.date] = [];
+                overtimesByDatePendingCeo[o.date].push(o);
+            }
+        });
+
+        // 1. SUPERVISOR CARTABLE (PENDING_SUPERVISOR)
+        if (currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN) {
+            Object.keys(logsByDatePendingSup).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'log', date, count: logsByDatePendingSup[date].length, status: SecurityStatus.PENDING_SUPERVISOR, title: 'تایید سرپرست: گزارش روزانه نگهبانی' });
+            });
+            Object.keys(delaysByDatePendingSup).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'delay', date, count: delaysByDatePendingSup[date].length, status: SecurityStatus.PENDING_SUPERVISOR, title: 'تایید سرپرست: تاخیر پرسنل' });
+            });
+            Object.keys(overtimesByDatePendingSup).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'overtime', date, count: overtimesByDatePendingSup[date].length, status: SecurityStatus.PENDING_SUPERVISOR, title: 'تایید سرپرست: اضافه کار پرسنل' });
+            });
             incidents.filter(i => i.status === SecurityStatus.PENDING_SUPERVISOR).forEach(inc => {
-                 items.push({ type: 'incident', ...inc });
+                items.push({ type: 'incident', ...inc, status: SecurityStatus.PENDING_SUPERVISOR, title: 'تایید سرپرست: واقعه / حادثه' });
+            });
+        }
+
+        // 2. FACTORY MANAGER CARTABLE (PENDING_FACTORY)
+        if (currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN) {
+            Object.keys(logsByDatePendingFactory).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'log', date, count: logsByDatePendingFactory[date].length, status: SecurityStatus.PENDING_FACTORY, title: 'تایید مدیریت کارخانه: گزارش نگهبانی' });
+            });
+            Object.keys(delaysByDatePendingFactory).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'delay', date, count: delaysByDatePendingFactory[date].length, status: SecurityStatus.PENDING_FACTORY, title: 'دستور و تایید مدیر: تاخیر پرسنل' });
+            });
+            Object.keys(overtimesByDatePendingFactory).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'overtime', date, count: overtimesByDatePendingFactory[date].length, status: SecurityStatus.PENDING_FACTORY, title: 'دستور و تایید مدیر: اضافه کار پرسنل' });
+            });
+            incidents.filter(i => i.status === SecurityStatus.PENDING_FACTORY).forEach(inc => {
+                items.push({ type: 'incident', ...inc, status: SecurityStatus.PENDING_FACTORY, title: 'تایید مدیریت کارخانه: واقعه / حادثه' });
+            });
+        }
+
+        // 3. CEO CARTABLE (PENDING_CEO)
+        if (currentUser.role === UserRole.CEO || currentUser.role === UserRole.ADMIN) {
+            Object.keys(logsByDatePendingCeo).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'log', date, count: logsByDatePendingCeo[date].length, status: SecurityStatus.PENDING_CEO, title: 'تایید نهایی مدیرعامل: گزارش نگهبانی' });
+            });
+            Object.keys(delaysByDatePendingCeo).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'delay', date, count: delaysByDatePendingCeo[date].length, status: SecurityStatus.PENDING_CEO, title: 'تایید نهایی مدیرعامل: تاخیر پرسنل' });
+            });
+            Object.keys(overtimesByDatePendingCeo).forEach(date => {
+                items.push({ type: 'daily_approval', category: 'overtime', date, count: overtimesByDatePendingCeo[date].length, status: SecurityStatus.PENDING_CEO, title: 'تایید نهایی مدیرعامل: اضافه کار پرسنل' });
+            });
+            incidents.filter(i => i.status === SecurityStatus.PENDING_CEO).forEach(inc => {
+                items.push({ type: 'incident', ...inc, status: SecurityStatus.PENDING_CEO, title: 'تایید نهایی مدیرعامل: واقعه / حادثه' });
             });
         }
 
@@ -637,19 +971,20 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     };
 
     const getInProgressItems = () => {
-        // Items that I (as Guard or Supervisor) have sent but are not yet Archived
-        // Simplified: Show all pending items system-wide if Admin/Manager, else show items created by me
         const allPendingLogs = logs.filter(l => l.status !== SecurityStatus.ARCHIVED && l.status !== SecurityStatus.REJECTED);
         const allPendingDelays = delays.filter(d => d.status !== SecurityStatus.ARCHIVED && d.status !== SecurityStatus.REJECTED);
+        const allPendingOvertimes = overtimes.filter(o => o.status !== SecurityStatus.ARCHIVED && o.status !== SecurityStatus.REJECTED);
         const allPendingIncidents = incidents.filter(i => i.status !== SecurityStatus.ARCHIVED && i.status !== SecurityStatus.REJECTED);
         
-        // Group logs/delays by date for cleaner view
         const grouped: any[] = [];
         const logsByDate = allPendingLogs.reduce((acc, l) => { acc[l.date] = (acc[l.date] || 0) + 1; return acc; }, {} as Record<string,number>);
         Object.entries(logsByDate).forEach(([date, count]) => grouped.push({ type: 'log_summary', date, count, status: 'در جریان' }));
 
         const delaysByDate = allPendingDelays.reduce((acc, d) => { acc[d.date] = (acc[d.date] || 0) + 1; return acc; }, {} as Record<string,number>);
         Object.entries(delaysByDate).forEach(([date, count]) => grouped.push({ type: 'delay_summary', date, count, status: 'در جریان' }));
+
+        const overtimesByDate = allPendingOvertimes.reduce((acc, o) => { acc[o.date] = (acc[o.date] || 0) + 1; return acc; }, {} as Record<string,number>);
+        Object.entries(overtimesByDate).forEach(([date, count]) => grouped.push({ type: 'overtime_summary', date, count, status: 'در جریان' }));
         
         allPendingIncidents.forEach(i => grouped.push({ type: 'incident', ...i }));
         
@@ -657,13 +992,14 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     };
 
     const getArchivedItems = () => {
-        // Show daily archives
         const logsByDate = logs.filter(l => l.status === SecurityStatus.ARCHIVED).reduce((acc, l) => { acc[l.date] = true; return acc; }, {} as Record<string,boolean>);
         const delaysByDate = delays.filter(d => d.status === SecurityStatus.ARCHIVED).reduce((acc, d) => { acc[d.date] = true; return acc; }, {} as Record<string,boolean>);
+        const overtimesByDate = overtimes.filter(o => o.status === SecurityStatus.ARCHIVED).reduce((acc, o) => { acc[o.date] = true; return acc; }, {} as Record<string,boolean>);
         
         const items: any[] = [];
         Object.keys(logsByDate).forEach(date => items.push({ type: 'daily_archive', category: 'log', date }));
         Object.keys(delaysByDate).forEach(date => items.push({ type: 'daily_archive', category: 'delay', date }));
+        Object.keys(overtimesByDate).forEach(date => items.push({ type: 'daily_archive', category: 'overtime', date }));
         
         incidents.filter(i => i.status === SecurityStatus.ARCHIVED).forEach(i => items.push({ type: 'incident', ...i }));
         
@@ -675,6 +1011,17 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         const isoDate = getIsoSelectedDate();
         resetDailyApprovalIfNeeded(isoDate); // Reset approval if modifying
         
+        // Auto save driver info to memory for future suggestions
+        try {
+            saveDriverToMemory({
+                driverName: logForm.driverName,
+                driverPhone: logForm.driverPhone || '',
+                plateNumber: logForm.plateNumber || ''
+            });
+        } catch (err) {
+            console.error('Error saving driver memory:', err);
+        }
+
         if (editingId) {
             await updateSecurityLog({ ...logs.find(l => l.id === editingId)!, ...logForm } as SecurityLog);
         } else {
@@ -704,6 +1051,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                     destination: logForm.destination || existingOpenLog.destination,
                     goodsName: logForm.goodsName || existingOpenLog.goodsName,
                     quantity: logForm.quantity || existingOpenLog.quantity,
+                    goodsItems: logForm.goodsItems || existingOpenLog.goodsItems,
                     receiver: logForm.receiver || existingOpenLog.receiver,
                     workDescription: logForm.workDescription || existingOpenLog.workDescription,
                     permitProvider: logForm.permitProvider || existingOpenLog.permitProvider,
@@ -726,12 +1074,13 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                     plateNumber: logForm.plateNumber || '',
                     goodsName: logForm.goodsName || '',
                     quantity: logForm.quantity || '',
+                    goodsItems: logForm.goodsItems || [],
                     destination: logForm.destination || '',
                     receiver: logForm.receiver || '',
                     workDescription: logForm.workDescription || '',
                     permitProvider: logForm.permitProvider || '',
-                    registrant: currentUser.fullName,
-                    status: SecurityStatus.PENDING_FACTORY, 
+                    registrant: logForm.registrant || currentUser.fullName,
+                    status: SecurityStatus.PENDING_SUPERVISOR, // Go to Supervisor first!
                     createdAt: Date.now(),
                     attachment: logForm.attachment || ''
                 });
@@ -757,7 +1106,33 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 delayAmount: delayForm.delayAmount || '',
                 repeatCount: delayForm.repeatCount || '0',
                 instruction: delayForm.instruction || '',
-                registrant: currentUser.fullName,
+                managementInstruction: delayForm.managementInstruction || '',
+                registrant: delayForm.registrant || 'مقصود محمدی', // default as requested
+                status: SecurityStatus.PENDING_SUPERVISOR,
+                createdAt: Date.now()
+            });
+        }
+        resetForms();
+        loadData();
+    };
+
+    const handleSaveOvertime = async () => {
+        if (!overtimeForm.personnelName) return;
+        const isoDate = getIsoSelectedDate();
+        if (editingId) {
+            await updatePersonnelOvertime({ ...overtimes.find(o => o.id === editingId)!, ...overtimeForm } as PersonnelOvertime);
+        } else {
+            await savePersonnelOvertime({
+                id: generateUUID(),
+                date: isoDate,
+                personnelName: overtimeForm.personnelName || '',
+                unit: overtimeForm.unit || '',
+                startTime: overtimeForm.startTime || '',
+                endTime: overtimeForm.endTime || '',
+                duration: overtimeForm.duration || calculateOvertimeDuration(overtimeForm.startTime || '', overtimeForm.endTime || '') || '',
+                reason: overtimeForm.reason || '',
+                managementInstruction: overtimeForm.managementInstruction || '',
+                registrant: overtimeForm.registrant || 'مقصود محمدی', // default as requested
                 status: SecurityStatus.PENDING_SUPERVISOR,
                 createdAt: Date.now()
             });
@@ -780,7 +1155,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 description: incidentForm.description || '',
                 shift: incidentForm.shift || 'صبح',
                 witnesses: incidentForm.witnesses || '',
-                registrant: currentUser.fullName,
+                registrant: incidentForm.registrant || 'مقصود محمدی', // default as requested
                 status: SecurityStatus.PENDING_SUPERVISOR,
                 createdAt: Date.now()
             });
@@ -789,20 +1164,74 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         loadData();
     };
 
+    const handleOpenNewItemModal = () => {
+        setEditingId(null);
+        if (activeTab === 'logs') {
+            setLogForm({
+                entryTime: loginTime,
+                exitTime: '',
+                origin: '',
+                destination: '',
+                driverName: '',
+                driverPhone: '',
+                plateNumber: '',
+                goodsName: '',
+                quantity: '',
+                goodsItems: [],
+                receiver: '',
+                workDescription: '',
+                permitProvider: '',
+                registrant: currentUser.fullName
+            });
+        } else if (activeTab === 'delays') {
+            setDelayForm({
+                personnelName: '',
+                unit: '',
+                arrivalTime: getCurrentTimeStr(),
+                delayAmount: '',
+                repeatCount: '0',
+                instruction: '',
+                registrant: 'مقصود محمدی'
+            });
+        } else if (activeTab === 'overtimes') {
+            setOvertimeForm({
+                personnelName: '',
+                unit: '',
+                startTime: getCurrentTimeStr(),
+                endTime: '',
+                duration: '',
+                reason: '',
+                registrant: 'مقصود محمدی'
+            });
+        } else if (activeTab === 'incidents') {
+            setPartialIncidentForm({
+                reportNumber: Math.floor(Math.random() * 1000).toString(),
+                subject: '',
+                description: '',
+                shift: 'صبح',
+                witnesses: '',
+                registrant: 'مقصود محمدی'
+            });
+        }
+        setShowModal(true);
+    };
+
     const resetForms = () => { 
         setShowModal(false); 
         setEditingId(null); 
         setLogForm({}); 
-        setDelayForm({}); 
-        setPartialIncidentForm({}); 
+        setDelayForm({ registrant: 'مقصود محمدی' }); 
+        setOvertimeForm({ registrant: 'مقصود محمدی' });
+        setPartialIncidentForm({ registrant: 'مقصود محمدی' }); 
         stopCamera();
         setCapturedImagePreview(null);
     };
 
-    const handleEditItem = (item: any, type: 'log' | 'delay' | 'incident') => {
+    const handleEditItem = (item: any, type: 'log' | 'delay' | 'overtime' | 'incident') => {
         setEditingId(item.id);
         if (type === 'log') setLogForm(item);
         if (type === 'delay') setDelayForm(item);
+        if (type === 'overtime') setOvertimeForm(item);
         if (type === 'incident') setPartialIncidentForm(item);
         setShowModal(true);
     };
@@ -829,15 +1258,65 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             setIncidents(prev => prev.map(i => i.id === item.id ? updatedIncident : i));
             updateSecurityIncident(updatedIncident).then(() => loadData()).catch(() => {});
         } else if (item.type === 'delay') {
-            const updatedDelay = { ...item, status: SecurityStatus.PENDING_FACTORY, approverSupervisor: currentUser.fullName };
+            let nextStatus = SecurityStatus.PENDING_FACTORY;
+            let updates: any = {};
+            if (item.status === SecurityStatus.PENDING_SUPERVISOR) {
+                nextStatus = SecurityStatus.PENDING_FACTORY;
+                updates.approverSupervisor = currentUser.fullName;
+            } else if (item.status === SecurityStatus.PENDING_FACTORY) {
+                nextStatus = SecurityStatus.PENDING_CEO;
+                updates.approverFactory = currentUser.fullName;
+                if (approvalManagementNote) {
+                    updates.managementNote = approvalManagementNote;
+                }
+            } else if (item.status === SecurityStatus.PENDING_CEO) {
+                nextStatus = SecurityStatus.ARCHIVED;
+                updates.approverCeo = currentUser.fullName;
+            }
+            const updatedDelay = { ...item, status: nextStatus, ...updates };
             setDelays(prev => prev.map(d => d.id === item.id ? updatedDelay : d));
-            updatePersonnelDelay(updatedDelay).then(() => loadData()).catch(() => {});
+            updatePersonnelDelay(updatedDelay).then(() => {
+                setApprovalManagementNote('');
+                loadData();
+            }).catch(() => {});
+        } else if (item.type === 'overtime') {
+            let nextStatus = SecurityStatus.PENDING_FACTORY;
+            let updates: any = {};
+            if (item.status === SecurityStatus.PENDING_SUPERVISOR) {
+                nextStatus = SecurityStatus.PENDING_FACTORY;
+                updates.approverSupervisor = currentUser.fullName;
+            } else if (item.status === SecurityStatus.PENDING_FACTORY) {
+                nextStatus = SecurityStatus.PENDING_CEO;
+                updates.approverFactory = currentUser.fullName;
+                if (approvalManagementNote) {
+                    updates.managementNote = approvalManagementNote;
+                }
+            } else if (item.status === SecurityStatus.PENDING_CEO) {
+                nextStatus = SecurityStatus.ARCHIVED;
+                updates.approverCeo = currentUser.fullName;
+            }
+            const updatedOvertime = { ...item, status: nextStatus, ...updates };
+            setOvertimes(prev => prev.map(o => o.id === item.id ? updatedOvertime : o));
+            updatePersonnelOvertime(updatedOvertime).then(() => {
+                setApprovalManagementNote('');
+                loadData();
+            }).catch(() => {});
         } else if (item.type === 'daily_approval') {
             const targetDate = item.date;
             if (item.category === 'log') {
-                let nextStatus = SecurityStatus.PENDING_CEO;
-                let field = 'approverFactory';
-                if (item.status === SecurityStatus.PENDING_CEO) { nextStatus = SecurityStatus.ARCHIVED; field = 'approverCeo'; }
+                let nextStatus = SecurityStatus.PENDING_FACTORY;
+                let field = 'approverSupervisor';
+                
+                if (item.status === SecurityStatus.PENDING_SUPERVISOR) {
+                    nextStatus = SecurityStatus.PENDING_FACTORY;
+                    field = 'approverSupervisor';
+                } else if (item.status === SecurityStatus.PENDING_FACTORY) {
+                    nextStatus = SecurityStatus.PENDING_CEO;
+                    field = 'approverFactory';
+                } else if (item.status === SecurityStatus.PENDING_CEO) {
+                    nextStatus = SecurityStatus.ARCHIVED;
+                    field = 'approverCeo';
+                }
                 
                 setLogs(prev => prev.map(l => (l.date === targetDate && l.status === item.status) ? { ...l, status: nextStatus, [field]: currentUser.fullName } : l));
                 
@@ -845,6 +1324,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 Promise.all(logsToApprove.map(l => updateSecurityLog({ ...l, status: nextStatus, [field]: currentUser.fullName }))).then(() => {
                     if (settings) {
                         const meta = settings.dailySecurityMeta?.[targetDate] || {};
+                        if (item.status === SecurityStatus.PENDING_SUPERVISOR) meta.isSupervisorDailyApproved = true;
                         if (item.status === SecurityStatus.PENDING_FACTORY) meta.isFactoryDailyApproved = true;
                         if (item.status === SecurityStatus.PENDING_CEO) meta.isCeoDailyApproved = true;
                         saveSettings({ ...settings, dailySecurityMeta: { ...settings.dailySecurityMeta, [targetDate]: meta } }).catch(() => {});
@@ -852,14 +1332,43 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                     loadData();
                 }).catch(() => {});
             } else if (item.category === 'delay') {
-                let nextStatus = SecurityStatus.PENDING_CEO;
-                let field = 'approverFactory';
-                if (item.status === SecurityStatus.PENDING_CEO) { nextStatus = SecurityStatus.ARCHIVED; field = 'approverCeo'; }
+                let nextStatus = SecurityStatus.PENDING_FACTORY;
+                let field = 'approverSupervisor';
+                
+                if (item.status === SecurityStatus.PENDING_SUPERVISOR) {
+                    nextStatus = SecurityStatus.PENDING_FACTORY;
+                    field = 'approverSupervisor';
+                } else if (item.status === SecurityStatus.PENDING_FACTORY) {
+                    nextStatus = SecurityStatus.PENDING_CEO;
+                    field = 'approverFactory';
+                } else if (item.status === SecurityStatus.PENDING_CEO) {
+                    nextStatus = SecurityStatus.ARCHIVED;
+                    field = 'approverCeo';
+                }
                 
                 setDelays(prev => prev.map(d => (d.date === targetDate && d.status === item.status) ? { ...d, status: nextStatus, [field]: currentUser.fullName } : d));
                 
                 const delaysToApprove = delays.filter(d => d.date === targetDate && d.status === item.status);
                 Promise.all(delaysToApprove.map(d => updatePersonnelDelay({ ...d, status: nextStatus, [field]: currentUser.fullName }))).then(() => loadData()).catch(() => {});
+            } else if (item.category === 'overtime') {
+                let nextStatus = SecurityStatus.PENDING_FACTORY;
+                let field = 'approverSupervisor';
+                
+                if (item.status === SecurityStatus.PENDING_SUPERVISOR) {
+                    nextStatus = SecurityStatus.PENDING_FACTORY;
+                    field = 'approverSupervisor';
+                } else if (item.status === SecurityStatus.PENDING_FACTORY) {
+                    nextStatus = SecurityStatus.PENDING_CEO;
+                    field = 'approverFactory';
+                } else if (item.status === SecurityStatus.PENDING_CEO) {
+                    nextStatus = SecurityStatus.ARCHIVED;
+                    field = 'approverCeo';
+                }
+                
+                setOvertimes(prev => prev.map(o => (o.date === targetDate && o.status === item.status) ? { ...o, status: nextStatus, [field]: currentUser.fullName } : o));
+                
+                const overtimesToApprove = overtimes.filter(o => o.date === targetDate && o.status === item.status);
+                Promise.all(overtimesToApprove.map(o => updatePersonnelOvertime({ ...o, status: nextStatus, [field]: currentUser.fullName }))).then(() => loadData()).catch(() => {});
             }
         }
     };
@@ -867,8 +1376,25 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const handleReject = async (item: any) => {
         const reason = prompt("دلیل رد:");
         if (!reason) return;
-        if (item.type === 'incident') await updateSecurityIncident({ ...item, status: SecurityStatus.REJECTED, rejectionReason: reason });
-        // ... Logic for batch reject ...
+        if (item.type === 'incident') {
+            await updateSecurityIncident({ ...item, status: SecurityStatus.REJECTED, rejectionReason: reason });
+        } else if (item.type === 'delay') {
+            await updatePersonnelDelay({ ...item, status: SecurityStatus.REJECTED, rejectionReason: reason });
+        } else if (item.type === 'overtime') {
+            await updatePersonnelOvertime({ ...item, status: SecurityStatus.REJECTED, rejectionReason: reason });
+        } else if (item.type === 'daily_approval') {
+            const targetDate = item.date;
+            if (item.category === 'log') {
+                const logsToReject = logs.filter(l => l.date === targetDate && l.status === item.status);
+                await Promise.all(logsToReject.map(l => updateSecurityLog({ ...l, status: SecurityStatus.REJECTED, rejectionReason: reason })));
+            } else if (item.category === 'delay') {
+                const delaysToReject = delays.filter(d => d.date === targetDate && d.status === item.status);
+                await Promise.all(delaysToReject.map(d => updatePersonnelDelay({ ...d, status: SecurityStatus.REJECTED, rejectionReason: reason })));
+            } else if (item.category === 'overtime') {
+                const overtimesToReject = overtimes.filter(o => o.date === targetDate && o.status === item.status);
+                await Promise.all(overtimesToReject.map(o => updatePersonnelOvertime({ ...o, status: SecurityStatus.REJECTED, rejectionReason: reason })));
+            }
+        }
         loadData();
         setViewCartableItem(null);
     };
@@ -881,10 +1407,11 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         setShowShiftModal(false);
     };
 
-    const handleDeleteItem = async (id: string, type: 'log' | 'delay' | 'incident') => {
+    const handleDeleteItem = async (id: string, type: 'log' | 'delay' | 'overtime' | 'incident') => {
         setDeletingItemKey(id);
         if (type === 'log') await deleteSecurityLog(id);
         if (type === 'delay') await deletePersonnelDelay(id);
+        if (type === 'overtime') await deletePersonnelOvertime(id);
         if (type === 'incident') await deleteSecurityIncident(id);
         loadData();
         setDeletingItemKey(null);
@@ -933,23 +1460,22 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const handleSupervisorDailySubmit = async () => {
         if (!confirm('آیا تایید می‌کنید؟ گزارش روزانه جهت بررسی به مدیر کارخانه ارسال می‌شود.')) return;
         const isoDate = getIsoSelectedDate();
-        // Fixed: removed comparison of enum with empty string
-        const pendingLogs = logs.filter(l => l.date === isoDate && l.status === SecurityStatus.PENDING_SUPERVISOR);
         
-        // In this simplified model, logs are created as PENDING_FACTORY (skip supervisor for simple flow) or PENDING_SUPERVISOR
-        // Let's assume we update all PENDING_SUPERVISOR to PENDING_FACTORY
         const targetLogs = logs.filter(l => l.date === isoDate && l.status === SecurityStatus.PENDING_SUPERVISOR);
         await Promise.all(targetLogs.map(l => updateSecurityLog({ ...l, status: SecurityStatus.PENDING_FACTORY, approverSupervisor: currentUser.fullName })));
         
         const targetDelays = delays.filter(d => d.date === isoDate && d.status === SecurityStatus.PENDING_SUPERVISOR);
         await Promise.all(targetDelays.map(d => updatePersonnelDelay({ ...d, status: SecurityStatus.PENDING_FACTORY, approverSupervisor: currentUser.fullName })));
+
+        const targetOvertimes = overtimes.filter(o => o.date === isoDate && o.status === SecurityStatus.PENDING_SUPERVISOR);
+        await Promise.all(targetOvertimes.map(o => updatePersonnelOvertime({ ...o, status: SecurityStatus.PENDING_FACTORY, approverSupervisor: currentUser.fullName })));
         
         loadData();
         alert('گزارش ارسال شد.');
     };
 
     const handleFactoryDailySubmit = async () => {
-         // This logic is handled inside cartable view usually
+         // Handled inside cartable view
     };
     
     const handleDeleteDailyArchive = async (date: string, category: 'log'|'delay') => {
@@ -1020,6 +1546,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                             <div id="printable-area-view" className="bg-white text-black shadow-2xl rounded">
                                 {printTarget.type === 'daily_log' && <PrintSecurityDailyLog date={printTarget.date} logs={printTarget.logs} meta={printTarget.meta} />}
                                 {printTarget.type === 'daily_delay' && <PrintPersonnelDelay delays={printTarget.delays} meta={printTarget.meta} />}
+                                {printTarget.type === 'daily_overtime' && <PrintPersonnelOvertime overtimes={printTarget.overtimes} meta={printTarget.meta} />}
                                 {printTarget.type === 'incident' && <PrintIncidentReport incident={printTarget.incident} />}
                             </div>
                         </ScaledContainer>
@@ -1066,6 +1593,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                         meta={(settings?.dailySecurityMeta || {})[String(viewCartableItem.date)]}
                                     />
                                 )}
+                                {(viewCartableItem.type === 'daily_approval' || viewCartableItem.type === 'daily_archive') && viewCartableItem.category === 'overtime' && (
+                                    <PrintPersonnelOvertime 
+                                        overtimes={overtimes.filter(o => o.date === viewCartableItem.date)} 
+                                        meta={(settings?.dailySecurityMeta || {})[String(viewCartableItem.date)]}
+                                    />
+                                )}
                                 {viewCartableItem.type === 'log' && (
                                     <PrintSecurityDailyLog 
                                         date={viewCartableItem.date} 
@@ -1076,6 +1609,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 {viewCartableItem.type === 'delay' && (
                                     <PrintPersonnelDelay 
                                         delays={delays.filter(d => d.date === viewCartableItem.date)} 
+                                        meta={(settings?.dailySecurityMeta || {})[String(viewCartableItem.date)]}
+                                    />
+                                )}
+                                {viewCartableItem.type === 'overtime' && (
+                                    <PrintPersonnelOvertime 
+                                        overtimes={overtimes.filter(o => o.date === viewCartableItem.date)} 
                                         meta={(settings?.dailySecurityMeta || {})[String(viewCartableItem.date)]}
                                     />
                                 )}
@@ -1129,7 +1668,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             {showModal && (
                 <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-fade-in">
                     <div className="glass-panel rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">{activeTab === 'logs' ? 'ثبت ورود و خروج' : activeTab === 'delays' ? 'ثبت تاخیر پرسنل' : 'ثبت وقایع'}</h3><button onClick={resetForms}><X size={20}/></button></div>
+                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">{activeTab === 'logs' ? 'ثبت ورود و خروج' : activeTab === 'delays' ? 'ثبت تاخیر پرسنل' : activeTab === 'overtimes' ? 'ثبت اضافه کار پرسنل' : 'ثبت وقایع'}</h3><button onClick={resetForms}><X size={20}/></button></div>
                         {activeTab === 'logs' && (
                             <div className="space-y-3" onKeyDown={handleFormKeyDown}>
                                 <div className="grid grid-cols-2 gap-3">
@@ -1137,12 +1676,40 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     <div><label className="text-xs font-bold block mb-1">مقصد</label><input className="w-full border rounded p-2" value={logForm.destination} onChange={e=>setLogForm({...logForm, destination:e.target.value})}/></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-bold block mb-1">ساعت ورود</label><input className="w-full border rounded p-2 text-center" placeholder="00:00" value={logForm.entryTime} onChange={e=>handleTimeChange('entryTime', e.target.value, setLogForm, logForm)} onBlur={e=>handleTimeBlur('entryTime', e.target.value, setLogForm, logForm)}/></div>
-                                    <div><label className="text-xs font-bold block mb-1">ساعت خروج</label><input className="w-full border rounded p-2 text-center" placeholder="00:00" value={logForm.exitTime} onChange={e=>handleTimeChange('exitTime', e.target.value, setLogForm, logForm)} onBlur={e=>handleTimeBlur('exitTime', e.target.value, setLogForm, logForm)}/></div>
+                                    <div><label className="text-xs font-bold block mb-1">ساعت ورود</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={logForm.entryTime || ''} onChange={e=>setLogForm({...logForm, entryTime: e.target.value})}/></div>
+                                    <div><label className="text-xs font-bold block mb-1">ساعت خروج</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={logForm.exitTime || ''} onChange={e=>setLogForm({...logForm, exitTime: e.target.value})}/></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="text-xs font-bold block mb-1">نام راننده</label><input className="w-full border rounded p-2" value={logForm.driverName} onChange={e=>setLogForm({...logForm, driverName:e.target.value})}/></div>
-                                    <div><label className="text-xs font-bold block mb-1">شماره تماس راننده</label><input className="w-full border rounded p-2 font-mono" dir="ltr" value={logForm.driverPhone} onChange={e=>setLogForm({...logForm, driverPhone:e.target.value})} placeholder="09..."/></div>
+                                    <div className="relative">
+                                        <label className="text-xs font-bold block mb-1">نام راننده</label>
+                                        <input 
+                                            className="w-full border rounded p-2 text-sm" 
+                                            value={logForm.driverName || ''} 
+                                            onChange={e => handleDriverNameChange(e.target.value)}
+                                            onFocus={() => {
+                                                if (logForm.driverName && logForm.driverName.trim().length > 0) {
+                                                    const matches = searchSavedDrivers(logForm.driverName);
+                                                    setDriverSuggestions(matches);
+                                                    setShowDriverSuggestions(matches.length > 0);
+                                                }
+                                            }}
+                                        />
+                                        {showDriverSuggestions && driverSuggestions.length > 0 && (
+                                            <div className="absolute z-[120] left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-40 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                                                {driverSuggestions.map((ds, idx) => (
+                                                    <div 
+                                                        key={idx} 
+                                                        onClick={() => handleSelectDriverMemory(ds)}
+                                                        className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-xs flex justify-between items-center"
+                                                    >
+                                                        <span className="font-bold text-gray-800 dark:text-gray-200">{ds.driverName}</span>
+                                                        <span className="text-[10px] text-gray-500 font-mono">{(ds.driverPhone || '') + ' - ' + (ds.plateNumber || '')}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div><label className="text-xs font-bold block mb-1">شماره تماس راننده</label><input className="w-full border rounded p-2 font-mono" dir="ltr" value={logForm.driverPhone || ''} onChange={e=>setLogForm({...logForm, driverPhone:e.target.value})} placeholder="09..."/></div>
                                 </div>
 
                                 {/* --- AUTOMATIC LICENSE PLATE RECOGNITION (ALPR) COMPONENT --- */}
@@ -1461,16 +2028,79 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="col-span-2">
-                                        <label className="text-xs font-bold block mb-1">شماره پلاک خودرو</label>
-                                        <IranianPlateInput value={logForm.plateNumber} onChange={val => setLogForm({...logForm, plateNumber: val})}/>
-                                    </div>
-                                    <div><label className="text-xs font-bold block mb-1">مجوز دهنده</label><input className="w-full border rounded p-2" value={logForm.permitProvider} onChange={e=>setLogForm({...logForm, permitProvider:e.target.value})}/></div>
+                                <div className="bg-gray-50/70 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60 rounded-xl p-3 flex flex-col items-center justify-center shadow-xs">
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">شماره پلاک خودرو</label>
+                                    <IranianPlateInput value={logForm.plateNumber} onChange={val => setLogForm({...logForm, plateNumber: val})}/>
                                 </div>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="col-span-2"><label className="text-xs font-bold block mb-1">نام کالا</label><input className="w-full border rounded p-2" value={logForm.goodsName} onChange={e=>setLogForm({...logForm, goodsName:e.target.value})}/></div>
-                                    <div><label className="text-xs font-bold block mb-1">تعداد</label><input className="w-full border rounded p-2" value={logForm.quantity} onChange={e=>setLogForm({...logForm, quantity:e.target.value})}/></div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">مجوز دهنده</label>
+                                    <input className="w-full border rounded p-2" value={logForm.permitProvider} onChange={e=>setLogForm({...logForm, permitProvider:e.target.value})}/>
+                                </div>
+                                {/* Multi-item Goods Section (ثبت چند آیتمی کالا) */}
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-gray-50/50 dark:bg-gray-800/10 space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300">لیست کالاهای ورودی / خروجی (ثبت چند آیتمی)</label>
+                                        <button 
+                                            type="button" 
+                                            onClick={handleAddGoodsItem}
+                                            className="text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 px-2 py-1 rounded-lg font-bold flex items-center gap-1 transition-all"
+                                        >
+                                            <Plus size={12} />
+                                            <span>افزودن آیتم جدید</span>
+                                        </button>
+                                    </div>
+
+                                    {Array.isArray(logForm.goodsItems) && logForm.goodsItems.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {logForm.goodsItems.map((item, index) => (
+                                                <div key={index} className="flex gap-2 items-center">
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="نام کالا (مثلا: سیمان)" 
+                                                        className="flex-1 text-xs border rounded p-2" 
+                                                        value={item.name || ''} 
+                                                        onChange={e => handleUpdateGoodsItem(index, 'name', e.target.value)} 
+                                                    />
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="تعداد" 
+                                                        className="w-16 text-center text-xs border rounded p-2 font-mono" 
+                                                        value={item.quantity || ''} 
+                                                        onChange={e => handleUpdateGoodsItem(index, 'quantity', e.target.value)} 
+                                                     />
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="واحد" 
+                                                        className="w-14 text-center text-xs border rounded p-2" 
+                                                        value={item.unit || ''} 
+                                                        onChange={e => handleUpdateGoodsItem(index, 'unit', e.target.value)} 
+                                                    />
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => handleRemoveGoodsItem(index)}
+                                                        className="text-red-500 hover:text-red-700 p-1 bg-red-50 dark:bg-red-950/30 rounded border border-red-200/50"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-[11px] text-gray-500 text-center py-2">
+                                            هیچ کالای چندآیتمی ثبت نشده است. می‌توانید با دکمه بالا چند کالا را همزمان اضافه کنید.
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-3 gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                                        <div className="col-span-2">
+                                            <label className="text-[10px] text-gray-500 font-bold block mb-1">خلاصه نام کالاها (پرکننده خودکار)</label>
+                                            <input className="w-full border rounded p-2 text-xs bg-gray-50 dark:bg-gray-800 font-bold" value={logForm.goodsName || ''} onChange={e=>setLogForm({...logForm, goodsName:e.target.value})}/>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-500 font-bold block mb-1">جمع تعداد</label>
+                                            <input className="w-full border rounded p-2 text-xs text-center bg-gray-50 dark:bg-gray-800 font-bold" value={logForm.quantity || ''} onChange={e=>setLogForm({...logForm, quantity:e.target.value})}/>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div><label className="text-xs font-bold block mb-1">تحویل گیرنده</label><input className="w-full border rounded p-2" value={logForm.receiver} onChange={e=>setLogForm({...logForm, receiver:e.target.value})}/></div>
                                 <div><label className="text-xs font-bold block mb-1">توضیحات</label><textarea className="w-full border rounded p-2 h-16" value={logForm.workDescription} onChange={e=>setLogForm({...logForm, workDescription:e.target.value})}/></div>
@@ -1482,14 +2112,113 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 <div><label className="text-xs font-bold block mb-1">نام و نام خانوادگی</label><input className="w-full border rounded p-2" value={delayForm.personnelName} onChange={e=>setDelayForm({...delayForm, personnelName:e.target.value})}/></div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-xs font-bold block mb-1">واحد / بخش</label><input className="w-full border rounded p-2" value={delayForm.unit} onChange={e=>setDelayForm({...delayForm, unit:e.target.value})}/></div>
-                                    <div><label className="text-xs font-bold block mb-1">ساعت ورود</label><input className="w-full border rounded p-2 text-center" placeholder="00:00" value={delayForm.arrivalTime} onChange={e=>handleTimeChange('arrivalTime', e.target.value, setDelayForm, delayForm)} onBlur={e=>handleTimeBlur('arrivalTime', e.target.value, setDelayForm, delayForm)}/></div>
+                                    <div><label className="text-xs font-bold block mb-1">ساعت ورود</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={delayForm.arrivalTime || ''} onChange={e=>setDelayForm({...delayForm, arrivalTime: e.target.value})}/></div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-xs font-bold block mb-1">مدت تاخیر (دقیقه)</label><input className="w-full border rounded p-2 text-center" value={delayForm.delayAmount} onChange={e=>setDelayForm({...delayForm, delayAmount:e.target.value})}/></div>
                                     <div><label className="text-xs font-bold block mb-1">تعداد تکرار در ماه</label><input className="w-full border rounded p-2 text-center" value={delayForm.repeatCount} onChange={e=>setDelayForm({...delayForm, repeatCount:e.target.value})}/></div>
                                 </div>
                                 <div><label className="text-xs font-bold block mb-1">اقدام انجام شده / توضیحات</label><input className="w-full border rounded p-2" value={delayForm.instruction} onChange={e=>setDelayForm({...delayForm, instruction:e.target.value})}/></div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">دستور مدیریت</label>
+                                    <textarea 
+                                        className="w-full border rounded p-2 text-sm" 
+                                        rows={2} 
+                                        placeholder="دستور صادر شده توسط مدیریت..." 
+                                        value={delayForm.managementInstruction || ''} 
+                                        onChange={e => setDelayForm({ ...delayForm, managementInstruction: e.target.value })}
+                                    />
+                                </div>
                                 <button onClick={handleSaveDelay} className="w-full bg-blue-600 text-white py-2 rounded font-bold">ثبت تاخیر</button>
+                            </div>
+                        )}
+                        {activeTab === 'overtimes' && (
+                            <div className="space-y-3" onKeyDown={handleFormKeyDown}>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">نام و نام خانوادگی پرسنل</label>
+                                    <input 
+                                        className="w-full border rounded p-2 text-sm" 
+                                        value={overtimeForm.personnelName || ''} 
+                                        onChange={e => setOvertimeForm({ ...overtimeForm, personnelName: e.target.value })} 
+                                        placeholder="مثال: علی علوی"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">واحد / بخش</label>
+                                        <input 
+                                            className="w-full border rounded p-2 text-sm" 
+                                            value={overtimeForm.unit || ''} 
+                                            onChange={e => setOvertimeForm({ ...overtimeForm, unit: e.target.value })} 
+                                            placeholder="مثال: تولید"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">ساعت شروع اضافه کار</label>
+                                        <input 
+                                            type="time"
+                                            className="w-full border rounded p-2 text-center font-mono text-sm" 
+                                            value={overtimeForm.startTime || ''} 
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                const dur = calculateOvertimeDuration(val, overtimeForm.endTime || '');
+                                                setOvertimeForm(prev => ({ ...prev, startTime: val, duration: dur }));
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">ساعت پایان اضافه کار</label>
+                                        <input 
+                                            type="time"
+                                            className="w-full border rounded p-2 text-center font-mono text-sm" 
+                                            value={overtimeForm.endTime || ''} 
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                const dur = calculateOvertimeDuration(overtimeForm.startTime || '', val);
+                                                setOvertimeForm(prev => ({ ...prev, endTime: val, duration: dur }));
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">مدت اضافه کار (خودکار)</label>
+                                        <input 
+                                            className="w-full border rounded p-2 bg-gray-50 dark:bg-gray-800 text-center font-bold text-blue-600 dark:text-blue-400 text-sm" 
+                                            value={overtimeForm.duration || ''} 
+                                            disabled 
+                                            placeholder="محاسبه خودکار..."
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">علت اضافه کار</label>
+                                    <input 
+                                        className="w-full border rounded p-2 text-sm" 
+                                        value={overtimeForm.reason || ''} 
+                                        onChange={e => setOvertimeForm({ ...overtimeForm, reason: e.target.value })} 
+                                        placeholder="مثال: تکمیل سفارش فوری"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">نام ثبت کننده (نگهبان)</label>
+                                    <input 
+                                        className="w-full border rounded p-2 bg-gray-50 dark:bg-gray-800 text-sm" 
+                                        value={overtimeForm.registrant || 'مقصود محمدی'} 
+                                        onChange={e => setOvertimeForm({ ...overtimeForm, registrant: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">دستور مدیریت</label>
+                                    <textarea 
+                                        className="w-full border rounded p-2 text-sm" 
+                                        rows={2} 
+                                        placeholder="دستور صادر شده توسط مدیریت..." 
+                                        value={overtimeForm.managementInstruction || ''} 
+                                        onChange={e => setOvertimeForm({ ...overtimeForm, managementInstruction: e.target.value })}
+                                    />
+                                </div>
+                                <button onClick={handleSaveOvertime} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold text-sm transition-colors shadow-xs">ثبت فرم اضافه کار</button>
                             </div>
                         )}
                         {activeTab === 'incidents' && (
@@ -1534,6 +2263,9 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                         <button onClick={() => setActiveTab('delays')} className={`px-3.5 py-2 rounded-xl transition-all ${activeTab === 'delays' ? 'bg-blue-600 text-white font-black shadow-md' : 'text-gray-700 dark:text-gray-300 hover:bg-black/5'}`}>
                             <Clock size={14} className="inline ml-1" /> تاخیر پرسنل
                         </button>
+                        <button onClick={() => setActiveTab('overtimes')} className={`px-3.5 py-2 rounded-xl transition-all ${activeTab === 'overtimes' ? 'bg-blue-600 text-white font-black shadow-md' : 'text-gray-700 dark:text-gray-300 hover:bg-black/5'}`}>
+                            <Clock size={14} className="inline ml-1" /> اضافه کار پرسنل
+                        </button>
                         <button onClick={() => setActiveTab('incidents')} className={`px-3.5 py-2 rounded-xl transition-all ${activeTab === 'incidents' ? 'bg-blue-600 text-white font-black shadow-md' : 'text-gray-700 dark:text-gray-300 hover:bg-black/5'}`}>
                             <AlertTriangle size={14} className="inline ml-1" /> وقایع
                         </button>
@@ -1561,7 +2293,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     <Printer size={14}/> چاپ روزانه
                                 </button>
                                 {canEdit(SecurityStatus.PENDING_FACTORY) && (
-                                    <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
+                                    <button onClick={handleOpenNewItemModal} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
                                         <Plus size={14}/> ثبت مورد جدید
                                     </button>
                                 )}
@@ -1709,7 +2441,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     <Printer size={14}/> چاپ فرم تاخیر
                                 </button>
                                 {canEdit(SecurityStatus.PENDING_FACTORY) && (
-                                    <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
+                                    <button onClick={handleOpenNewItemModal} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
                                         <Plus size={14}/> ثبت تاخیر
                                     </button>
                                 )}
@@ -1793,11 +2525,111 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                      </>
                 )}
 
+                {activeTab === 'overtimes' && (
+                     <>
+                        <div className="p-3 sm:p-4 border-b border-gray-100 dark:border-gray-800 flex flex-wrap sm:flex-nowrap justify-between items-center bg-gray-50/80 dark:bg-gray-800/40 gap-2">
+                            <h2 className="font-black text-sm sm:text-base text-gray-800 dark:text-gray-200">لیست اضافه کار پرسنل</h2>
+                            <div className="flex gap-2 w-full sm:w-auto justify-end">
+                                <button onClick={() => { setPrintTarget({ type: 'daily_overtime', date: getIsoSelectedDate(), overtimes: displayOvertimes, meta: metaForm }); setShowPrintModal(true); }} className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-gray-100 shadow-xs">
+                                    <Printer size={14}/> چاپ فرم اضافه کار
+                                </button>
+                                {canEdit(SecurityStatus.PENDING_FACTORY) && (
+                                    <button onClick={handleOpenNewItemModal} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
+                                        <Plus size={14}/> ثبت اضافه کار
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Desktop Table */}
+                        <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full text-xs text-center">
+                                <thead className="bg-gray-100/70 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 font-black">
+                                    <tr>
+                                        <th className="p-3 border-b">نام پرسنل</th>
+                                        <th className="p-3 border-b">واحد</th>
+                                        <th className="p-3 border-b">ساعت شروع</th>
+                                        <th className="p-3 border-b">ساعت پایان</th>
+                                        <th className="p-3 border-b">مدت اضافه کار</th>
+                                        <th className="p-3 border-b">علت اضافه کار</th>
+                                        <th className="p-3 border-b">وضعیت</th>
+                                        <th className="p-3 border-b">عملیات</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                    {displayOvertimes.length === 0 ? (
+                                        <tr><td colSpan={8} className="p-8 text-gray-400">موردی ثبت نشده است.</td></tr>
+                                    ) : displayOvertimes.map(o => (
+                                        <tr key={o.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                                            <td className="p-3 font-bold">{o.personnelName}</td>
+                                            <td className="p-3">{o.unit}</td>
+                                            <td className="p-3 font-mono">{o.startTime}</td>
+                                            <td className="p-3 font-mono">{o.endTime}</td>
+                                            <td className="p-3 font-bold text-blue-600">{o.duration}</td>
+                                            <td className="p-3 text-gray-500">{o.reason}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${o.status === SecurityStatus.ARCHIVED ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{o.status}</span>
+                                            </td>
+                                            <td className="p-3 flex justify-center gap-1">
+                                                {canEdit(o.status) && <button onClick={(e) => handleJumpToEdit(e, 'overtime', o)} className="text-amber-500 hover:bg-amber-50 p-1 rounded"><Edit size={14}/></button>}
+                                                {canDelete() && <button onClick={() => handleDeleteItem(o.id, 'overtime')} className="text-red-400 hover:bg-red-50 p-1 rounded"><Trash2 size={14}/></button>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Mobile Cards View */}
+                        <div className="divide-y divide-gray-100 dark:divide-gray-800 md:hidden">
+                            {displayOvertimes.length === 0 ? (
+                                <div className="p-8 text-center text-gray-400 text-xs">موردی ثبت نشده است.</div>
+                            ) : displayOvertimes.map(o => (
+                                <div key={o.id} className="p-3.5 space-y-2 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <span className="font-black text-sm text-gray-900 dark:text-gray-100">{o.personnelName}</span>
+                                            <span className="text-xs text-gray-500 mr-2">({o.unit || 'نامشخص'})</span>
+                                        </div>
+                                        <span className="text-xs font-black text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+                                            مدت: {o.duration}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 font-mono">
+                                        <span>شروع: <strong className="text-gray-800 dark:text-gray-200">{o.startTime || '--:--'}</strong></span>
+                                        <span>پایان: <strong className="text-gray-800 dark:text-gray-200">{o.endTime || '--:--'}</strong></span>
+                                    </div>
+                                    {o.reason && (
+                                        <div className="text-xs text-gray-500 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                                            علت: {o.reason}
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center pt-1">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${o.status === SecurityStatus.ARCHIVED ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{o.status}</span>
+                                        <div className="flex justify-end gap-2">
+                                            {canEdit(o.status) && (
+                                                <button onClick={(e) => handleJumpToEdit(e, 'overtime', o)} className="text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-1.5 rounded-lg flex items-center gap-1 text-[11px] font-bold">
+                                                    <Edit size={14}/> ویرایش
+                                                </button>
+                                            )}
+                                            {canDelete() && (
+                                                <button onClick={() => handleDeleteItem(o.id, 'overtime')} className="text-red-500 bg-red-50 dark:bg-red-950/30 p-1.5 rounded-lg flex items-center gap-1 text-[11px] font-bold">
+                                                    <Trash2 size={14}/> حذف
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                     </>
+                )}
+
                 {activeTab === 'incidents' && (
                     <>
                         <div className="p-3 sm:p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-gray-800/40">
                             <h2 className="font-black text-sm sm:text-base text-gray-800 dark:text-gray-200">لیست وقایع و گزارشات</h2>
-                            <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
+                            <button onClick={handleOpenNewItemModal} className="bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 shadow-xs">
                                 <Plus size={14}/> ثبت واقعه جدید
                             </button>
                         </div>

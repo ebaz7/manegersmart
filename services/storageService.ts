@@ -1,5 +1,5 @@
 
-import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, PersonnelDelay, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem } from '../types';
+import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, PersonnelDelay, PersonnelOvertime, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem } from '../types';
 import { apiCall, getLocalData, LS_KEYS } from './apiService';
 
 // Safely return array
@@ -322,6 +322,10 @@ export const getPersonnelDelays = async (): Promise<PersonnelDelay[]> => { const
 export const savePersonnelDelay = async (delay: PersonnelDelay): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>('/security/delays', 'POST', delay); };
 export const updatePersonnelDelay = async (delay: PersonnelDelay): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>(`/security/delays/${delay.id}`, 'PUT', delay); };
 export const deletePersonnelDelay = async (id: string): Promise<PersonnelDelay[]> => { return await apiCall<PersonnelDelay[]>(`/security/delays/${id}`, 'DELETE'); };
+export const getPersonnelOvertimes = async (): Promise<PersonnelOvertime[]> => { const res = await apiCall<PersonnelOvertime[]>('/security/overtimes'); return safeArray(res); };
+export const savePersonnelOvertime = async (overtime: PersonnelOvertime): Promise<PersonnelOvertime[]> => { return await apiCall<PersonnelOvertime[]>('/security/overtimes', 'POST', overtime); };
+export const updatePersonnelOvertime = async (overtime: PersonnelOvertime): Promise<PersonnelOvertime[]> => { return await apiCall<PersonnelOvertime[]>(`/security/overtimes/${overtime.id}`, 'PUT', overtime); };
+export const deletePersonnelOvertime = async (id: string): Promise<PersonnelOvertime[]> => { return await apiCall<PersonnelOvertime[]>(`/security/overtimes/${id}`, 'DELETE'); };
 export const getSecurityIncidents = async (): Promise<SecurityIncident[]> => { const res = await apiCall<SecurityIncident[]>('/security/incidents'); return safeArray(res); };
 export const saveSecurityIncident = async (incident: SecurityIncident): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>('/security/incidents', 'POST', incident); };
 export const updateSecurityIncident = async (incident: SecurityIncident): Promise<SecurityIncident[]> => { return await apiCall<SecurityIncident[]>(`/security/incidents/${incident.id}`, 'PUT', incident); };

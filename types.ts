@@ -230,6 +230,7 @@ export interface DailySecurityMeta {
     morningGuard?: { name: string; entry: string; exit: string };
     eveningGuard?: { name: string; entry: string; exit: string };
     nightGuard?: { name: string; entry: string; exit: string };
+    isSupervisorDailyApproved?: boolean;
     isFactoryDailyApproved?: boolean;
     isCeoDailyApproved?: boolean;
 }
@@ -714,6 +715,12 @@ export enum SecurityStatus {
     REJECTED = 'رد شده'
 }
 
+export interface SecurityGoodsItem {
+    name: string;
+    quantity: string;
+    unit?: string;
+}
+
 export interface SecurityLog {
     id: string;
     rowNumber: number;
@@ -727,6 +734,7 @@ export interface SecurityLog {
     plateNumber: string;
     goodsName: string;
     quantity: string;
+    goodsItems?: SecurityGoodsItem[];
     destination: string;
     receiver: string;
     workDescription: string;
@@ -738,6 +746,7 @@ export interface SecurityLog {
     approverFactory?: string;
     approverCeo?: string;
     attachment?: string;
+    rejectionReason?: string;
 }
 
 export interface PersonnelDelay {
@@ -749,12 +758,33 @@ export interface PersonnelDelay {
     delayAmount: string;
     repeatCount: string;
     instruction: string;
+    managementInstruction?: string;
     registrant: string;
     status: SecurityStatus;
     createdAt: number;
     approverSupervisor?: string;
     approverFactory?: string;
     approverCeo?: string;
+    rejectionReason?: string;
+}
+
+export interface PersonnelOvertime {
+    id: string;
+    date: string;
+    personnelName: string;
+    unit: string;
+    startTime: string;
+    endTime: string;
+    duration: string;
+    reason?: string;
+    registrant: string;
+    status: SecurityStatus;
+    createdAt: number;
+    approverSupervisor?: string;
+    approverFactory?: string;
+    approverCeo?: string;
+    managementInstruction?: string;
+    rejectionReason?: string;
 }
 
 export interface SecurityIncident {

@@ -3941,10 +3941,11 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
                                 return (
                                     <>
-                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                            <div className="lg:col-span-1 glass-panel p-6 rounded-xl shadow-sm border h-fit">
+                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                            {/* Cost Statement Card */}
+                                            <div className="lg:col-span-4 glass-panel p-6 rounded-2xl shadow-sm border h-fit">
                                                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Calculator size={20} className="text-rose-600"/> صورت کلی هزینه‌ها</h3>
-                                                <div className="overflow-hidden rounded-lg border">
+                                                <div className="overflow-hidden rounded-xl border">
                                                     <table className="w-full text-sm text-right">
                                                         <thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">شرح هزینه</th><th className="p-3">مبلغ ریالی</th></tr></thead>
                                                         <tbody className="divide-y divide-gray-100">
@@ -3967,7 +3968,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                     </table>
                                                 </div>
                                                 
-                                                <div className="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                                <div className="mt-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                                                     <div className="flex justify-between items-center mb-2">
                                                         <span className="text-xs font-bold text-gray-600">مبلغ کل پروفرما (کالا + حمل):</span>
                                                         <span className="text-sm font-bold text-blue-700 dir-ltr font-mono">{formatNumberString(totalProformaCurrency)} {selectedRecord.mainCurrency}</span>
@@ -3988,9 +3989,58 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                 </div>
                                             </div>
                                             
-                                            <div className="lg:col-span-1 glass-panel p-6 rounded-xl shadow-sm border h-fit"><h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><ShieldCheck size={20} className="text-blue-600"/> لیست چک‌های ضمانت</h3><div className="overflow-x-auto"><table className="w-full text-sm text-right"><thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">نوع</th><th className="p-3">شماره / بانک</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">وضعیت</th><th className="p-3">عملیات</th></tr></thead><tbody>{getAllGuarantees().map((g, i) => (<tr key={i} className="border-b hover:bg-gray-50"><td className="p-3">{g.type}</td><td className="p-3">{g.number}<br/><span className="text-xs text-gray-500">{g.bank}</span></td><td className="p-3 font-mono">{formatCurrency(g.amount)}</td><td className="p-3"><button type="button" onClick={g.toggleFunc} className={`text-xs px-2 py-1 rounded font-bold ${g.isDelivered ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{g.isDelivered ? 'عودت شد' : 'نزد سازمان'}</button></td><td className="p-3"></td></tr>))}</tbody></table></div></div>
+                                            {/* Guarantees List Card - Roomy 5-column space */}
+                                            <div className="lg:col-span-5 glass-panel p-6 rounded-2xl shadow-sm border h-fit">
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                                        <ShieldCheck size={20} className="text-blue-600"/> چک‌ها و ضمانت‌های تعهد ارزی و گمرکی
+                                                    </h3>
+                                                    <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-lg">
+                                                        {getAllGuarantees().length} مورد
+                                                    </span>
+                                                </div>
+                                                {getAllGuarantees().length === 0 ? (
+                                                    <div className="text-center py-8 text-gray-400 text-xs">
+                                                        هیچ چک یا ضمانت‌نامه‌ای برای این پرونده ثبت نشده است.
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {getAllGuarantees().map((g, i) => (
+                                                            <div key={i} className="p-3.5 bg-gray-50/80 hover:bg-white rounded-xl border border-gray-200/80 hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                                <div className="space-y-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${g.type === 'ارزی' ? 'bg-purple-100 text-purple-700' : 'bg-cyan-100 text-cyan-700'}`}>
+                                                                            {g.type}
+                                                                        </span>
+                                                                        <span className="text-xs font-bold text-gray-800 font-mono">
+                                                                            {g.number}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="text-[11px] text-gray-500 flex items-center gap-2">
+                                                                        <span>بانک: <strong className="text-gray-700 font-medium">{g.bank}</strong></span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200/60">
+                                                                    <div className="text-left">
+                                                                        <div className="text-xs font-bold text-gray-900 font-mono dir-ltr">{formatCurrency(g.amount)}</div>
+                                                                        <div className="text-[9px] text-gray-400">ریال</div>
+                                                                    </div>
+                                                                    <button 
+                                                                        type="button" 
+                                                                        onClick={g.toggleFunc} 
+                                                                        className={`text-xs px-2.5 py-1.5 rounded-lg font-bold transition-all shrink-0 ${g.isDelivered ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
+                                                                    >
+                                                                        {g.isDelivered ? '✓ عودت شد' : '⏳ نزد سازمان'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
 
-                                            <div className="lg:col-span-1 glass-panel bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-xl shadow-lg border-0 h-fit">
+                                            {/* Final Summary Card */}
+                                            <div className="lg:col-span-3 glass-panel bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl shadow-lg border-0 h-fit">
                                                 <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2"><PieChart size={20} className="text-emerald-400"/> خلاصه نهایی پرونده</h3>
                                                 <div className="space-y-6">
                                                     <div>
@@ -4222,7 +4272,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
             {/* Dashboard Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {navLevel !== 'GROUP' ? (
+                {searchTerm.trim() === '' && navLevel !== 'GROUP' ? (
                     groupedData.map((item: any) => (
                         <div key={item.name} onClick={() => item.type === 'company' ? goCompany(item.name) : goGroup(item.name)} className="glass-panel p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-2 h-full bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -4239,7 +4289,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 ) : (
                     safeRecords
                         .filter(r => {
-                            const matchSearch = searchTerm.trim() === '' || 
+                            const isSearching = searchTerm.trim() !== '';
+                            const matchSearch = !isSearching || 
                                 r.goodsName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                                 r.fileNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
                                 (r.proformaNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -4248,10 +4299,17 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                 (r.registrationNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                 r.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
+                            if (!matchSearch) return false;
+
+                            // When searching: show matching records across all groups/companies, including archived
+                            if (isSearching) {
+                                return true;
+                            }
+
+                            // When not searching: respect standard drill-down navigation and archived toggle
                             return (showArchived ? r.isArchived : !r.isArchived) && 
                                    ((r.company || 'بدون شرکت') === selectedCompany) && 
-                                   ((r.commodityGroup || 'سایر') === selectedGroup) && 
-                                   matchSearch;
+                                   ((r.commodityGroup || 'سایر') === selectedGroup);
                         })
                         .map(record => (
                             <div key={record.id} onClick={() => { setSelectedRecord(record); setViewMode('details'); setActiveTab('timeline'); }} className="glass-panel p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4 border-l-transparent hover:border-l-blue-500 relative">
@@ -4266,7 +4324,16 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
                                 <div className="flex justify-between items-start mb-3">
                                     <h3 className="font-bold text-gray-800 line-clamp-1 pr-8" title={record.goodsName}>{record.goodsName}</h3>
-                                    <span className={`text-[10px] px-2 py-1 rounded-lg ${record.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-700'}`}>{record.status === 'Completed' ? 'تکمیل شده' : 'جاری'}</span>
+                                    <div className="flex items-center gap-1">
+                                        {record.isArchived && (
+                                            <span className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-300 font-bold flex items-center gap-1">
+                                                <Archive size={10} /> بایگانی
+                                            </span>
+                                        )}
+                                        <span className={`text-[10px] px-2 py-1 rounded-lg ${record.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
+                                            {record.status === 'Completed' ? 'تکمیل شده' : 'جاری'}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="space-y-1.5 text-xs text-gray-500">
                                     <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">شماره پرونده:</span> <span className="font-mono text-gray-700 dark:text-gray-200 font-bold">{record.fileNumber || '---'}</span></div>
@@ -4274,6 +4341,11 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     {record.orderNumber && <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">سفارش:</span> <span className="font-mono text-gray-700 dark:text-gray-300 font-semibold">{record.orderNumber}</span></div>}
                                     <div className="flex items-center gap-1"><Building2 size={12} /> فروشنده: <span className="text-gray-700 dark:text-gray-300">{record.sellerName}</span></div>
                                     <div className="flex items-center gap-1"><History size={12} /> شروع: <span>{new Date(record.startDate).toLocaleDateString('fa-IR')}</span></div>
+                                    {searchTerm.trim() !== '' && (
+                                        <div className="text-[10px] text-blue-600 bg-blue-50/60 p-1 rounded-md mt-1">
+                                            <span>{record.company || 'بدون شرکت'}</span> • <span>گروه {record.commodityGroup || 'سایر'}</span>
+                                        </div>
+                                    )}
                                 </div>
                                 {record.transferredFrom && (
                                     <div className="mt-3 pt-2.5 border-t border-amber-200/80 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50/90 dark:bg-amber-950/40 p-2 rounded-xl flex items-center gap-1.5 font-medium">

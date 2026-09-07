@@ -312,23 +312,27 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             updatedAt: Date.now()
         };
 
-        // Instant optimistic update
+        // 1. Instant optimistic update
         setPermits(prev => prev.map(item => item.id === p.id ? { ...item, ...updatedPermit } : item));
         if (viewPermit?.id === p.id) {
             setViewPermit(null);
         }
 
-        try {
-            await updateExitPermitStatus(p.id, prevStatus, currentUser, {
+        // 2. Enqueue via persistent queue (resilient to weak connection)
+        exitPermitQueueService.enqueueApproval({
+            permitId: p.id,
+            permitNumber: p.permitNumber,
+            targetStatus: prevStatus,
+            prevStatus: p.status,
+            approverUser: currentUser,
+            actionType: 'REJECT',
+            extra: {
                 rejectionReason: reason.trim(),
                 isBackwardReject: true
-            });
-            loadData();
-        } catch (e) {
-            console.error('Rejection failed', e);
-            alert('خطا در ثبت رد حواله خروج');
-            loadData();
-        }
+            },
+            permitSnapshot: updatedPermit,
+            settings: settings
+        });
     };
 
     const handleCancel = async (p: ExitPermit) => {
@@ -351,20 +355,24 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             updatedAt: Date.now()
         };
 
-        const prevPermits = [...permits];
         // 1. Instant Optimistic Update
-        setPermits(prev => prev.map(item => item.id === p.id ? updatedPermit : item));
+        setPermits(prev => prev.map(item => item.id === p.id ? { ...item, ...updatedPermit } : item));
         if (viewPermit?.id === p.id) {
             setViewPermit(null);
         }
         
-        // 2. Background task
-        try {
-            await updateExitPermitStatus(p.id, nextStatus, currentUser, { rejectionReason: reason.trim() });
-        } catch (e) {
-            setPermits(prevPermits);
-            alert('خطا در انجام کنسلی برگه خروج');
-        }
+        // 2. Persistent queue
+        exitPermitQueueService.enqueueApproval({
+            permitId: p.id,
+            permitNumber: p.permitNumber,
+            targetStatus: nextStatus,
+            prevStatus: p.status,
+            approverUser: currentUser,
+            actionType: 'CANCEL',
+            extra: { rejectionReason: reason.trim() },
+            permitSnapshot: updatedPermit,
+            settings: settings
+        });
     };
 
     const handleSecuritySubmit = async (data: { driverName: string; driverPhone: string; plateNumber: string; exitTime: string; attachments: {fileName: string, data: string}[] }) => {
@@ -385,14 +393,19 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         };
 
         // 1. Optimistic instant state update
-        setPermits(prev => prev.map(p => p.id === currentPermit.id ? updatedPermit : p));
+        setPermits(prev => prev.map(p => p.id === currentPermit.id ? { ...p, ...updatedPermit } : p));
 
-        try {
-            await editExitPermit(updatedPermit); 
-        } catch (e) {
-            alert('خطا در ثبت مشخصات انتظامات');
-            loadData();
-        }
+        // 2. Persistent queue
+        exitPermitQueueService.enqueueApproval({
+            permitId: currentPermit.id,
+            permitNumber: currentPermit.permitNumber,
+            targetStatus: nextStatus,
+            prevStatus: currentPermit.status,
+            approverUser: currentUser,
+            actionType: 'EDIT_PERMIT',
+            permitSnapshot: updatedPermit,
+            settings: settings
+        });
     };
 
     const handleWarehouseSubmit = async (finalItems: any[], sayanRemittanceData?: any, attachmentDataUrl?: string, sayanRemittanceDocs?: any[]) => {
@@ -427,14 +440,19 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         };
         
         // 1. Optimistic instant state update
-        setPermits(prev => prev.map(p => p.id === currentPermit.id ? updated : p));
+        setPermits(prev => prev.map(p => p.id === currentPermit.id ? { ...p, ...updated } : p));
 
-        try {
-            await editExitPermit(updated); 
-        } catch(e) { 
-            alert('خطا در ثبت انبار'); 
-            loadData();
-        }
+        // 2. Persistent queue
+        exitPermitQueueService.enqueueApproval({
+            permitId: currentPermit.id,
+            permitNumber: currentPermit.permitNumber,
+            targetStatus: ExitPermitStatus.PENDING_SECURITY,
+            prevStatus: currentPermit.status,
+            approverUser: currentUser,
+            actionType: 'EDIT_PERMIT',
+            permitSnapshot: updated,
+            settings: settings
+        });
     };
 
     const handleDelete = async (id: string) => {

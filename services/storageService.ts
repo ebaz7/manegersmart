@@ -544,20 +544,92 @@ export const getNextBijakNumber = async (company?: string): Promise<number> => {
 
 // --- MEETINGS ---
 export const getMeetings = async (): Promise<MeetingMinutes[]> => {
-    const res = await apiCall<MeetingMinutes[]>('/meetings');
-    return safeArray(res);
+    try {
+        const res = await apiCall<MeetingMinutes[]>('/meetings');
+        const safeRes = safeArray<MeetingMinutes>(res);
+        if (safeRes.length > 0) {
+            try { localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(safeRes)); } catch {}
+        }
+        return safeRes;
+    } catch (e) {
+        const cached = getLocalData<MeetingMinutes[]>(LS_KEYS.MEETINGS, []);
+        return safeArray<MeetingMinutes>(cached);
+    }
 };
 
 export const saveMeeting = async (meeting: MeetingMinutes): Promise<MeetingMinutes[]> => {
-    return await apiCall<MeetingMinutes[]>('/meetings', 'POST', meeting);
+    try {
+        const cached = getLocalData<MeetingMinutes[]>(LS_KEYS.MEETINGS, []);
+        if (Array.isArray(cached)) {
+            const updated = [meeting, ...cached.filter((m: MeetingMinutes) => m.id !== meeting.id)];
+            localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(updated));
+        }
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('MEETING_OPTIMISTIC_APPLY', {
+            detail: { meetingId: meeting.id, meeting, isNew: true }
+        }));
+    }
+
+    const res = await apiCall<MeetingMinutes[]>('/meetings', 'POST', meeting);
+    const safeRes = safeArray<MeetingMinutes>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('MEETING_BACKGROUND_SYNCED', {
+            detail: { allMeetings: safeRes, meeting: safeRes.find(m => m.id === meeting.id) }
+        }));
+    }
+    return safeRes;
 };
 
 export const updateMeeting = async (meeting: MeetingMinutes): Promise<MeetingMinutes[]> => {
-    return await apiCall<MeetingMinutes[]>(`/meetings/${meeting.id}`, 'PUT', meeting);
+    try {
+        const cached = getLocalData<MeetingMinutes[]>(LS_KEYS.MEETINGS, []);
+        if (Array.isArray(cached)) {
+            const updated = cached.map((m: MeetingMinutes) => m.id === meeting.id ? { ...m, ...meeting } : m);
+            localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(updated));
+        }
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('MEETING_OPTIMISTIC_APPLY', {
+            detail: { meetingId: meeting.id, meeting, isUpdate: true }
+        }));
+    }
+
+    const res = await apiCall<MeetingMinutes[]>(`/meetings/${meeting.id}`, 'PUT', meeting);
+    const safeRes = safeArray<MeetingMinutes>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('MEETING_BACKGROUND_SYNCED', {
+            detail: { allMeetings: safeRes, meeting: safeRes.find(m => m.id === meeting.id) }
+        }));
+    }
+    return safeRes;
 };
 
 export const deleteMeeting = async (id: string): Promise<MeetingMinutes[]> => {
-    return await apiCall<MeetingMinutes[]>(`/meetings/${id}`, 'DELETE');
+    try {
+        const cached = getLocalData<MeetingMinutes[]>(LS_KEYS.MEETINGS, []);
+        if (Array.isArray(cached)) {
+            const updated = cached.filter((m: MeetingMinutes) => m.id !== id);
+            localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(updated));
+        }
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('MEETING_OPTIMISTIC_APPLY', {
+            detail: { meetingId: id, isDeleted: true }
+        }));
+    }
+
+    const res = await apiCall<MeetingMinutes[]>(`/meetings/${id}`, 'DELETE');
+    const safeRes = safeArray<MeetingMinutes>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('MEETING_BACKGROUND_SYNCED', {
+            detail: { allMeetings: safeRes }
+        }));
+    }
+    return safeRes;
 };
 
 export const getNextMeetingNumber = async (): Promise<string> => {

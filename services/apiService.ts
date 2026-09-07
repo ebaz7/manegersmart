@@ -78,6 +78,7 @@ export const LS_KEYS = {
     WH_TX: 'app_data_wh_tx',
     NOTES: 'app_data_notes',
     EXIT_PERMITS: 'app_data_exit_permits',
+    MEETINGS: 'app_data_meetings',
     PURCHASE_REQS: 'app_data_purchase_reqs',
     ANNOUNCEMENTS: 'app_data_announcements',
     TASK_GROUPS: 'app_data_task_groups'
@@ -201,6 +202,7 @@ export const apiCall = async <T>(
                         else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(data));
                         else if (endpoint === '/notes') localStorage.setItem(LS_KEYS.NOTES, JSON.stringify(data));
                         else if (endpoint === '/exit-permits') localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(data));
+                        else if (endpoint === '/meetings') localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(data));
                         else if (endpoint === '/purchase-requests') localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(data));
                         else if (endpoint === '/announcements') localStorage.setItem(LS_KEYS.ANNOUNCEMENTS, JSON.stringify(data));
                         else if (endpoint === '/groups') localStorage.setItem(LS_KEYS.GROUPS, JSON.stringify(data));
@@ -280,6 +282,7 @@ export const apiCall = async <T>(
         if (endpoint === '/users') return getLocalData<any>(LS_KEYS.USERS, MOCK_USERS);
         if (endpoint === '/notes') return getLocalData<any>(LS_KEYS.NOTES, []);
         if (endpoint === '/exit-permits') return getLocalData<any>(LS_KEYS.EXIT_PERMITS, []);
+        if (endpoint === '/meetings') return getLocalData<any>(LS_KEYS.MEETINGS, []);
         if (endpoint === '/purchase-requests') return getLocalData<any>(LS_KEYS.PURCHASE_REQS, []);
         if (endpoint === '/announcements') return getLocalData<any>(LS_KEYS.ANNOUNCEMENTS, []);
         if (endpoint === '/groups') return getLocalData<any>(LS_KEYS.GROUPS, []);

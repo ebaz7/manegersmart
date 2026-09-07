@@ -11,6 +11,7 @@ import { getUsers } from '../services/authService';
 import { downloadAndOpenFile } from '../services/fileService';
 import { FileViewerModal } from './FileViewerModal';
 import { openSendToChat } from '../services/chatShareService';
+import { meetingQueueService } from '../services/meetingQueueService';
 
 interface Props {
     currentUser: User;
@@ -32,6 +33,7 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
     const [activeAttendeeIndex, setActiveAttendeeIndex] = useState<number | null>(null);
     const [isSendingAction, setIsSendingAction] = useState(false);
     const [isRefreshingNumber, setIsRefreshingNumber] = useState(false);
+    const [processingMeetingId, setProcessingMeetingId] = useState<string | null>(null);
     
     const [meetingForm, setMeetingForm] = useState<Partial<MeetingMinutes>>({
         date: '',
@@ -88,6 +90,40 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
 
     useEffect(() => {
         loadData();
+
+        const handleOptimisticApply = (e: any) => {
+            if (e.detail?.meeting) {
+                const updated = e.detail.meeting;
+                setMeetings(prev => {
+                    const idx = prev.findIndex(m => m.id === updated.id);
+                    if (idx > -1) {
+                        return prev.map(m => m.id === updated.id ? { ...m, ...updated } : m);
+                    }
+                    return [updated, ...prev];
+                });
+                setViewMeeting(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+            } else if (e.detail?.isDeleted && e.detail?.meetingId) {
+                setMeetings(prev => prev.filter(m => m.id !== e.detail.meetingId));
+                setViewMeeting(prev => prev?.id === e.detail.meetingId ? null : prev);
+            }
+        };
+
+        const handleBackgroundSynced = (e: any) => {
+            if (e.detail?.allMeetings && Array.isArray(e.detail.allMeetings)) {
+                setMeetings(e.detail.allMeetings);
+                if (e.detail.meeting) {
+                    setViewMeeting(prev => prev?.id === e.detail.meeting.id ? { ...prev, ...e.detail.meeting } : prev);
+                }
+            }
+        };
+
+        window.addEventListener('MEETING_OPTIMISTIC_APPLY', handleOptimisticApply);
+        window.addEventListener('MEETING_BACKGROUND_SYNCED', handleBackgroundSynced);
+
+        return () => {
+            window.removeEventListener('MEETING_OPTIMISTIC_APPLY', handleOptimisticApply);
+            window.removeEventListener('MEETING_BACKGROUND_SYNCED', handleBackgroundSynced);
+        };
     }, []);
 
     const handleRefreshNumber = async () => {
@@ -353,46 +389,44 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
 
     const handleCeoFinalApprove = async (meeting: MeetingMinutes) => {
         if (!window.confirm('آیا از تایید نهایی و بایگانی این صورتجلسه اطمینان دارید؟')) return;
+        setProcessingMeetingId(meeting.id);
         try {
-            const updated = {
+            const updated: MeetingMinutes = {
                 ...meeting,
                 status: MeetingStatus.APPROVED,
                 updatedAt: Date.now()
             };
-            await updateMeeting(updated);
-            try {
-                await sendMeetingMinutes(updated.id);
-            } catch (err) {
-                console.warn('sendMeetingMinutes failed, continuing...', err);
-            }
             
-            // Send system notification to all attendees
-            for (const attendee of updated.attendees) {
-                if (attendee.username) {
-                    await apiCall('/notifications/add', 'POST', {
+            // 1. Optimistic UI update immediately
+            setViewMeeting(updated);
+            setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
+
+            // 2. Queue for persistent background delivery
+            meetingQueueService.enqueueMeetingUpdate({
+                meeting: updated,
+                actionType: 'APPROVE_CEO',
+                user: currentUser
+            });
+
+            // 3. Fire-and-forget background side effects safely
+            Promise.allSettled([
+                sendMeetingMinutes(updated.id).catch(e => console.warn('sendMeetingMinutes notice:', e)),
+                ...updated.attendees.filter(a => a.username).map(attendee => 
+                    apiCall('/notifications/add', 'POST', {
                         username: attendee.username,
                         title: `تایید نهایی صورتجلسه ${updated.meetingNumber}`,
                         body: `مدیرعامل صورتجلسه شماره ${updated.meetingNumber} را تایید نهایی و بایگانی کرد.`,
                         url: 'meetings'
-                    });
-                    await sendMessage({
-                        id: generateUUID(),
-                        sender: 'system',
-                        senderUsername: 'system',
-                        role: 'system',
-                        message: `✅ تایید نهایی صورتجلسه ${updated.meetingNumber}\n\nباسلام، صورتجلسه شماره ${updated.meetingNumber} توسط مدیرعامل تایید نهایی و بایگانی گردید.\n\nجهت مشاهده به کارتابل صورتجلسات مراجعه فرمایید.`,
-                        recipient: attendee.username,
-                        timestamp: Date.now()
-                    });
-                }
-            }
+                    }).catch(() => {})
+                )
+            ]).catch(err => console.warn('Background notifications notice:', err));
             
-            setViewMeeting(updated);
-            loadData();
-            alert('صورتجلسه با موفقیت تایید نهایی و بایگانی شد.');
+            alert('✅ صورتجلسه با موفقیت تایید نهایی و بایگانی شد.');
         } catch (error) {
             console.error("CEO Approval failed", error);
             alert('خطا در تایید نهایی صورتجلسه');
+        } finally {
+            setProcessingMeetingId(null);
         }
     };
 
@@ -491,8 +525,9 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
     };
 
     const handleFactoryManagerApprove = async (meeting: MeetingMinutes) => {
-        if (!window.confirm('آیا از تایید این صورتجلسه به عنوان مدیر کارخانه اطمینان دارید؟\n\nبا تایید شما، فایل خروجی صورتجلسه به صورت اتوماتیک به گروه تولید ارسال شده و جهت بایگانی به کارتابل مدیرعامل منتقل می‌شود.')) return;
+        if (!window.confirm('آیا از تایید این صورتجلسه به عنوان مدیر کارخانه اطمینان دارید؟\n\nبا تایید شما، صورتجلسه تایید شده، فایل خروجی به صورت اتوماتیک ارسال و جهت بایگانی نهایی به کارتابل مدیرعامل منتقل می‌شود.')) return;
 
+        setProcessingMeetingId(meeting.id);
         try {
             const approvalKey = currentUser.username || currentUser.fullName;
             const updated: MeetingMinutes = {
@@ -505,27 +540,31 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                 updatedAt: Date.now()
             };
 
-            // 1. Save updated meeting status
-            await updateMeeting(updated);
+            // 1. Optimistic UI update immediately
+            setViewMeeting(updated);
+            setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
 
-            // 2. AUTOMATICALLY send minutes (PDF) to production group
-            try {
-                await sendMeetingMinutes(updated.id);
-            } catch (err) {
-                console.error('Error sending meeting minutes to production group:', err);
-            }
+            // 2. Queue for persistent background delivery
+            meetingQueueService.enqueueMeetingUpdate({
+                meeting: updated,
+                actionType: 'APPROVE_FACTORY',
+                user: currentUser
+            });
 
-            // 3. Send to CEO kartable & notify CEO users
+            // 3. Fire-and-forget background side effects safely without blocking UI
             const ceoUsers = users.filter(u => u.role === UserRole.CEO || u.role === 'ceo' || u.role === UserRole.ADMIN);
-            for (const ceo of ceoUsers) {
-                try {
-                    await apiCall('/notifications/add', 'POST', {
+            Promise.allSettled([
+                sendMeetingMinutes(updated.id).catch(e => console.warn('sendMeetingMinutes notice:', e)),
+                ...ceoUsers.map(ceo => 
+                    apiCall('/notifications/add', 'POST', {
                         username: ceo.username,
                         title: `درخواست بایگانی صورتجلسه ${updated.meetingNumber}`,
                         body: `صورتجلسه شماره ${updated.meetingNumber} توسط مدیر کارخانه تایید شد. این صورتجلسه هم‌اکنون منتظر تایید نهایی و بایگانی توسط شماست.`,
                         url: 'meetings'
-                    });
-                    await sendMessage({
+                    }).catch(() => {})
+                ),
+                ...ceoUsers.map(ceo =>
+                    sendMessage({
                         id: generateUUID(),
                         sender: 'سیستم',
                         senderUsername: 'system',
@@ -533,21 +572,17 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                         message: `🏭 تایید مدیر کارخانه - صورتجلسه شماره ${updated.meetingNumber}\n\nباسلام، صورتجلسه شماره ${updated.meetingNumber} توسط مدیر کارخانه تایید شد و فایل خروجی آن به صورت اتوماتیک به گروه تولید ارسال گردید.\n\nاین صورتجلسه جهت بررسی و بایگانی نهایی به کارتابل شما ارسال شد.`,
                         recipient: ceo.username,
                         timestamp: Date.now()
-                    });
-                } catch (err) {
-                    console.warn('Failed to notify CEO:', err);
-                }
-            }
+                    }).catch(() => {})
+                ),
+                sendPvNotificationsOnApproval(updated)
+            ]).catch(err => console.warn('Background notifications notice:', err));
 
-            // 4. Send PV notifications to all tagged users
-            await sendPvNotificationsOnApproval(updated);
-
-            setViewMeeting(updated);
-            loadData();
-            alert('✅ صورتجلسه با موفقیت توسط مدیر کارخانه تایید شد. فایل خروجی به صورت اتوماتیک به گروه تولید ارسال شد و جهت بایگانی به کارتابل مدیرعامل منتقل گردید.');
+            alert('✅ صورتجلسه با موفقیت توسط مدیر کارخانه تایید شد.\n\nتایید شما ثبت گردید و جهت بایگانی نهایی به کارتابل مدیرعامل منتقل شد.');
         } catch (error) {
             console.error("Factory Manager approval error:", error);
             alert('خطا در ثبت تایید مدیر کارخانه');
+        } finally {
+            setProcessingMeetingId(null);
         }
     };
 
@@ -570,21 +605,30 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
     };
 
     const handleStatusChange = async (meeting: MeetingMinutes, newStatus: MeetingStatus) => {
+        setProcessingMeetingId(meeting.id);
         try {
-            const updated = { ...meeting, status: newStatus, updatedAt: Date.now() };
-            await updateMeeting(updated);
+            const updated: MeetingMinutes = { ...meeting, status: newStatus, updatedAt: Date.now() };
+            
+            setViewMeeting(updated);
+            setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
+
+            meetingQueueService.enqueueMeetingUpdate({
+                meeting: updated,
+                actionType: 'STATUS_CHANGE',
+                user: currentUser
+            });
             
             if (newStatus === MeetingStatus.PENDING_APPROVAL) {
-                await sendApprovalRequests(updated);
+                sendApprovalRequests(updated).catch(e => console.warn('sendApprovalRequests error:', e));
             }
             if (newStatus === MeetingStatus.APPROVED) {
-                await sendMeetingMinutes(meeting.id);
-                await sendPvNotificationsOnApproval(updated);
+                sendMeetingMinutes(meeting.id).catch(e => console.warn('sendMeetingMinutes error:', e));
+                sendPvNotificationsOnApproval(updated).catch(e => console.warn('sendPv error:', e));
             }
-            
-            loadData();
         } catch (error) {
             alert('خطا در تغییر وضعیت');
+        } finally {
+            setProcessingMeetingId(null);
         }
     };
 
@@ -596,6 +640,7 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
 
         if (!window.confirm('آیا با مفاد این صورتجلسه موافق هستید و مایل به امضای آن می‌باشید؟')) return;
         
+        setProcessingMeetingId(meeting.id);
         try {
             const approvals = { ...(meeting.approvals || {}) };
             approvals[currentUser.username] = {
@@ -612,14 +657,23 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                 newStatus = MeetingStatus.PENDING_CEO;
             }
             
-            const updated = { ...meeting, approvals, status: newStatus, updatedAt: Date.now() };
-            await updateMeeting(updated);
+            const updated: MeetingMinutes = { ...meeting, approvals, status: newStatus, updatedAt: Date.now() };
             
-            alert('امضای شما با موفقیت ثبت شد.');
-            loadData();
+            setViewMeeting(updated);
+            setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
+
+            meetingQueueService.enqueueMeetingUpdate({
+                meeting: updated,
+                actionType: 'SIGN',
+                user: currentUser
+            });
+            
+            alert('✅ امضای شما با موفقیت ثبت شد.');
         } catch (error) {
             console.error("Signature error", error);
             alert('خطا در ثبت امضا');
+        } finally {
+            setProcessingMeetingId(null);
         }
     };
 
@@ -909,18 +963,20 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                                 {((meeting.status === MeetingStatus.PENDING_APPROVAL || meeting.status === MeetingStatus.DRAFT) && isFactoryManager) ? (
                                     <button 
                                         onClick={() => handleFactoryManagerApprove(meeting)} 
-                                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                        disabled={processingMeetingId === meeting.id}
+                                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
                                     >
-                                        <CheckCircle size={16} />
-                                        <span>تایید مدیر کارخانه</span>
+                                        {processingMeetingId === meeting.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                        <span>{processingMeetingId === meeting.id ? 'در حال ثبت...' : 'تایید مدیر کارخانه'}</span>
                                     </button>
                                 ) : (meeting.status === MeetingStatus.PENDING_CEO && isCeo) ? (
                                     <button 
                                         onClick={() => handleCeoFinalApprove(meeting)} 
-                                        className="w-full py-2.5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-teal-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                        disabled={processingMeetingId === meeting.id}
+                                        className="w-full py-2.5 px-4 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black shadow-md shadow-teal-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
                                     >
-                                        <CheckCircle size={16} />
-                                        <span>تایید و بایگانی مدیرعامل</span>
+                                        {processingMeetingId === meeting.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                        <span>{processingMeetingId === meeting.id ? 'در حال تایید...' : 'تایید و بایگانی مدیرعامل'}</span>
                                     </button>
                                 ) : (meeting.status === MeetingStatus.PENDING_APPROVAL && 
                                      !isFactoryManager &&
@@ -928,18 +984,20 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                                      !meeting.approvals?.[currentUser.username]?.approved) ? (
                                     <button 
                                         onClick={() => handleSignMeeting(meeting)} 
-                                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 animate-pulse cursor-pointer"
+                                        disabled={processingMeetingId === meeting.id}
+                                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 animate-pulse cursor-pointer"
                                     >
-                                        <UserCheck size={16} />
-                                        <span>امضای صورتجلسه</span>
+                                        {processingMeetingId === meeting.id ? <Loader2 size={16} className="animate-spin" /> : <UserCheck size={16} />}
+                                        <span>{processingMeetingId === meeting.id ? 'در حال ثبت امضا...' : 'امضای صورتجلسه'}</span>
                                     </button>
                                 ) : (canManage && meeting.status === MeetingStatus.DRAFT) ? (
                                     <button 
                                         onClick={() => handleStatusChange(meeting, MeetingStatus.PENDING_APPROVAL)} 
-                                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                        disabled={processingMeetingId === meeting.id}
+                                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black shadow-md shadow-indigo-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
                                     >
-                                        <Send size={16} />
-                                        <span>ارسال جهت تایید</span>
+                                        {processingMeetingId === meeting.id ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                        <span>{processingMeetingId === meeting.id ? 'در حال ارسال...' : 'ارسال جهت تایید'}</span>
                                     </button>
                                 ) : (canManage && meeting.status === MeetingStatus.APPROVED) ? (
                                     <button 
@@ -1876,13 +1934,23 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                                     </button>
                                 )}
                                 {(viewMeeting.status === MeetingStatus.DRAFT || viewMeeting.status === MeetingStatus.PENDING_APPROVAL) && isFactoryManager && (
-                                    <button onClick={() => handleFactoryManagerApprove(viewMeeting)} className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95">
-                                        <CheckCircle size={16} /> تایید مدیر کارخانه (ارسال اتومات)
+                                    <button 
+                                        onClick={() => handleFactoryManagerApprove(viewMeeting)} 
+                                        disabled={processingMeetingId === viewMeeting.id}
+                                        className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                    >
+                                        {processingMeetingId === viewMeeting.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                        <span>{processingMeetingId === viewMeeting.id ? 'در حال ثبت تایید...' : 'تایید مدیر کارخانه (ارسال اتومات)'}</span>
                                     </button>
                                 )}
                                 {viewMeeting.status === MeetingStatus.PENDING_CEO && (currentUser.role === UserRole.CEO || currentUser.role === 'ceo' || currentUser.role === UserRole.ADMIN) && (
-                                    <button onClick={() => handleCeoFinalApprove(viewMeeting)} className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95">
-                                        <CheckCircle size={16} /> تایید نهایی و بایگانی مدیرعامل
+                                    <button 
+                                        onClick={() => handleCeoFinalApprove(viewMeeting)} 
+                                        disabled={processingMeetingId === viewMeeting.id}
+                                        className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                    >
+                                        {processingMeetingId === viewMeeting.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                        <span>{processingMeetingId === viewMeeting.id ? 'در حال تایید...' : 'تایید نهایی و بایگانی مدیرعامل'}</span>
                                     </button>
                                 )}
                                 {viewMeeting.status === MeetingStatus.APPROVED && (

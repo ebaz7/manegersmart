@@ -1125,6 +1125,32 @@ function App() {
       if (alertCount > 0) { addAppNotification('هشدار سررسید چک', `${alertCount} چک در ۲ روز آینده سررسید می‌شوند.`); }
   };
 
+  // --- REAL-TIME OPTIMISTIC ORDER SYNC (ZERO REFRESH) ---
+  useEffect(() => {
+    const handleOrderOptimistic = (e: any) => {
+        const { orderId, targetStatus, updates, isDeleted, isNew, order } = e.detail || {};
+        if (isDeleted && orderId) {
+            setOrders(prev => prev.filter(o => o.id !== orderId));
+        } else if (isNew && order) {
+            setOrders(prev => [order, ...prev.filter(o => o.id !== order.id)]);
+        } else if (orderId && targetStatus) {
+            setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: targetStatus, ...(updates || {}) } : o));
+        }
+    };
+    const handleOrderSynced = (e: any) => {
+        const { allOrders } = e.detail || {};
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
+            setOrders(allOrders);
+        }
+    };
+    window.addEventListener('ORDER_OPTIMISTIC_APPLY' as any, handleOrderOptimistic);
+    window.addEventListener('ORDER_BACKGROUND_SYNCED' as any, handleOrderSynced);
+    return () => {
+        window.removeEventListener('ORDER_OPTIMISTIC_APPLY' as any, handleOrderOptimistic);
+        window.removeEventListener('ORDER_BACKGROUND_SYNCED' as any, handleOrderSynced);
+    };
+  }, []);
+
   useEffect(() => {
       const triggerReload = () => {
           if (currentUser) {
@@ -1173,10 +1199,39 @@ function App() {
         if (!Array.isArray(taskList) || taskList.length === 0) return;
 
         const now = Date.now();
+        const currentUsernameLower = (currentUser.username || '').trim().toLowerCase();
         const myPendingReminderTasks = taskList.filter((t: GroupTask) => {
           if (t.status === 'completed' || !t.recurringReminder) return false;
-          const isAssigned = (t.assignedTo && Array.isArray(t.assignedTo) && t.assignedTo.includes(currentUser.username)) || t.assignee === currentUser.username;
-          return isAssigned;
+
+          // Collect all specifically tagged / assigned users for this task
+          const taggedUsers: string[] = [];
+          if (Array.isArray(t.assignedTo) && t.assignedTo.length > 0) {
+            t.assignedTo.forEach(u => {
+              if (u && typeof u === 'string' && u.trim()) taggedUsers.push(u.trim().toLowerCase());
+            });
+          }
+          if (t.assignee && typeof t.assignee === 'string' && t.assignee.trim()) {
+            taggedUsers.push(t.assignee.trim().toLowerCase());
+          }
+
+          // Also check inline @mentions in title & description
+          const textToCheck = `${t.title || ''} ${t.description || ''}`;
+          const mentionRegex = /@([a-zA-Z0-9_\.\-\u0600-\u06FF]+)/g;
+          let match;
+          while ((match = mentionRegex.exec(textToCheck)) !== null) {
+            const mentioned = match[1]?.trim().toLowerCase();
+            if (mentioned && !taggedUsers.includes(mentioned)) {
+              taggedUsers.push(mentioned);
+            }
+          }
+
+          // If specific person(s) are tagged, alert ONLY if current user is among the tagged persons
+          if (taggedUsers.length > 0) {
+            return taggedUsers.includes(currentUsernameLower);
+          }
+
+          // If no specific person is tagged, alert only the task creator
+          return (t.createdBy || '').trim().toLowerCase() === currentUsernameLower;
         });
 
         for (const task of myPendingReminderTasks) {

@@ -5158,11 +5158,11 @@ app.get('/api/notifications', (req, res) => {
             }
             let matchRole = true;
             if (n.targetRoles && Array.isArray(n.targetRoles) && n.targetRoles.length > 0) {
-                matchRole = role ? n.targetRoles.includes(role) : true;
+                matchRole = role ? n.targetRoles.some(r => String(r).toLowerCase() === String(role).toLowerCase()) : true;
             }
             let matchUser = true;
             if (n.targetUsernames && Array.isArray(n.targetUsernames) && n.targetUsernames.length > 0) {
-                matchUser = username ? n.targetUsernames.includes(username) : true;
+                matchUser = username ? n.targetUsernames.some(u => String(u).toLowerCase() === String(username).toLowerCase()) : false;
             }
             return matchRole && matchUser;
         });
@@ -8133,22 +8133,50 @@ function setupTaskRecurringReminders() {
 
                         const taskGroup = db.taskGroups?.find(tg => tg.id === task.groupId);
                         const groupName = taskGroup ? taskGroup.name : 'گروه کاری';
-                        let targets = null;
+                        
+                        // Extract specifically tagged / assigned users
+                        let targets = [];
                         if (task.assignedTo && Array.isArray(task.assignedTo) && task.assignedTo.length > 0) {
-                            targets = [...task.assignedTo];
-                        } else if (task.assignee) {
-                            targets = [task.assignee];
-                        } else if (taskGroup && taskGroup.members) {
-                            targets = [...taskGroup.members];
+                            task.assignedTo.forEach(u => {
+                                if (u && typeof u === 'string' && u.trim()) {
+                                    targets.push(u.trim());
+                                }
+                            });
+                        } else if (task.assignee && typeof task.assignee === 'string' && task.assignee.trim()) {
+                            targets.push(task.assignee.trim());
                         }
 
-                        if (targets && targets.length > 0) {
+                        // Also extract any @mentions from title & description
+                        const textToCheck = `${task.title || ''} ${task.description || ''}`;
+                        const mentionRegex = /@([a-zA-Z0-9_\.\-\u0600-\u06FF]+)/g;
+                        let match;
+                        while ((match = mentionRegex.exec(textToCheck)) !== null) {
+                            const mentioned = match[1]?.trim();
+                            if (mentioned && !targets.some(t => t.toLowerCase() === mentioned.toLowerCase())) {
+                                targets.push(mentioned);
+                            }
+                        }
+
+                        // If specific people are tagged/assigned, targets strictly contains ONLY those tagged users!
+                        // Only fallback to group members if NO person is tagged at all
+                        if (targets.length === 0) {
+                            if (taskGroup && taskGroup.members && Array.isArray(taskGroup.members)) {
+                                targets = [...taskGroup.members];
+                            } else if (task.createdBy) {
+                                targets = [task.createdBy];
+                            }
+                        }
+
+                        // Deduplicate targets
+                        const uniqueTargets = Array.from(new Set(targets.map(t => t.trim())));
+
+                        if (uniqueTargets && uniqueTargets.length > 0) {
                             broadcastNotification(
                                 `⏰ یادآور تسک (${intervalMin} دقیقه): ${task.title}`,
                                 `تسک "${task.title}" در گروه "${groupName}" در انتظار اقدام یا تکمیل شماست.`,
                                 `/chat?group=${task.groupId}&task=${task.id}`,
                                 null,
-                                targets,
+                                uniqueTargets,
                                 null
                             ).catch(err => console.error("Task recurring broadcast error:", err));
                         }

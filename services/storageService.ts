@@ -4,7 +4,7 @@ import { apiCall, getLocalData, LS_KEYS } from './apiService';
 
 // Safely return array
 const safeArray = <T>(data: any): T[] => {
-    return Array.isArray(data) ? data : [];
+    return Array.isArray(data) ? (data as T[]) : [];
 };
 
 export const getPreviousPaymentOrderStatusForReject = (current: OrderStatus): OrderStatus => {
@@ -46,10 +46,54 @@ export const getPreviousExitPermitStatusForReject = (current: ExitPermitStatus):
 
 export const getOrders = async (): Promise<PaymentOrder[]> => { 
     const res = await apiCall<PaymentOrder[]>('/orders'); 
-    return safeArray(res);
+    return safeArray<PaymentOrder>(res);
 };
-export const saveOrder = async (order: PaymentOrder): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>('/orders', 'POST', order); };
-export const editOrder = async (updatedOrder: PaymentOrder): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>(`/orders/${updatedOrder.id}`, 'PUT', updatedOrder); };
+export const saveOrder = async (order: PaymentOrder): Promise<PaymentOrder[]> => { 
+    try {
+        const cached = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = [order, ...cached.filter((o: PaymentOrder) => o.id !== order.id)];
+            localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ORDER_OPTIMISTIC_APPLY', {
+            detail: { orderId: order.id, targetStatus: order.status, order, isNew: true }
+        }));
+    }
+    const res = await apiCall<PaymentOrder[]>('/orders', 'POST', order);
+    const safeRes = safeArray<PaymentOrder>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('ORDER_BACKGROUND_SYNCED', {
+            detail: { allOrders: safeRes, order: safeRes.find((o: PaymentOrder) => o.id === order.id) }
+        }));
+    }
+    return safeRes;
+};
+
+export const editOrder = async (updatedOrder: PaymentOrder): Promise<PaymentOrder[]> => { 
+    try {
+        const cached = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.map((o: PaymentOrder) => o.id === updatedOrder.id ? updatedOrder : o);
+            localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ORDER_OPTIMISTIC_APPLY', {
+            detail: { orderId: updatedOrder.id, targetStatus: updatedOrder.status, order: updatedOrder, updates: updatedOrder }
+        }));
+    }
+    const res = await apiCall<PaymentOrder[]>(`/orders/${updatedOrder.id}`, 'PUT', updatedOrder); 
+    const safeRes = safeArray<PaymentOrder>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('ORDER_BACKGROUND_SYNCED', {
+            detail: { allOrders: safeRes, order: safeRes.find((o: PaymentOrder) => o.id === updatedOrder.id) }
+        }));
+    }
+    return safeRes;
+};
+
 export const updateOrderStatus = async (id: string, status: OrderStatus, approverUser: User, rejectionReason?: string, isBackwardReject?: boolean): Promise<PaymentOrder[]> => {
   const updates: any = { status, updatedAt: Date.now() };
 
@@ -82,22 +126,100 @@ export const updateOrderStatus = async (id: string, status: OrderStatus, approve
   try {
       const cached = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
       if (cached && Array.isArray(cached)) {
-          const updated = cached.map(o => o.id === id ? { ...o, ...updates } : o);
+          const updated = cached.map((o: PaymentOrder) => o.id === id ? { ...o, ...updates } : o);
           localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(updated));
       }
   } catch {}
 
+  // Dispatch optimistic event to immediately update cartable & dashboard without refresh
+  if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ORDER_OPTIMISTIC_APPLY', {
+          detail: { orderId: id, targetStatus: status, approverUser, updates }
+      }));
+  }
+
   const res = await apiCall<PaymentOrder[]>(`/orders/${id}`, 'PUT', updates);
-  return safeArray(res);
+  const safeRes = safeArray<PaymentOrder>(res);
+  if (typeof window !== 'undefined' && safeRes.length > 0) {
+      window.dispatchEvent(new CustomEvent('ORDER_BACKGROUND_SYNCED', {
+          detail: { order: safeRes.find((o: PaymentOrder) => o.id === id), allOrders: safeRes }
+      }));
+  }
+  return safeRes;
 };
-export const deleteOrder = async (id: string): Promise<PaymentOrder[]> => { return await apiCall<PaymentOrder[]>(`/orders/${id}`, 'DELETE'); };
+
+export const deleteOrder = async (id: string): Promise<PaymentOrder[]> => { 
+    try {
+        const cached = getLocalData<PaymentOrder[]>(LS_KEYS.ORDERS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.filter((o: PaymentOrder) => o.id !== id);
+            localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ORDER_OPTIMISTIC_APPLY', {
+            detail: { orderId: id, isDeleted: true }
+        }));
+    }
+    const res = await apiCall<PaymentOrder[]>(`/orders/${id}`, 'DELETE'); 
+    const safeRes = safeArray<PaymentOrder>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('ORDER_BACKGROUND_SYNCED', {
+            detail: { allOrders: safeRes }
+        }));
+    }
+    return safeRes;
+};
 
 export const getExitPermits = async (): Promise<ExitPermit[]> => { 
     const res = await apiCall<ExitPermit[]>('/exit-permits'); 
-    return safeArray(res);
+    return safeArray<ExitPermit>(res);
 };
-export const saveExitPermit = async (permit: ExitPermit): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>('/exit-permits', 'POST', permit); };
-export const editExitPermit = async (updatedPermit: ExitPermit): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>(`/exit-permits/${updatedPermit.id}`, 'PUT', updatedPermit); };
+export const saveExitPermit = async (permit: ExitPermit): Promise<ExitPermit[]> => { 
+    try {
+        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = [permit, ...cached.filter((p: ExitPermit) => p.id !== permit.id)];
+            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
+            detail: { permitId: permit.id, targetStatus: permit.status, permit, isNew: true }
+        }));
+    }
+    const res = await apiCall<ExitPermit[]>('/exit-permits', 'POST', permit); 
+    const safeRes = safeArray<ExitPermit>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_BACKGROUND_SYNCED', {
+            detail: { allPermits: safeRes, permit: safeRes.find((p: ExitPermit) => p.id === permit.id) }
+        }));
+    }
+    return safeRes;
+};
+
+export const editExitPermit = async (updatedPermit: ExitPermit): Promise<ExitPermit[]> => { 
+    try {
+        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.map((p: ExitPermit) => p.id === updatedPermit.id ? updatedPermit : p);
+            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
+            detail: { permitId: updatedPermit.id, targetStatus: updatedPermit.status, permit: updatedPermit, updates: updatedPermit }
+        }));
+    }
+    const res = await apiCall<ExitPermit[]>(`/exit-permits/${updatedPermit.id}`, 'PUT', updatedPermit); 
+    const safeRes = safeArray<ExitPermit>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_BACKGROUND_SYNCED', {
+            detail: { allPermits: safeRes, permit: safeRes.find((p: ExitPermit) => p.id === updatedPermit.id) }
+        }));
+    }
+    return safeRes;
+};
 
 export const updateExitPermitStatus = async (id: string, status: ExitPermitStatus, approverUser: User, extra?: { rejectionReason?: string, exitTime?: string, isReject?: boolean, isBackwardReject?: boolean }): Promise<ExitPermit[]> => {
     const updates: any = { status, updatedAt: Date.now() };
@@ -146,16 +268,50 @@ export const updateExitPermitStatus = async (id: string, status: ExitPermitStatu
     try {
         const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
         if (cached && Array.isArray(cached)) {
-            const updated = cached.map(p => p.id === id ? { ...p, ...updates } : p);
+            const updated = cached.map((p: ExitPermit) => p.id === id ? { ...p, ...updates } : p);
             localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
         }
     } catch {}
 
+    // Dispatch optimistic broadcast so cartable and dashboard update immediately
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
+            detail: { permitId: id, targetStatus: status, approverUser, extra, updates }
+        }));
+    }
+
     const res = await apiCall<ExitPermit[]>(`/exit-permits/${id}`, 'PUT', updates);
-    return safeArray(res);
+    const safeRes = safeArray<ExitPermit>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_BACKGROUND_SYNCED', {
+            detail: { permit: safeRes.find((p: ExitPermit) => p.id === id), allPermits: safeRes }
+        }));
+    }
+    return safeRes;
 };
 
-export const deleteExitPermit = async (id: string): Promise<ExitPermit[]> => { return await apiCall<ExitPermit[]>(`/exit-permits/${id}`, 'DELETE'); };
+export const deleteExitPermit = async (id: string): Promise<ExitPermit[]> => { 
+    try {
+        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.filter((p: ExitPermit) => p.id !== id);
+            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
+            detail: { permitId: id, isDeleted: true }
+        }));
+    }
+    const res = await apiCall<ExitPermit[]>(`/exit-permits/${id}`, 'DELETE'); 
+    const safeRes = safeArray<ExitPermit>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('EXIT_PERMIT_BACKGROUND_SYNCED', {
+            detail: { allPermits: safeRes }
+        }));
+    }
+    return safeRes;
+};
 export const getNextExitPermitNumber = async (): Promise<number> => { try { const response = await apiCall<{ nextNumber: number }>(`/next-exit-permit-number?t=${Date.now()}`); return response.nextNumber; } catch(e) { return 1001; } };
 
 export const getSecurityLogs = async (): Promise<SecurityLog[]> => { const res = await apiCall<SecurityLog[]>('/security/logs'); return safeArray(res); };
@@ -306,10 +462,73 @@ export const getWarehouseItems = async (): Promise<WarehouseItem[]> => { const r
 export const saveWarehouseItem = async (item: WarehouseItem): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>('/warehouse/items', 'POST', item); };
 export const updateWarehouseItem = async (item: WarehouseItem): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>(`/warehouse/items/${item.id}`, 'PUT', item); };
 export const deleteWarehouseItem = async (id: string): Promise<WarehouseItem[]> => { return await apiCall<WarehouseItem[]>(`/warehouse/items/${id}`, 'DELETE'); };
-export const getWarehouseTransactions = async (): Promise<WarehouseTransaction[]> => { const res = await apiCall<WarehouseTransaction[]>('/warehouse/transactions'); return safeArray(res); };
-export const saveWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>('/warehouse/transactions', 'POST', tx); };
-export const updateWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${tx.id}`, 'PUT', tx); };
-export const deleteWarehouseTransaction = async (id: string): Promise<WarehouseTransaction[]> => { return await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${id}`, 'DELETE'); };
+export const getWarehouseTransactions = async (): Promise<WarehouseTransaction[]> => { const res = await apiCall<WarehouseTransaction[]>('/warehouse/transactions'); return safeArray<WarehouseTransaction>(res); };
+export const saveWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { 
+    try {
+        const cached = getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = [tx, ...cached.filter((t: WarehouseTransaction) => t.id !== tx.id)];
+            localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('WAREHOUSE_TX_OPTIMISTIC_APPLY', {
+            detail: { txId: tx.id, tx, isNew: true }
+        }));
+    }
+    const res = await apiCall<WarehouseTransaction[]>('/warehouse/transactions', 'POST', tx); 
+    const safeRes = safeArray<WarehouseTransaction>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('WAREHOUSE_TX_BACKGROUND_SYNCED', {
+            detail: { allTxs: safeRes, tx: safeRes.find((t: WarehouseTransaction) => t.id === tx.id) }
+        }));
+    }
+    return safeRes;
+};
+export const updateWarehouseTransaction = async (tx: WarehouseTransaction): Promise<WarehouseTransaction[]> => { 
+    try {
+        const cached = getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.map((t: WarehouseTransaction) => t.id === tx.id ? tx : t);
+            localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('WAREHOUSE_TX_OPTIMISTIC_APPLY', {
+            detail: { txId: tx.id, tx, updates: tx }
+        }));
+    }
+    const res = await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${tx.id}`, 'PUT', tx); 
+    const safeRes = safeArray<WarehouseTransaction>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('WAREHOUSE_TX_BACKGROUND_SYNCED', {
+            detail: { allTxs: safeRes, tx: safeRes.find((t: WarehouseTransaction) => t.id === tx.id) }
+        }));
+    }
+    return safeRes;
+};
+export const deleteWarehouseTransaction = async (id: string): Promise<WarehouseTransaction[]> => { 
+    try {
+        const cached = getLocalData<WarehouseTransaction[]>(LS_KEYS.WH_TX, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.filter((t: WarehouseTransaction) => t.id !== id);
+            localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('WAREHOUSE_TX_OPTIMISTIC_APPLY', {
+            detail: { txId: id, isDeleted: true }
+        }));
+    }
+    const res = await apiCall<WarehouseTransaction[]>(`/warehouse/transactions/${id}`, 'DELETE'); 
+    const safeRes = safeArray<WarehouseTransaction>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('WAREHOUSE_TX_BACKGROUND_SYNCED', {
+            detail: { allTxs: safeRes }
+        }));
+    }
+    return safeRes;
+};
 
 export const getNextBijakNumber = async (company?: string): Promise<number> => { 
     try { 
@@ -363,19 +582,76 @@ import { PurchaseRequest, PurchaseRequestStatus, PartMasterData, PartKardex } fr
 
 export const getPurchaseRequests = async (): Promise<PurchaseRequest[]> => {
     const res = await apiCall<PurchaseRequest[]>('/purchase-requests');
-    return safeArray(res);
+    return safeArray<PurchaseRequest>(res);
 };
 
 export const savePurchaseRequest = async (req: PurchaseRequest): Promise<PurchaseRequest[]> => {
-    return await apiCall<PurchaseRequest[]>('/purchase-requests', 'POST', req);
+    try {
+        const cached = getLocalData<PurchaseRequest[]>(LS_KEYS.PURCHASE_REQS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = [req, ...cached.filter((p: PurchaseRequest) => p.id !== req.id)];
+            localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('PURCHASE_REQ_OPTIMISTIC_APPLY', {
+            detail: { reqId: req.id, targetStatus: req.status, request: req, isNew: true }
+        }));
+    }
+    const res = await apiCall<PurchaseRequest[]>('/purchase-requests', 'POST', req);
+    const safeRes = safeArray<PurchaseRequest>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('PURCHASE_REQ_BACKGROUND_SYNCED', {
+            detail: { allPurchases: safeRes, request: safeRes.find((p: PurchaseRequest) => p.id === req.id) }
+        }));
+    }
+    return safeRes;
 };
 
 export const updatePurchaseRequest = async (req: PurchaseRequest): Promise<PurchaseRequest[]> => {
-    return await apiCall<PurchaseRequest[]>(`/purchase-requests/${req.id}`, 'PUT', req);
+    try {
+        const cached = getLocalData<PurchaseRequest[]>(LS_KEYS.PURCHASE_REQS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.map((p: PurchaseRequest) => p.id === req.id ? req : p);
+            localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('PURCHASE_REQ_OPTIMISTIC_APPLY', {
+            detail: { reqId: req.id, targetStatus: req.status, request: req, updates: req }
+        }));
+    }
+    const res = await apiCall<PurchaseRequest[]>(`/purchase-requests/${req.id}`, 'PUT', req);
+    const safeRes = safeArray<PurchaseRequest>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('PURCHASE_REQ_BACKGROUND_SYNCED', {
+            detail: { allPurchases: safeRes, request: safeRes.find((p: PurchaseRequest) => p.id === req.id) }
+        }));
+    }
+    return safeRes;
 };
 
 export const deletePurchaseRequest = async (id: string): Promise<PurchaseRequest[]> => {
-    return await apiCall<PurchaseRequest[]>(`/purchase-requests/${id}`, 'DELETE');
+    try {
+        const cached = getLocalData<PurchaseRequest[]>(LS_KEYS.PURCHASE_REQS, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.filter((p: PurchaseRequest) => p.id !== id);
+            localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(updated));
+        }
+    } catch {}
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('PURCHASE_REQ_OPTIMISTIC_APPLY', {
+            detail: { reqId: id, isDeleted: true }
+        }));
+    }
+    const res = await apiCall<PurchaseRequest[]>(`/purchase-requests/${id}`, 'DELETE');
+    const safeRes = safeArray<PurchaseRequest>(res);
+    if (typeof window !== 'undefined' && safeRes.length > 0) {
+        window.dispatchEvent(new CustomEvent('PURCHASE_REQ_BACKGROUND_SYNCED', {
+            detail: { allPurchases: safeRes }
+        }));
+    }
+    return safeRes;
 };
 
 export const getNextPurchaseRequestNumber = async (): Promise<string> => {

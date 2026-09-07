@@ -30,10 +30,25 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 const MONTHS = [ 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند' ];
 
 const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, currentUser, onViewArchive, onFilterByStatus, onGoToPaymentApprovals, onGoToExitApprovals, onGoToBijakApprovals, onGoToPurchaseApprovals, onGoToTaskGroup, onNavigate, financialYear, activeTab }) => {
+  const [realtimeOrders, setRealtimeOrders] = useState<PaymentOrder[]>(() => {
+    try {
+        const item = localStorage.getItem('app_data_orders');
+        return item ? JSON.parse(item) : (rawOrders || []);
+    } catch {
+        return rawOrders || [];
+    }
+  });
+
+  useEffect(() => {
+    if (Array.isArray(rawOrders) && rawOrders.length > 0) {
+        setRealtimeOrders(rawOrders);
+    }
+  }, [rawOrders]);
+
   const orders = useMemo(() => {
-        if (!financialYear || financialYear === 'all') return rawOrders;
-        return rawOrders.filter(o => isInFinancialYear(o.date, financialYear) || isInFinancialYear(o.payDate, financialYear));
-  }, [rawOrders, financialYear]);
+        if (!financialYear || financialYear === 'all') return realtimeOrders;
+        return realtimeOrders.filter(o => isInFinancialYear(o.date, financialYear) || isInFinancialYear(o.payDate, financialYear));
+  }, [realtimeOrders, financialYear]);
 
   const [showBankReport, setShowBankReport] = useState(false);
   const [bankReportTab, setBankReportTab] = useState<'summary' | 'timeline'>('summary');
@@ -436,9 +451,138 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   const hasWarehouseAccess = permissions.canManageWarehouse === true || permissions.canApproveBijak === true;
   const hasPurchaseAccess = permissions.canManagePurchase === true || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER;
 
+  // --- REAL-TIME ZERO-DELAY OPTIMISTIC EVENT LISTENERS ---
+  useEffect(() => {
+    // 1. Payment Orders Real-Time Sync
+    const handleOrderOptimistic = (e: any) => {
+        const { orderId, targetStatus, updates, isDeleted, isNew, order } = e.detail || {};
+        if (isDeleted && orderId) {
+            setRealtimeOrders(prev => prev.filter(o => o.id !== orderId));
+        } else if (isNew && order) {
+            setRealtimeOrders(prev => [order, ...prev.filter(o => o.id !== order.id)]);
+        } else if (orderId && targetStatus) {
+            setRealtimeOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: targetStatus, ...(updates || {}) } : o));
+        }
+    };
+    const handleOrderSynced = (e: any) => {
+        const { allOrders } = e.detail || {};
+        if (Array.isArray(allOrders) && allOrders.length > 0) {
+            setRealtimeOrders(allOrders);
+        }
+    };
+
+    // 2. Factory Exit Permits Real-Time Sync
+    const handleExitPermitOptimistic = (e: any) => {
+        const { permitId, targetStatus, extra, updates, isDeleted, isNew, permit } = e.detail || {};
+        if (isDeleted && permitId) {
+            setExitPermits(prev => prev.filter(p => p.id !== permitId));
+        } else if (isNew && permit) {
+            setExitPermits(prev => [permit, ...prev.filter(p => p.id !== permit.id)]);
+        } else if (permitId && targetStatus) {
+            setExitPermits(prev => prev.map(p => p.id === permitId ? { ...p, status: targetStatus, ...(extra || {}), ...(updates || {}) } : p));
+        }
+    };
+    const handleExitPermitSynced = (e: any) => {
+        const { allPermits } = e.detail || {};
+        if (Array.isArray(allPermits) && allPermits.length > 0) {
+            let filtered = allPermits;
+            if (financialYear && financialYear !== 'all') {
+                filtered = filtered.filter(p => isInFinancialYear(p.date, financialYear));
+            }
+            setExitPermits(filtered);
+        }
+    };
+
+    // 3. Purchase Requests Real-Time Sync
+    const handlePurchaseReqOptimistic = (e: any) => {
+        const { reqId, targetStatus, updates, isDeleted, isNew, request } = e.detail || {};
+        if (isDeleted && reqId) {
+            setPurchaseReqs(prev => prev.filter(p => p.id !== reqId));
+        } else if (isNew && request) {
+            setPurchaseReqs(prev => [request, ...prev.filter(p => p.id !== request.id)]);
+        } else if (reqId && targetStatus) {
+            setPurchaseReqs(prev => prev.map(p => p.id === reqId ? { ...p, status: targetStatus, ...(updates || {}) } : p));
+        }
+    };
+    const handlePurchaseReqSynced = (e: any) => {
+        const { allPurchases } = e.detail || {};
+        if (Array.isArray(allPurchases) && allPurchases.length > 0) {
+            let filtered = allPurchases;
+            if (financialYear && financialYear !== 'all') {
+                filtered = filtered.filter(p => isInFinancialYear(p.date, financialYear));
+            }
+            setPurchaseReqs(filtered);
+        }
+    };
+
+    // 4. Warehouse Transactions Real-Time Sync
+    const handleWarehouseTxOptimistic = (e: any) => {
+        const { txId, updates, isDeleted, isNew, tx } = e.detail || {};
+        if (isDeleted && txId) {
+            setWarehouseTxs(prev => prev.filter(t => t.id !== txId));
+        } else if (isNew && tx) {
+            setWarehouseTxs(prev => [tx, ...prev.filter(t => t.id !== tx.id)]);
+        } else if (txId && updates) {
+            setWarehouseTxs(prev => prev.map(t => t.id === txId ? { ...t, ...(updates || {}) } : t));
+        }
+    };
+    const handleWarehouseTxSynced = (e: any) => {
+        const { allTxs } = e.detail || {};
+        if (Array.isArray(allTxs) && allTxs.length > 0) {
+            let filtered = allTxs;
+            if (financialYear && financialYear !== 'all') {
+                filtered = filtered.filter(t => isInFinancialYear(t.date, financialYear));
+            }
+            setWarehouseTxs(filtered);
+        }
+    };
+
+    window.addEventListener('ORDER_OPTIMISTIC_APPLY' as any, handleOrderOptimistic);
+    window.addEventListener('ORDER_BACKGROUND_SYNCED' as any, handleOrderSynced);
+    window.addEventListener('EXIT_PERMIT_OPTIMISTIC_APPLY' as any, handleExitPermitOptimistic);
+    window.addEventListener('EXIT_PERMIT_BACKGROUND_SYNCED' as any, handleExitPermitSynced);
+    window.addEventListener('PURCHASE_REQ_OPTIMISTIC_APPLY' as any, handlePurchaseReqOptimistic);
+    window.addEventListener('PURCHASE_REQ_BACKGROUND_SYNCED' as any, handlePurchaseReqSynced);
+    window.addEventListener('WAREHOUSE_TX_OPTIMISTIC_APPLY' as any, handleWarehouseTxOptimistic);
+    window.addEventListener('WAREHOUSE_TX_BACKGROUND_SYNCED' as any, handleWarehouseTxSynced);
+
+    return () => {
+        window.removeEventListener('ORDER_OPTIMISTIC_APPLY' as any, handleOrderOptimistic);
+        window.removeEventListener('ORDER_BACKGROUND_SYNCED' as any, handleOrderSynced);
+        window.removeEventListener('EXIT_PERMIT_OPTIMISTIC_APPLY' as any, handleExitPermitOptimistic);
+        window.removeEventListener('EXIT_PERMIT_BACKGROUND_SYNCED' as any, handleExitPermitSynced);
+        window.removeEventListener('PURCHASE_REQ_OPTIMISTIC_APPLY' as any, handlePurchaseReqOptimistic);
+        window.removeEventListener('PURCHASE_REQ_BACKGROUND_SYNCED' as any, handlePurchaseReqSynced);
+        window.removeEventListener('WAREHOUSE_TX_OPTIMISTIC_APPLY' as any, handleWarehouseTxOptimistic);
+        window.removeEventListener('WAREHOUSE_TX_BACKGROUND_SYNCED' as any, handleWarehouseTxSynced);
+    };
+  }, [financialYear]);
+
   useEffect(() => {
       const fetchData = async () => {
           try {
+              // 0ms instant reload from local cache first
+              try {
+                  const localExits = localStorage.getItem('app_data_exit_permits');
+                  if (localExits) {
+                      let parsed = JSON.parse(localExits);
+                      if (financialYear && financialYear !== 'all') parsed = parsed.filter((e: any) => isInFinancialYear(e.date, financialYear));
+                      setExitPermits(parsed);
+                  }
+                  const localTxs = localStorage.getItem('app_data_wh_tx');
+                  if (localTxs) {
+                      let parsed = JSON.parse(localTxs);
+                      if (financialYear && financialYear !== 'all') parsed = parsed.filter((t: any) => isInFinancialYear(t.date, financialYear));
+                      setWarehouseTxs(parsed);
+                  }
+                  const localPurchases = localStorage.getItem('app_data_purchase_reqs');
+                  if (localPurchases) {
+                      let parsed = JSON.parse(localPurchases);
+                      if (financialYear && financialYear !== 'all') parsed = parsed.filter((p: any) => isInFinancialYear(p.date, financialYear));
+                      setPurchaseReqs(parsed);
+                  }
+              } catch {}
+
               if (hasExitAccess || hasWarehouseAccess || hasPurchaseAccess) {
                   let [exits, txs, purchases] = await Promise.all([getExitPermits(), getWarehouseTransactions(), getPurchaseRequests()]);
                   if (financialYear && financialYear !== 'all') {
@@ -452,9 +596,6 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
               }
           } catch (error) {
               console.error("Dashboard data load error", error);
-              setExitPermits([]);
-              setWarehouseTxs([]);
-              setPurchaseReqs([]);
           }
       };
       fetchData();

@@ -311,16 +311,115 @@ export const initWhatsApp = (authDir) => {
         client.on('loading_screen', (percent, message) => {
             addDiagnosticLog('info', 'CLIENT', `بارگذاری صفحه وب واتساپ: ${percent}% ${message || ''}`);
         });
+
+        // Helper to normalize phone numbers (convert 989..., +989..., 09... to standard 09...)
+        const normalizePhoneNumber = (phone) => {
+            if (!phone) return '';
+            let digits = String(phone).replace(/\D/g, '');
+            if (digits.startsWith('989') && digits.length === 12) {
+                digits = '0' + digits.substring(2);
+            } else if (digits.startsWith('9') && digits.length === 10) {
+                digits = '0' + digits;
+            }
+            return digits;
+        };
+
+        // Check if a sender is authorized to receive reports or execute commands
+        const getAuthorizedUser = (db, msg) => {
+            if (!db || !msg) return null;
+            if (msg.fromMe) return null;
+
+            const isGroup = msg.from && msg.from.includes('@g.us');
+            const settings = db.settings || {};
+
+            // 1. Group Whitelist Check
+            if (isGroup) {
+                const allowedGroupIds = [
+                    settings.botAccountingGroupIdWhatsApp,
+                    settings.whatsappReportsGroupId,
+                    settings.botBijakGroupIdWhatsApp,
+                    settings.exitPermitNotificationGroup,
+                    settings.dailySalesWhatsappGroupId,
+                    settings.chequeVaultWhatsappGroupId,
+                    settings.dailyExitReportDedicatedWhatsAppId,
+                    settings.whatsappGroupId
+                ].filter(Boolean).map(id => String(id).trim().toLowerCase());
+
+                const currentGroupId = String(msg.from).trim().toLowerCase();
+                const isAllowedGroup = allowedGroupIds.some(id => 
+                    currentGroupId === id || currentGroupId.includes(id) || id.includes(currentGroupId.replace('@g.us', ''))
+                );
+
+                if (!isAllowedGroup) {
+                    // Group is not configured in system settings -> ignore completely!
+                    return null;
+                }
+
+                // In authorized groups, commands MUST start with '!' or '/'
+                const body = (msg.body || '').trim();
+                if (!body.startsWith('!') && !body.startsWith('/')) {
+                    return null;
+                }
+            }
+
+            // 2. Identify sender phone number
+            const senderJid = isGroup ? (msg.author || msg.from) : msg.from;
+            if (!senderJid) return null;
+            const senderRawNumber = senderJid.replace(/@.*/, '');
+            const senderNormalizedPhone = normalizePhoneNumber(senderRawNumber);
+
+            if (!senderNormalizedPhone) return null;
+
+            // 3. Match against db.users
+            const users = Array.isArray(db.users) ? db.users : [];
+            const matchedUser = users.find(u => {
+                if (!u) return false;
+                const uPhone = normalizePhoneNumber(u.phoneNumber || u.mobile || u.phone || u.whatsappPhone);
+                return uPhone && uPhone === senderNormalizedPhone;
+            });
+
+            if (matchedUser) {
+                return matchedUser;
+            }
+
+            // 4. Match against admin phones configured in settings
+            const adminPhones = [
+                ...(Array.isArray(settings.whatsappAdminPhones) ? settings.whatsappAdminPhones : [settings.whatsappAdminPhones]),
+                ...(Array.isArray(settings.botAdminPhones) ? settings.botAdminPhones : [settings.botAdminPhones]),
+                settings.adminPhone
+            ].filter(Boolean).map(normalizePhoneNumber);
+
+            if (adminPhones.includes(senderNormalizedPhone)) {
+                return {
+                    id: 'admin_phone_' + senderNormalizedPhone,
+                    username: 'admin',
+                    fullName: 'مدیر سیستم (واتساپ)',
+                    role: 'admin',
+                    roles: ['admin']
+                };
+            }
+
+            return null;
+        };
         
         client.on('message', async msg => {
             try {
-                const body = msg.body.trim();
-                if (msg.from.includes('@g.us') && !body.startsWith('!')) return;
-                
+                if (!msg || msg.fromMe) return;
+                const body = (msg.body || '').trim();
+                if (!body) return;
+
                 const currentDb = getDb();
                 if (!currentDb) return;
 
-                const result = await parseMessage(body, currentDb);
+                // STRICT AUTHENTICATION: Only registered and permitted users can trigger bot actions!
+                const authorizedUser = getAuthorizedUser(currentDb, msg);
+                if (!authorizedUser) {
+                    // Unauthorized sender (stranger, customer, personal chat, unconfigured group)
+                    // DO NOT leak any information or reply!
+                    return;
+                }
+
+                const result = await parseMessage(body, currentDb, authorizedUser);
                 if (!result) return;
 
                 const { intent, args } = result;
@@ -329,19 +428,19 @@ export const initWhatsApp = (authDir) => {
                 switch (intent) {
                     case 'AMBIGUOUS': replyText = `⚠️ شماره ${args.number} تکراری است.`; break;
                     case 'NOT_FOUND': replyText = `❌ سندی با شماره ${args.number} یافت نشد.`; break;
-                    case 'APPROVE_PAYMENT': replyText = Actions.handleApprovePayment(currentDb, args.number); break;
-                    case 'REJECT_PAYMENT': replyText = Actions.handleRejectPayment(currentDb, args.number); break;
-                    case 'APPROVE_EXIT': replyText = Actions.handleApproveExit(currentDb, args.number); break;
-                    case 'REJECT_EXIT': replyText = Actions.handleRejectExit(currentDb, args.number); break;
-                    case 'CREATE_PAYMENT': replyText = Actions.handleCreatePayment(currentDb, args); break;
-                    case 'CREATE_BIJAK': replyText = Actions.handleCreateBijak(currentDb, args); break;
-                    case 'REPORT': replyText = Actions.handleReport(currentDb); break;
-                    case 'HELP': replyText = `دستورات:\nتایید [شماره]\nرد [شماره]\nگزارش`; break;
+                    case 'APPROVE_PAYMENT': replyText = Actions.handleApprovePayment(currentDb, args.number, authorizedUser); break;
+                    case 'REJECT_PAYMENT': replyText = Actions.handleRejectPayment(currentDb, args.number, authorizedUser); break;
+                    case 'APPROVE_EXIT': replyText = Actions.handleApproveExit(currentDb, args.number, authorizedUser); break;
+                    case 'REJECT_EXIT': replyText = Actions.handleRejectExit(currentDb, args.number, authorizedUser); break;
+                    case 'CREATE_PAYMENT': replyText = Actions.handleCreatePayment(currentDb, args, authorizedUser); break;
+                    case 'CREATE_BIJAK': replyText = Actions.handleCreateBijak(currentDb, args, authorizedUser); break;
+                    case 'REPORT': replyText = Actions.handleReport(currentDb, authorizedUser); break;
+                    case 'HELP': replyText = `دستورات مجاز برای کاربر ${authorizedUser.fullName || authorizedUser.username}:\n!تایید [شماره]\n!رد [شماره]\n!گزارش`; break;
                 }
 
                 if (replyText) {
                     await msg.reply(replyText);
-                    addDiagnosticLog('info', 'MESSAGE', `پاسخ دستور ${intent} به ${msg.from} ارسال شد.`);
+                    addDiagnosticLog('info', 'MESSAGE', `پاسخ دستور ${intent} به کاربر مجاز (${authorizedUser.username}) در ${msg.from} ارسال شد.`);
                 }
 
             } catch (error) { 
@@ -437,13 +536,25 @@ export const sendMessage = async (number, text, mediaData) => {
         addDiagnosticLog('error', 'MESSAGE', `تلاش ناموفق برای ارسال پیام به ${number} (عدم اتصال)`, err.message);
         throw err;
     }
-    let chatId = number;
+    if (!number || typeof number !== 'string' || !number.trim() || number === 'undefined' || number === 'null') {
+        const msg = `[WhatsApp Security] Refused to send message to invalid target: "${number}"`;
+        console.warn(msg);
+        addDiagnosticLog('warn', 'MESSAGE', msg);
+        return;
+    }
+    let chatId = number.trim();
     if (!chatId.includes('@')) {
-        // If it's a long numeric string likely to be a group ID or needs @c.us
-        if (chatId.length > 15) {
-             chatId = `${chatId}@g.us`;
+        const digits = chatId.replace(/\D/g, '');
+        if (digits.length < 10) {
+            const msg = `[WhatsApp Security] Target number is too short or invalid: "${chatId}"`;
+            console.warn(msg);
+            addDiagnosticLog('warn', 'MESSAGE', msg);
+            return;
+        }
+        if (digits.length > 15) {
+             chatId = `${digits}@g.us`;
         } else {
-             chatId = `${chatId.replace(/\D/g, '').replace(/^0/, '98')}@c.us`;
+             chatId = `${digits.replace(/^0/, '98')}@c.us`;
         }
     }
     try {

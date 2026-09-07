@@ -5522,7 +5522,7 @@ export const notifyMeetingAnnouncement = async (meeting, db) => {
     const waIds = extractUniqueGroupIds(
         s.botMeetingAnnouncementWhatsAppId,
         s.botMeetingAnnouncementSecondGroupIdWhatsApp,
-        s.botMeetingAnnouncementGroupId || s.botAccountingGroupIdWhatsApp
+        s.botMeetingAnnouncementGroupId
     );
     if (waIds.length > 0 && s.whatsappEnabled) {
         import('./whatsapp.js').then(m => {

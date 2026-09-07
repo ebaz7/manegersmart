@@ -220,6 +220,7 @@ function App() {
     root.classList.remove(
       'dark',
       'theme-light-aurora',
+      'light-aurora',
       'theme-bento',
       'theme-claymorphism',
       'theme-skeuomorphism',
@@ -227,8 +228,9 @@ function App() {
       'theme-maximalism',
       'theme-gold-noir'
     );
-    if (themeName && themeName !== 'light') {
-      root.classList.add(themeName);
+    const normalizedTheme = themeName === 'light-aurora' ? 'theme-light-aurora' : themeName;
+    if (normalizedTheme && normalizedTheme !== 'light' && normalizedTheme !== 'default') {
+      root.classList.add(normalizedTheme);
     }
     if (dark) {
       root.classList.add('dark');

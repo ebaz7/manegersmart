@@ -1753,13 +1753,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 {/* --- LIST SIDEBAR --- */}
                 <div className={`w-full md:w-80 lg:w-96 shrink-0 md:border-l border-gray-100 dark:border-white/5 flex-col min-h-0 h-full bg-white dark:bg-[#1c1c1e] z-20 ${activeChannel ? 'hidden md:flex' : 'flex'}`}>
                 {/* Header */}
-                <div className="sticky top-0 z-10 shrink-0 p-3 border-b bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200">
+                <div className="sticky top-0 z-10 shrink-0 p-3 border-b bg-gray-50/90 dark:bg-gray-900/60 backdrop-blur-md text-slate-900 dark:text-slate-100">
                     <div className="flex justify-between items-center mb-3">
-                        <div className="flex flex-wrap md:flex-nowrap gap-1 bg-gray-200 dark:bg-white/10 p-1 rounded-lg text-[11px] font-bold w-full">
-                            <button onClick={() => setActiveTab('ALL')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'ALL' ? 'glass-panel shadow text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}>همه</button>
-                            <button onClick={() => setActiveTab('CHATS')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'CHATS' ? 'glass-panel shadow text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}>گفتگوها</button>
-                            <button onClick={() => setActiveTab('GROUPS')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'GROUPS' ? 'glass-panel shadow text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}>گروه‌ها</button>
-                            <button onClick={() => setActiveTab('TASKS')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'TASKS' ? 'glass-panel shadow text-blue-600 dark:text-blue-400' : 'text-gray-500'}`}>تسک‌ها</button>
+                        <div className="flex flex-wrap md:flex-nowrap gap-1 bg-slate-200/80 dark:bg-white/15 p-1 rounded-lg text-[11px] font-bold w-full">
+                            <button onClick={() => setActiveTab('ALL')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'ALL' ? 'bg-white dark:bg-zinc-800 shadow text-blue-700 dark:text-blue-300 font-black' : 'text-slate-700 dark:text-slate-300 hover:text-blue-600 font-bold'}`}>همه</button>
+                            <button onClick={() => setActiveTab('CHATS')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'CHATS' ? 'bg-white dark:bg-zinc-800 shadow text-blue-700 dark:text-blue-300 font-black' : 'text-slate-700 dark:text-slate-300 hover:text-blue-600 font-bold'}`}>گفتگوها</button>
+                            <button onClick={() => setActiveTab('GROUPS')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'GROUPS' ? 'bg-white dark:bg-zinc-800 shadow text-blue-700 dark:text-blue-300 font-black' : 'text-slate-700 dark:text-slate-300 hover:text-blue-600 font-bold'}`}>گروه‌ها</button>
+                            <button onClick={() => setActiveTab('TASKS')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'TASKS' ? 'bg-white dark:bg-zinc-800 shadow text-blue-700 dark:text-blue-300 font-black' : 'text-slate-700 dark:text-slate-300 hover:text-blue-600 font-bold'}`}>تسک‌ها</button>
                         </div>
                         {(activeTab === 'GROUPS' || activeTab === 'TASKS') && <button onClick={() => {
                             setShowGroupModal(activeTab === 'TASKS' ? 'task_group' : 'group');
@@ -1767,8 +1767,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1">
-                            <input className="w-full glass-panel border rounded-xl pl-8 pr-3 py-2 text-xs bg-white dark:bg-white/5" placeholder="جستجو در گفتگوها..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                            <Search size={15} className="absolute left-2.5 top-2.5 text-gray-400"/>
+                            <input className="w-full glass-panel border rounded-xl pl-8 pr-3 py-2 text-xs bg-white dark:bg-white/5 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 font-medium" placeholder="جستجو در گفتگوها..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            <Search size={15} className="absolute left-2.5 top-2.5 text-slate-500 dark:text-slate-400"/>
                         </div>
                         <button 
                             onClick={handleMarkAllAsRead} 
@@ -1803,13 +1803,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                         </div>
                     )}
                     {getSortedChannels().length === 0 && !searchTerm && (
-                        <div className="flex flex-col items-center justify-center h-40 text-gray-400 p-10 text-center">
-                            <MessageCircle size={32} className="mb-2 opacity-20" />
-                            <p className="text-xs">پیامی یافت نشد</p>
+                        <div className="flex flex-col items-center justify-center h-40 text-slate-500 p-10 text-center">
+                            <MessageCircle size={32} className="mb-2 opacity-30" />
+                            <p className="text-xs font-semibold">پیامی یافت نشد</p>
                         </div>
                     )}
                     {getSortedChannels().map((item: ChannelItem) => (
-                        <div key={item.id} onClick={() => { setActiveChannel({type: item.type, id: item.id}); markAsRead(item.id, item.type); }} className={`flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer border-b border-gray-50 dark:border-white/5 relative group ${activeChannel?.id === item.id ? 'bg-blue-50/50 dark:bg-blue-500/10' : ''}`}>
+                        <div key={item.id} onClick={() => { setActiveChannel({type: item.type, id: item.id}); markAsRead(item.id, item.type); }} className={`flex items-center gap-3 p-3 hover:bg-slate-100/70 dark:hover:bg-white/10 cursor-pointer border-b border-slate-100 dark:border-white/5 relative group ${activeChannel?.id === item.id ? 'bg-blue-50/80 dark:bg-blue-500/15' : ''}`}>
                             <div className="relative">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${item.type === 'system' ? 'bg-gradient-to-br from-indigo-500 to-purple-700' : item.type === 'private' ? 'bg-gradient-to-br from-blue-400 to-blue-600' : item.type === 'task_group' ? 'bg-gradient-to-br from-purple-400 to-purple-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}`}>
                                     {item.type === 'system' ? '🤖' : (item.avatar ? <img src={resolveImageUrl(item.avatar)} className="w-full h-full rounded-full object-cover"/> : item.name.charAt(0))}
@@ -1819,13 +1819,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-center mb-1">
                                     <div className="flex items-center gap-1 overflow-hidden">
-                                        <span className="font-bold text-gray-800 dark:text-gray-100 text-sm truncate">{item.name}</span>
-                                        {mutedChannels.has(item.id) && <BellOff size={10} className="text-gray-400 opacity-60"/>}
+                                        <span className="font-bold text-slate-900 dark:text-slate-50 text-sm truncate">{item.name}</span>
+                                        {mutedChannels.has(item.id) && <BellOff size={10} className="text-slate-500 opacity-70"/>}
                                     </div>
-                                    {item.lastMsg && <span className="text-[10px] text-gray-400 font-mono tracking-tighter">{new Date(item.lastMsg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>}
+                                    {item.lastMsg && <span className="text-[11px] text-slate-600 dark:text-slate-300 font-bold font-mono tracking-tight">{new Date(item.lastMsg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>}
                                 </div>
                                 <div className="flex justify-between items-center">
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
+                                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate max-w-[170px]">
                                         {item.type === 'system' ? (item.lastMsg?.message || 'اعلانات و هشدارهای کارتابل') : item.type === 'task_group' ? 'لیست تسک‌ها...' : item.lastMsg ? (item.lastMsg.audioUrl ? '🎤 پیام صوتی' : item.lastMsg.attachment ? '📎 فایل' : item.lastMsg.message) : 'پیامی نیست'}
                                     </p>
                                     <div className="flex items-center gap-1.5">
@@ -1836,7 +1836,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                     e.stopPropagation();
                                                     handleDeleteGroup(item.id, item.type === 'task_group', item.name);
                                                 }}
-                                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-all"
+                                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded transition-all"
                                                 title="حذف گروه توسط ادمین"
                                             >
                                                 <Trash2 size={14}/>
@@ -2455,16 +2455,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                             </div>
 
                                             {/* Footer */}
-                                            <div className="flex justify-end items-center gap-1 mt-1 opacity-60 select-none">
+                                            <div className="flex justify-end items-center gap-1 mt-1 opacity-90 select-none text-slate-600 dark:text-slate-300">
                                                 {msg.uploadProgress !== undefined && (
-                                                    <span className="text-[10px] bg-blue-100 text-blue-800 px-1 rounded font-mono">{msg.uploadProgress}%</span>
+                                                    <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-900 dark:text-blue-200 px-1 rounded font-mono font-bold">{msg.uploadProgress}%</span>
                                                 )}
-                                                {msg.isEdited && <span className="text-[9px]">ویرایش شده</span>}
-                                                <span className="text-[10px]">{new Date(msg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
+                                                {msg.isEdited && <span className="text-[9px] font-bold">ویرایش شده</span>}
+                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{new Date(msg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
                                                 {isMe && (
-                                                    msg.isPending ? <Clock size={12} className="text-gray-400"/> :
-                                                    (msg.readBy && msg.readBy.length > 0) ? <CheckCheck size={14} className="text-green-500" /> :
-                                                    <Check size={14} className="text-gray-500" />
+                                                    msg.isPending ? <Clock size={12} className="text-slate-500 dark:text-slate-400"/> :
+                                                    (msg.readBy && msg.readBy.length > 0) ? <CheckCheck size={14} className="text-emerald-600 dark:text-emerald-400" /> :
+                                                    <Check size={14} className="text-slate-600 dark:text-slate-400" />
                                                 )}
                                             </div>
                                         </div>

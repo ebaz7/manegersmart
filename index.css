@@ -4,27 +4,29 @@
 
 @layer base {
   :root {
-    --app-bg: #f8fafc; /* Clean modern neutral backdrop */
-    --glass-bg: rgba(255, 255, 255, 0.92); /* Solid legible card background */
+    --app-bg: #f2f4f8; /* Soft Apple System neutral backdrop (no glare, zero eye strain) */
+    --glass-bg: rgba(255, 255, 255, 0.90); /* Silky frosted glass panel */
     --glass-bg-hover: rgba(255, 255, 255, 0.98);
-    --glass-border: rgba(203, 213, 225, 0.85); /* Visible sharp card border */
-    --glass-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04);
-    --text-primary: #0f172a;
-    --text-secondary: #334155;
+    --glass-border: rgba(203, 213, 225, 0.85); /* Clean 1px card separator */
+    --glass-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+    --text-primary: #0f172a; /* Deep charcoal slate (high contrast, non-fatiguing) */
+    --text-secondary: #334155; /* Refined secondary slate */
+    --text-tertiary: #64748b;
     --border-color: rgba(203, 213, 225, 0.85);
-    --gemini-spark: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #db2777 100%);
+    --gemini-spark: linear-gradient(135deg, #0071e3 0%, #6366f1 50%, #ec4899 100%);
   }
   
   .dark {
-    --app-bg: #0f172a; /* Deep luxury dark slate backdrop */
-    --glass-bg: rgba(30, 41, 59, 0.88); /* Translucent dark slate panel */
-    --glass-bg-hover: rgba(30, 41, 59, 0.95);
-    --glass-border: rgba(255, 255, 255, 0.15);
-    --glass-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    --app-bg: #090d16; /* Deep Apple velvet midnight (soothing on OLED/LCD at night) */
+    --glass-bg: rgba(18, 24, 38, 0.88); /* Translucent dark slate panel */
+    --glass-bg-hover: rgba(26, 36, 56, 0.95);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 15px -6px rgba(0, 0, 0, 0.5);
     --text-primary: #f8fafc;
     --text-secondary: #cbd5e1;
-    --border-color: rgba(255, 255, 255, 0.15);
-    --gemini-spark: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
+    --text-tertiary: #94a3b8;
+    --border-color: rgba(255, 255, 255, 0.12);
+    --gemini-spark: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
   }
 
   /* Enhance dark glassmorphism transparency when rich background is active in dark mode */
@@ -33,99 +35,165 @@
   .dark.has-preset-bg-cyan-cosmic,
   .dark.has-preset-bg-aurora-light {
     --app-bg: transparent;
-    --glass-bg: rgba(15, 23, 42, 0.16);
-    --glass-bg-hover: rgba(15, 23, 42, 0.28);
-    --glass-border: rgba(255, 255, 255, 0.12);
-    --border-color: rgba(255, 255, 255, 0.12);
+    --glass-bg: rgba(15, 23, 42, 0.86);
+    --glass-bg-hover: rgba(30, 41, 59, 0.94);
+    --glass-border: rgba(255, 255, 255, 0.16);
+    --border-color: rgba(255, 255, 255, 0.16);
   }
 
-  /* Enhance light glassmorphism transparency when rich background is active in light mode */
+  /* Enhance light glassmorphism with high contrast and sharp legibility */
   html:not(.dark).has-custom-bg,
   html:not(.dark).has-preset-bg-aurora-light,
   html:not(.dark).has-preset-bg-cosmic-dark,
   html:not(.dark).has-preset-bg-cyan-cosmic {
     --app-bg: transparent;
-    --glass-bg: rgba(255, 255, 255, 0.16);
-    --glass-bg-hover: rgba(255, 255, 255, 0.28);
-    --glass-border: rgba(255, 255, 255, 0.35);
-    --border-color: rgba(255, 255, 255, 0.35);
+    --glass-bg: rgba(255, 255, 255, 0.88);
+    --glass-bg-hover: rgba(255, 255, 255, 0.96);
+    --glass-border: rgba(203, 213, 225, 0.9);
+    --border-color: rgba(203, 213, 225, 0.9);
   }
 
+  /* 1. Liquid Glass / Aurora Theme */
   .theme-light-aurora {
-    --app-bg: transparent; /* Let the blobs show through */
-    --glass-bg: rgba(255, 255, 255, 0.16); /* Premium translucent liquid glass */
-    --glass-bg-hover: rgba(255, 255, 255, 0.28);
-    --glass-border: rgba(255, 255, 255, 0.35); 
-    --glass-shadow: 0 16px 40px -4px rgba(15, 23, 42, 0.08), inset 0 1.5px 2px rgba(255, 255, 255, 0.85);
+    --app-bg: #f2f4f8;
+    --glass-bg: rgba(255, 255, 255, 0.88);
+    --glass-bg-hover: rgba(255, 255, 255, 0.96);
+    --glass-border: rgba(203, 213, 225, 0.85); 
+    --glass-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 4px 6px -2px rgba(15, 23, 42, 0.03);
     --text-primary: #0f172a;
     --text-secondary: #334155;
-    --border-color: rgba(255, 255, 255, 0.35);
-    --gemini-spark: linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%);
+    --border-color: rgba(203, 213, 225, 0.85);
+    --gemini-spark: linear-gradient(135deg, #0071e3 0%, #8b5cf6 50%, #ec4899 100%);
+  }
+  .dark.theme-light-aurora,
+  .dark .theme-light-aurora {
+    --app-bg: #090d16;
+    --glass-bg: rgba(18, 24, 38, 0.86);
+    --glass-bg-hover: rgba(28, 38, 58, 0.94);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --glass-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 15px -6px rgba(0, 0, 0, 0.5);
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --border-color: rgba(255, 255, 255, 0.14);
   }
 
-  /* 2. Bento Grid Theme */
+  /* 2. Bento Grid Theme (Light & Dark) */
   .theme-bento {
-    --app-bg: #0b0f19;
-    --glass-bg: #131b2e;
-    --glass-bg-hover: #1c2742;
+    --app-bg: #eef2f6;
+    --glass-bg: #ffffff;
+    --glass-bg-hover: #f8fafc;
+    --glass-border: rgba(99, 102, 241, 0.2);
+    --glass-shadow: 0 4px 16px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(99, 102, 241, 0.12);
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --border-color: rgba(99, 102, 241, 0.2);
+    --gemini-spark: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  }
+  .dark.theme-bento,
+  .dark .theme-bento {
+    --app-bg: #0a0e1a;
+    --glass-bg: #111827;
+    --glass-bg-hover: #1a2337;
     --glass-border: rgba(99, 102, 241, 0.25);
-    --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.2);
+    --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.2);
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --border-color: rgba(99, 102, 241, 0.25);
-    --gemini-spark: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   }
 
-  /* 3. Claymorphism Theme */
+  /* 3. Claymorphism Theme (Soft 3D) */
   .theme-claymorphism {
-    --app-bg: #eef2f6;
-    --glass-bg: #eef2f6;
-    --glass-bg-hover: #f5f8fc;
+    --app-bg: #edf2f7;
+    --glass-bg: #edf2f7;
+    --glass-bg-hover: #f7fafc;
     --glass-border: #ffffff;
-    --glass-shadow: 8px 8px 16px rgba(163, 177, 198, 0.6), -8px -8px 16px rgba(255, 255, 255, 0.8), inset 2px 2px 4px rgba(255, 255, 255, 0.7);
+    --glass-shadow: 6px 6px 14px rgba(163, 177, 198, 0.4), -6px -6px 14px rgba(255, 255, 255, 0.9), inset 1px 1px 2px rgba(255, 255, 255, 0.8);
     --text-primary: #1e293b;
-    --text-secondary: #64748b;
-    --border-color: #d1d5db;
+    --text-secondary: #475569;
+    --border-color: #cbd5e1;
     --gemini-spark: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
   }
+  .dark.theme-claymorphism,
+  .dark .theme-claymorphism {
+    --app-bg: #0f141f;
+    --glass-bg: #151c2c;
+    --glass-bg-hover: #1c263c;
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 8px 8px 20px rgba(0, 0, 0, 0.5), -4px -4px 12px rgba(255, 255, 255, 0.04);
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --border-color: rgba(255, 255, 255, 0.1);
+  }
 
-  /* 4. Minimalism Theme */
+  /* 4. Minimalism Theme (Apple Studio Clean) */
   .theme-minimalism {
-    --app-bg: #fafafa;
+    --app-bg: #f9fafb;
     --glass-bg: #ffffff;
-    --glass-bg-hover: #f4f4f5;
-    --glass-border: #e4e4e7;
-    --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    --text-primary: #18181b;
-    --text-secondary: #71717a;
-    --border-color: #e4e4e7;
-    --gemini-spark: linear-gradient(135deg, #18181b 0%, #52525b 100%);
+    --glass-bg-hover: #f3f4f6;
+    --glass-border: #e5e7eb;
+    --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --border-color: #e5e7eb;
+    --gemini-spark: linear-gradient(135deg, #111827 0%, #4b5563 100%);
+  }
+  .dark.theme-minimalism,
+  .dark .theme-minimalism {
+    --app-bg: #09090b;
+    --glass-bg: #18181b;
+    --glass-bg-hover: #27272a;
+    --glass-border: #27272a;
+    --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --text-primary: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --border-color: #27272a;
   }
 
-  /* 5. Maximalism / Neobrutalism Theme */
+  /* 5. Maximalism / Neobrutalism Theme (Eye-Friendly Pop) */
   .theme-maximalism {
-    --app-bg: #fef08a;
+    --app-bg: #fef9c3;
     --glass-bg: #ffffff;
-    --glass-bg-hover: #dfff00;
-    --glass-border: #000000;
-    --glass-shadow: 4px 4px 0px #000000;
-    --text-primary: #000000;
-    --text-secondary: #000000;
-    --border-color: #000000;
-    --gemini-spark: linear-gradient(135deg, #ccff00 0%, #ff007f 100%);
+    --glass-bg-hover: #fef08a;
+    --glass-border: #18181b;
+    --glass-shadow: 4px 4px 0px #18181b;
+    --text-primary: #18181b;
+    --text-secondary: #27272a;
+    --border-color: #18181b;
+    --gemini-spark: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+  }
+  .dark.theme-maximalism,
+  .dark .theme-maximalism {
+    --app-bg: #180828;
+    --glass-bg: #2e1065;
+    --glass-bg-hover: #3b0764;
+    --glass-border: #a855f7;
+    --glass-shadow: 4px 4px 0px #a855f7;
+    --text-primary: #ffffff;
+    --text-secondary: #e9d5ff;
+    --border-color: #a855f7;
   }
 
-  /* 6. Luxe Gold & Noir Theme (زرد، سفید و مشکی سازمانی) */
+  /* 6. Luxe Gold & Noir Theme (Apple Titanium Gold & Velvet Noir) */
   .theme-gold-noir {
-    --app-bg: #090c10;
-    --glass-bg: rgba(15, 20, 30, 0.94);
-    --glass-bg-hover: rgba(22, 29, 44, 0.98);
-    --glass-border: rgba(251, 191, 36, 0.35);
-    --glass-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.7), 0 0 20px rgba(251, 191, 36, 0.12);
+    --app-bg: #070a10;
+    --glass-bg: rgba(14, 19, 30, 0.94);
+    --glass-bg-hover: rgba(22, 30, 48, 0.98);
+    --glass-border: rgba(245, 158, 11, 0.32);
+    --glass-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.75), 0 0 18px rgba(245, 158, 11, 0.1);
     --text-primary: #ffffff;
     --text-secondary: #fef08a;
-    --border-color: rgba(251, 191, 36, 0.3);
+    --border-color: rgba(245, 158, 11, 0.3);
     --gemini-spark: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+  }
+  html:not(.dark).theme-gold-noir {
+    --app-bg: #faf8f5;
+    --glass-bg: #ffffff;
+    --glass-bg-hover: #fffdfa;
+    --glass-border: rgba(217, 119, 6, 0.28);
+    --glass-shadow: 0 4px 20px -2px rgba(120, 53, 15, 0.06);
+    --text-primary: #1c1917;
+    --text-secondary: #78350f;
+    --border-color: rgba(217, 119, 6, 0.28);
   }
 }
 
@@ -225,71 +293,72 @@ html:not(.theme-light-aurora):not(.has-custom-bg):not(.has-preset-bg-cosmic-dark
 /* Soothing Light Aurora Background Preset */
 .bg-preset-aurora-light {
   background: 
-    radial-gradient(circle at 15% 15%, rgba(186, 230, 253, 0.4) 0%, transparent 50%),
+    radial-gradient(circle at 15% 15%, rgba(186, 230, 253, 0.45) 0%, transparent 50%),
     radial-gradient(circle at 85% 20%, rgba(254, 215, 170, 0.35) 0%, transparent 50%),
-    radial-gradient(circle at 50% 85%, rgba(251, 207, 232, 0.35) 0%, transparent 50%),
-    #f1f5f9 !important;
+    radial-gradient(circle at 50% 85%, rgba(233, 213, 255, 0.35) 0%, transparent 50%),
+    #f2f4f8 !important;
   background-size: cover !important;
+  background-attachment: fixed !important;
 }
 
 /* Custom Background Presets */
 .bg-preset-cosmic-dark {
   background: 
-    radial-gradient(circle at 20% 25%, rgba(168, 85, 247, 0.45) 0%, transparent 45%),
-    radial-gradient(circle at 80% 30%, rgba(6, 182, 212, 0.4) 0%, transparent 50%),
-    radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.35) 0%, transparent 55%),
-    linear-gradient(135deg, #0d0221 0%, #260840 35%, #0a2d4a 70%, #051829 100%) !important;
+    radial-gradient(circle at 20% 25%, rgba(139, 92, 246, 0.28) 0%, transparent 50%),
+    radial-gradient(circle at 80% 30%, rgba(14, 165, 233, 0.25) 0%, transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.2) 0%, transparent 55%),
+    linear-gradient(145deg, #060913 0%, #0c1222 50%, #060913 100%) !important;
   background-size: cover !important;
   background-attachment: fixed !important;
 }
 
 .bg-preset-cyan-cosmic {
   background: 
-    radial-gradient(circle at 15% 20%, rgba(20, 184, 166, 0.45) 0%, transparent 50%),
-    radial-gradient(circle at 85% 75%, rgba(59, 130, 246, 0.4) 0%, transparent 50%),
-    linear-gradient(135deg, #04101e 0%, #0c2340 50%, #031322 100%) !important;
+    radial-gradient(circle at 15% 20%, rgba(20, 184, 166, 0.25) 0%, transparent 50%),
+    radial-gradient(circle at 85% 75%, rgba(59, 130, 246, 0.25) 0%, transparent 50%),
+    linear-gradient(145deg, #050c18 0%, #09172c 50%, #040a14 100%) !important;
   background-size: cover !important;
   background-attachment: fixed !important;
 }
 
 .bg-preset-dark-midnight {
-  background: #0f172a !important;
+  background: #090d16 !important;
 }
 
 .bg-preset-light-modern {
-  background: #f8fafc !important;
+  background: #f2f4f8 !important;
 }
 
 
 
-/* Clear, Defined Card Containers for Light Aurora Theme - Optimized for GPU Performance */
+/* Clear, Defined Card Containers for Light Aurora Theme - High Contrast & Crisp Text Legibility */
 .theme-light-aurora .apple-glass,
 .theme-light-aurora .glass-panel {
-  background: rgba(255, 255, 255, 0.22) !important;
-  backdrop-filter: blur(8px) saturate(150%) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(150%) !important;
-  border: 1.5px solid rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.90) !important;
+  backdrop-filter: blur(14px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(150%) !important;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
   box-shadow: 
-    0 10px 25px -5px rgba(15, 23, 42, 0.08),
-    0 4px 6px -2px rgba(15, 23, 42, 0.04),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.5) !important;
+    0 10px 25px -5px rgba(15, 23, 42, 0.06),
+    0 4px 6px -2px rgba(15, 23, 42, 0.03),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9) !important;
   transform: translateZ(0);
 }
 
 .theme-light-aurora .apple-glass-hover:hover,
 .theme-light-aurora .glass-panel:hover {
-  background: rgba(255, 255, 255, 0.35) !important;
-  border-color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-color: rgba(148, 163, 184, 0.95) !important;
   box-shadow: 
-    0 14px 32px -4px rgba(15, 23, 42, 0.12),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.6) !important;
+    0 14px 32px -4px rgba(15, 23, 42, 0.1),
+    inset 0 1px 2px rgba(255, 255, 255, 0.9) !important;
 }
 
 .theme-light-aurora .glass-header {
-  background: rgba(255, 255, 255, 0.3) !important;
-  backdrop-filter: blur(8px) saturate(150%) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(150%) !important;
-  border-bottom: 1.5px solid rgba(255, 255, 255, 0.3) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(14px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(150%) !important;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.9) !important;
   transform: translateZ(0);
 }
 
@@ -301,10 +370,19 @@ html:not(.theme-light-aurora):not(.has-custom-bg):not(.has-preset-bg-cosmic-dark
 .theme-light-aurora input[type="search"], 
 .theme-light-aurora select, 
 .theme-light-aurora textarea {
-  background-color: rgba(255, 255, 255, 0.7) !important;
-  border: 1.5px solid rgba(255, 255, 255, 0.8) !important;
-  color: #0f172a !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border: 1.5px solid rgba(203, 213, 225, 0.95) !important;
+  color: #090d16 !important;
   backdrop-filter: none !important;
+}
+
+.theme-light-aurora input::placeholder,
+.theme-light-aurora textarea::placeholder,
+html.has-custom-bg:not(.dark) input::placeholder,
+html.has-custom-bg:not(.dark) textarea::placeholder {
+  color: #475569 !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
 }
 
 .theme-light-aurora input:focus, 
@@ -312,20 +390,21 @@ html:not(.theme-light-aurora):not(.has-custom-bg):not(.has-preset-bg-cosmic-dark
 .theme-light-aurora textarea:focus {
   background-color: #ffffff !important;
   border-color: #2563eb !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2) !important;
 }
 
 .theme-light-aurora th {
-  background-color: #f8fafc !important;
-  border-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #090d16 !important;
+  font-weight: 700 !important;
 }
 
 .theme-light-aurora tr:hover {
-  background-color: #f1f5f9 !important;
+  background-color: #f8fafc !important;
 }
 
-/* Crisp, High-Legibility Typography Rules (No Blur, No White Halo Shadow) */
+/* Crisp, High-Legibility Typography Rules (No Blur, No Eye Strain) */
 .theme-light-aurora .text-zinc-900,
 html.has-custom-bg:not(.dark) .text-zinc-900,
 html.has-preset-bg-aurora-light:not(.dark) .text-zinc-900,
@@ -355,15 +434,20 @@ html.has-preset-bg-cyan-cosmic:not(.dark) .text-slate-800,
 html.has-custom-bg:not(.dark) .text-gray-800,
 html.has-preset-bg-aurora-light:not(.dark) .text-gray-800,
 html.has-preset-bg-cosmic-dark:not(.dark) .text-gray-800,
-html.has-preset-bg-cyan-cosmic:not(.dark) .text-gray-800,
+html.has-preset-bg-cyan-cosmic:not(.dark) .text-gray-800 {
+  color: #090d16 !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
 .theme-light-aurora h1, html.has-custom-bg:not(.dark) h1, html.has-preset-bg-aurora-light:not(.dark) h1, html.has-preset-bg-cosmic-dark:not(.dark) h1, html.has-preset-bg-cyan-cosmic:not(.dark) h1,
 .theme-light-aurora h2, html.has-custom-bg:not(.dark) h2, html.has-preset-bg-aurora-light:not(.dark) h2, html.has-preset-bg-cosmic-dark:not(.dark) h2, html.has-preset-bg-cyan-cosmic:not(.dark) h2,
 .theme-light-aurora h3, html.has-custom-bg:not(.dark) h3, html.has-preset-bg-aurora-light:not(.dark) h3, html.has-preset-bg-cosmic-dark:not(.dark) h3, html.has-preset-bg-cyan-cosmic:not(.dark) h3,
 .theme-light-aurora h4, html.has-custom-bg:not(.dark) h4, html.has-preset-bg-aurora-light:not(.dark) h4, html.has-preset-bg-cosmic-dark:not(.dark) h4, html.has-preset-bg-cyan-cosmic:not(.dark) h4,
 .theme-light-aurora h5, html.has-custom-bg:not(.dark) h5, html.has-preset-bg-aurora-light:not(.dark) h5, html.has-preset-bg-cosmic-dark:not(.dark) h5, html.has-preset-bg-cyan-cosmic:not(.dark) h5,
 .theme-light-aurora h6, html.has-custom-bg:not(.dark) h6, html.has-preset-bg-aurora-light:not(.dark) h6, html.has-preset-bg-cosmic-dark:not(.dark) h6, html.has-preset-bg-cyan-cosmic:not(.dark) h6 {
-  color: #0f172a !important;
-  font-weight: 750 !important;
+  color: #090d16 !important;
+  font-weight: 800 !important;
   text-shadow: none !important;
 }
 
@@ -417,13 +501,23 @@ html.has-custom-bg:not(.dark) .text-gray-500,
 html.has-preset-bg-aurora-light:not(.dark) .text-gray-500,
 html.has-preset-bg-cosmic-dark:not(.dark) .text-gray-500,
 html.has-preset-bg-cyan-cosmic:not(.dark) .text-gray-500,
+.theme-light-aurora .text-zinc-400,
+html.has-custom-bg:not(.dark) .text-zinc-400,
+html.has-preset-bg-aurora-light:not(.dark) .text-zinc-400,
+html.has-preset-bg-cosmic-dark:not(.dark) .text-zinc-400,
+html.has-preset-bg-cyan-cosmic:not(.dark) .text-zinc-400,
+.theme-light-aurora .text-slate-400,
+html.has-custom-bg:not(.dark) .text-slate-400,
+html.has-preset-bg-aurora-light:not(.dark) .text-slate-400,
+html.has-preset-bg-cosmic-dark:not(.dark) .text-slate-400,
+html.has-preset-bg-cyan-cosmic:not(.dark) .text-slate-400,
 .theme-light-aurora .text-gray-400,
 html.has-custom-bg:not(.dark) .text-gray-400,
 html.has-preset-bg-aurora-light:not(.dark) .text-gray-400,
 html.has-preset-bg-cosmic-dark:not(.dark) .text-gray-400,
 html.has-preset-bg-cyan-cosmic:not(.dark) .text-gray-400 {
   color: #334155 !important;
-  font-weight: 500 !important;
+  font-weight: 550 !important;
   text-shadow: none !important;
 }
 
@@ -668,11 +762,67 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   100% { transform: translate(2%, -4%) scale(1.04) rotate(360deg); }
 }
 
-/* Font Face - Updated for better Offline Support */
+/* Font Face - Full Multi-Weight Vazirmatn for Razor-Sharp Typography */
 @font-face {
   font-family: 'Vazirmatn';
-  src: local('Vazirmatn'), local('Vazirmatn-Regular'),
+  font-style: normal;
+  font-weight: 300;
+  src: local('Vazirmatn Light'), local('Vazirmatn-Light'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Light.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Vazirmatn Regular'), local('Vazirmatn'), local('Vazirmatn-Regular'),
        url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 500;
+  src: local('Vazirmatn Medium'), local('Vazirmatn-Medium'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 600;
+  src: local('Vazirmatn SemiBold'), local('Vazirmatn-SemiBold'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-SemiBold.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 700;
+  src: local('Vazirmatn Bold'), local('Vazirmatn-Bold'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 800;
+  src: local('Vazirmatn ExtraBold'), local('Vazirmatn-ExtraBold'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-ExtraBold.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 900;
+  src: local('Vazirmatn Black'), local('Vazirmatn-Black'),
+       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Black.woff2') format('woff2');
   font-display: swap;
 }
 

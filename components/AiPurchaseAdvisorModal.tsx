@@ -389,13 +389,15 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
             if (resp.sent) {
                 setSendFeedback({
                     success: true,
-                    msg: `پیام استعلام قیمت با موفقیت از طریق ${sendPlatform === 'whatsapp' ? 'واتساپ' : sendPlatform === 'bale' ? 'بله' : 'تلگرام'} ارسال گردید.`,
+                    msg: `✅ پیام استعلام قیمت با موفقیت از طریق ربات سرور به ${sendPlatform === 'whatsapp' ? 'واتساپ' : sendPlatform === 'bale' ? 'بله' : 'تلگرام'} ارسال گردید.`,
                     directUrl: resp.directUrl
                 });
             } else if (resp.directUrl) {
+                // Open direct WhatsApp/Bale link in new window automatically
+                window.open(resp.directUrl, '_blank');
                 setSendFeedback({
                     success: true,
-                    msg: 'لینک ارسال مستقیم در پیام‌رسان آماده شد:',
+                    msg: `صفحه ارسال مستقیم در ${sendPlatform === 'whatsapp' ? 'واتساپ' : sendPlatform === 'bale' ? 'بله' : 'تلگرام'} باز شد. در صورت باز نشدن، از لینک زیر استفاده نمایید:`,
                     directUrl: resp.directUrl
                 });
             } else {

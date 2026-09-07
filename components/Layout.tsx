@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   BookOpen, LayoutDashboard, Search, PlusCircle, ListChecks, FileText, Inbox, Users, LogOut, 
   User as UserIcon, Settings, Bell, BellOff, MessageSquare, X, Check, Container, KeyRound, Save, 
@@ -528,86 +528,87 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  // Calculate Permissions
-  const perms = settings ? getRolePermissions(currentUser.role, settings, currentUser) : { canCreatePaymentOrder: false, canViewPaymentOrders: false };
   
-  // Specific Access Flags
-  const canCreatePayment = perms.canCreatePaymentOrder === true;
-  const canViewPayment = perms.canViewPaymentOrders === true;
-  const canCreateExit = perms.canCreateExitPermit === true;
-  const canViewInvoices = perms.canViewInvoices === true;
-  const canViewExit = perms.canViewExitPermits === true;
-  const canManageWarehouse = currentUser.role === UserRole.ADMIN || perms.canManageWarehouse === true;
-  const canSeeTrade = currentUser.role === UserRole.ADMIN || perms.canManageTrade === true;
-  const canSeeBalances = currentUser.role === UserRole.ADMIN || (perms as any).canViewCustomerBalances === true;
-  const canSeeProducts = currentUser.role === UserRole.ADMIN || perms.canManageSales === true;
-  const canSeeSettings = currentUser.role === UserRole.ADMIN || perms.canManageSettings === true || perms.canManageTradeSettings === true;
-  const canSeeSecurity = currentUser.role === UserRole.ADMIN || perms.canViewSecurity === true;
-  const canSeeKnowledgeBase = currentUser.role === UserRole.ADMIN || perms.canViewKnowledgeBase === true || perms.canManageKnowledgeBase === true;
-  const canSeeMeetings = currentUser.role === UserRole.ADMIN || perms.canViewMeetings === true;
-  const canSeePurchase = currentUser.role === UserRole.ADMIN || (perms.canView === true);
-  const canSeeCcti = currentUser.role === UserRole.ADMIN || perms.canAccessCcti === true;
-  const canSeeSayan = currentUser.role === UserRole.ADMIN || 
-    perms.canViewSayan === true || 
-    perms.canViewSayanTraz === true || 
-    perms.canViewSayanSales === true || 
-    perms.canViewSayanProduction === true || 
-    perms.canViewSayanProdReturns === true || 
-    perms.canViewSayanCheques === true || 
-    perms.canViewSayanRemittances === true || 
-    perms.canViewSayanWarehouseOverview === true || 
-    perms.canAccessSayanReports === true;
+  // Calculate Permissions (Memoized for high performance on heavy Admin/CEO roles)
+  const navItems = useMemo(() => {
+    const perms = settings ? getRolePermissions(currentUser.role, settings, currentUser) : { canCreatePaymentOrder: false, canViewPaymentOrders: false };
+    
+    // Specific Access Flags
+    const canCreatePayment = perms.canCreatePaymentOrder === true;
+    const canViewPayment = perms.canViewPaymentOrders === true;
+    const canCreateExit = perms.canCreateExitPermit === true;
+    const canViewInvoices = perms.canViewInvoices === true;
+    const canViewExit = perms.canViewExitPermits === true;
+    const canManageWarehouse = currentUser.role === UserRole.ADMIN || perms.canManageWarehouse === true;
+    const canSeeTrade = currentUser.role === UserRole.ADMIN || perms.canManageTrade === true;
+    const canSeeBalances = currentUser.role === UserRole.ADMIN || (perms as any).canViewCustomerBalances === true;
+    const canSeeProducts = currentUser.role === UserRole.ADMIN || perms.canManageSales === true;
+    const canSeeSettings = currentUser.role === UserRole.ADMIN || perms.canManageSettings === true || perms.canManageTradeSettings === true;
+    const canSeeSecurity = currentUser.role === UserRole.ADMIN || perms.canViewSecurity === true;
+    const canSeeKnowledgeBase = currentUser.role === UserRole.ADMIN || perms.canViewKnowledgeBase === true || perms.canManageKnowledgeBase === true;
+    const canSeeMeetings = currentUser.role === UserRole.ADMIN || perms.canViewMeetings === true;
+    const canSeePurchase = currentUser.role === UserRole.ADMIN || (perms.canView === true);
+    const canSeeCcti = currentUser.role === UserRole.ADMIN || perms.canAccessCcti === true;
+    const canSeeSayan = currentUser.role === UserRole.ADMIN || 
+      perms.canViewSayan === true || 
+      perms.canViewSayanTraz === true || 
+      perms.canViewSayanSales === true || 
+      perms.canViewSayanProduction === true || 
+      perms.canViewSayanProdReturns === true || 
+      perms.canViewSayanCheques === true || 
+      perms.canViewSayanRemittances === true || 
+      perms.canViewSayanWarehouseOverview === true || 
+      perms.canAccessSayanReports === true;
+
+    const items = [
+      { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
+    ];
+    if (canCreatePayment) items.push({ id: 'create', label: 'ثبت پرداخت', icon: BadgePlus });
+    if (canViewPayment) items.push({ id: 'manage', label: 'سوابق پرداخت', icon: Receipt });
+    if (canSeeCcti) items.push({ id: 'ccti', label: 'تبدیل CCTI', icon: ArrowLeftRight });
+    if (canCreateExit) items.push({ id: 'create-exit', label: 'ثبت خروج', icon: Truck });
+    if (canViewInvoices) items.push({ id: 'manage-invoices', label: 'مدیریت فاکتورها', icon: ScrollText });
+    if (canViewExit) items.push({ id: 'manage-exit', label: 'سوابق خروج', icon: ClipboardCheck });
+    if (canManageWarehouse) items.push({ id: 'warehouse', label: 'مدیریت انبار', icon: Warehouse });
+    if (canSeeSayan) items.push({ id: 'sayan', label: 'گزارشات سایان', icon: BarChart3 });
+    if (canSeeSecurity) items.push({ id: 'security', label: 'انتظامات', icon: ShieldCheck });
+    if (canSeeMeetings) items.push({ id: 'meetings', label: 'جلسات تولید', icon: CalendarDays });
+    if (canSeePurchase) items.push({ id: 'purchase', label: 'درخواست خرید', icon: ShoppingCart });
+    items.push({ id: 'secretariat', label: 'دبیرخانه اداری', icon: FolderArchive });
+    items.push({ id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Banknote });
+    items.push({ id: 'chat', label: 'گفتگو', icon: MessagesSquare });
+    if (canSeeKnowledgeBase) items.push({ id: 'knowledge', label: 'اطلاعات و یادداشت ها', icon: BookOpen });
+    if (canSeeTrade) items.push({ id: 'trade', label: 'بازرگانی', icon: Globe });
+    if (canSeeBalances) items.push({ id: 'balances', label: 'مانده حساب مشتریان', icon: Wallet });
+    if (canSeeProducts) {
+        items.push({ id: 'products', label: 'کالاها', icon: Boxes });
+        items.push({ id: 'sales', label: 'مشتریان', icon: Handshake });
+        items.push({ id: 'tickets', label: 'تیکت‌ها', icon: Headset });
+    }
+    if (hasPermission(currentUser, 'manage_users')) items.push({ id: 'users', label: 'کاربران', icon: UserCog });
+    if (canSeeSettings) items.push({ id: 'settings', label: 'تنظیمات', icon: Settings });
+    return items;
+  }, [currentUser, settings]);
+
   const canSeeNotifications = true;
 
-  const navItems = [
-    { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
-  ];
-  if (canCreatePayment) navItems.push({ id: 'create', label: 'ثبت پرداخت', icon: BadgePlus });
-  if (canViewPayment) navItems.push({ id: 'manage', label: 'سوابق پرداخت', icon: Receipt });
-  if (canSeeCcti) navItems.push({ id: 'ccti', label: 'تبدیل CCTI', icon: ArrowLeftRight });
-  if (canCreateExit) navItems.push({ id: 'create-exit', label: 'ثبت خروج', icon: Truck });
-  if (canViewInvoices) navItems.push({ id: 'manage-invoices', label: 'مدیریت فاکتورها', icon: ScrollText });
-  if (canViewExit) navItems.push({ id: 'manage-exit', label: 'سوابق خروج', icon: ClipboardCheck });
-  if (canManageWarehouse) navItems.push({ id: 'warehouse', label: 'مدیریت انبار', icon: Warehouse });
-  if (canSeeSayan) navItems.push({ id: 'sayan', label: 'گزارشات سایان', icon: BarChart3 });
-  if (canSeeSecurity) navItems.push({ id: 'security', label: 'انتظامات', icon: ShieldCheck });
-  if (canSeeMeetings) navItems.push({ id: 'meetings', label: 'جلسات تولید', icon: CalendarDays });
-  if (canSeePurchase) navItems.push({ id: 'purchase', label: 'درخواست خرید', icon: ShoppingCart });
-  navItems.push({ id: 'secretariat', label: 'دبیرخانه اداری', icon: FolderArchive });
-  navItems.push({ id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Banknote });
-  navItems.push({ id: 'chat', label: 'گفتگو', icon: MessagesSquare });
-  if (canSeeKnowledgeBase) navItems.push({ id: 'knowledge', label: 'اطلاعات و یادداشت ها', icon: BookOpen });
-  if (canSeeTrade) navItems.push({ id: 'trade', label: 'بازرگانی', icon: Globe });
-  if (canSeeBalances) navItems.push({ id: 'balances', label: 'مانده حساب مشتریان', icon: Wallet });
-  if (canSeeProducts) {
-      navItems.push({ id: 'products', label: 'کالاها', icon: Boxes });
-      navItems.push({ id: 'sales', label: 'مشتریان', icon: Handshake });
-      navItems.push({ id: 'tickets', label: 'تیکت‌ها', icon: Headset });
-  }
-  if (hasPermission(currentUser, 'manage_users')) navItems.push({ id: 'users', label: 'کاربران', icon: UserCog });
-  if (canSeeSettings) navItems.push({ id: 'settings', label: 'تنظیمات', icon: Settings });
-
-  // Dynamic Navigation Logic
-  const mobileNavOrder_val = currentUser.mobileNavOrder || settings?.mobileNavOrder || DEFAULT_MOBILE_NAV_ORDER;
-
-  const allAvailableItems = navItems.filter(item => {
-      // Dashboard is usually always there if possible
-      if (item.id === 'dashboard') return true;
-      return true; // navItems is already filtered by perms
-  });
-
-  const sortedItems = [...allAvailableItems].sort((a, b) => {
-      const idxA = mobileNavOrder_val.indexOf(a.id);
-      const idxB = mobileNavOrder_val.indexOf(b.id);
-      if (idxA === -1 && idxB === -1) return 0;
-      if (idxA === -1) return 1;
-      if (idxB === -1) return -1;
-      return idxA - idxB;
-  });
-
-  const limit = 5;
-  const bottomVisibleItems = sortedItems.slice(0, 4);
-  const menuItems = sortedItems.slice(4);
+  // Dynamic Navigation Logic Memoized
+  const { sortedItems, bottomVisibleItems, menuItems } = useMemo(() => {
+    const mobileNavOrder_val = currentUser.mobileNavOrder || settings?.mobileNavOrder || DEFAULT_MOBILE_NAV_ORDER;
+    const sorted = [...navItems].sort((a, b) => {
+        const idxA = mobileNavOrder_val.indexOf(a.id);
+        const idxB = mobileNavOrder_val.indexOf(b.id);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
+    return {
+      sortedItems: sorted,
+      bottomVisibleItems: sorted.slice(0, 4),
+      menuItems: sorted.slice(4)
+    };
+  }, [navItems, currentUser.mobileNavOrder, settings?.mobileNavOrder]);
 
   const isBottomBarVisible = !showMobileMenu && !isModalOpen && !hasBackAction && activeTab === 'dashboard';
 

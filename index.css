@@ -4,29 +4,27 @@
 
 @layer base {
   :root {
-    --app-bg: #f2f4f8; /* Soft Apple System neutral backdrop (no glare, zero eye strain) */
-    --glass-bg: rgba(255, 255, 255, 0.90); /* Silky frosted glass panel */
+    --app-bg: #f8fafc; /* Clean modern neutral backdrop */
+    --glass-bg: rgba(255, 255, 255, 0.92); /* Solid legible card background */
     --glass-bg-hover: rgba(255, 255, 255, 0.98);
-    --glass-border: rgba(203, 213, 225, 0.85); /* Clean 1px card separator */
-    --glass-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
-    --text-primary: #0f172a; /* Deep charcoal slate (high contrast, non-fatiguing) */
-    --text-secondary: #334155; /* Refined secondary slate */
-    --text-tertiary: #64748b;
+    --glass-border: rgba(203, 213, 225, 0.85); /* Visible sharp card border */
+    --glass-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04);
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
     --border-color: rgba(203, 213, 225, 0.85);
-    --gemini-spark: linear-gradient(135deg, #0071e3 0%, #6366f1 50%, #ec4899 100%);
+    --gemini-spark: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #db2777 100%);
   }
   
   .dark {
-    --app-bg: #090d16; /* Deep Apple velvet midnight (soothing on OLED/LCD at night) */
-    --glass-bg: rgba(18, 24, 38, 0.88); /* Translucent dark slate panel */
-    --glass-bg-hover: rgba(26, 36, 56, 0.95);
-    --glass-border: rgba(255, 255, 255, 0.12);
-    --glass-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 15px -6px rgba(0, 0, 0, 0.5);
+    --app-bg: #0f172a; /* Deep luxury dark slate backdrop */
+    --glass-bg: rgba(30, 41, 59, 0.88); /* Translucent dark slate panel */
+    --glass-bg-hover: rgba(30, 41, 59, 0.95);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --glass-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
     --text-primary: #f8fafc;
     --text-secondary: #cbd5e1;
-    --text-tertiary: #94a3b8;
-    --border-color: rgba(255, 255, 255, 0.12);
-    --gemini-spark: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
+    --border-color: rgba(255, 255, 255, 0.15);
+    --gemini-spark: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
   }
 
   /* Enhance dark glassmorphism transparency when rich background is active in dark mode */
@@ -37,8 +35,8 @@
     --app-bg: transparent;
     --glass-bg: rgba(15, 23, 42, 0.86);
     --glass-bg-hover: rgba(30, 41, 59, 0.94);
-    --glass-border: rgba(255, 255, 255, 0.16);
-    --border-color: rgba(255, 255, 255, 0.16);
+    --glass-border: rgba(255, 255, 255, 0.18);
+    --border-color: rgba(255, 255, 255, 0.18);
   }
 
   /* Enhance light glassmorphism with high contrast and sharp legibility */
@@ -53,147 +51,81 @@
     --border-color: rgba(203, 213, 225, 0.9);
   }
 
-  /* 1. Liquid Glass / Aurora Theme */
   .theme-light-aurora {
-    --app-bg: #f2f4f8;
-    --glass-bg: rgba(255, 255, 255, 0.88);
+    --app-bg: transparent; /* Let the soft background show through */
+    --glass-bg: rgba(255, 255, 255, 0.88); /* Crisp high-contrast frosted glass */
     --glass-bg-hover: rgba(255, 255, 255, 0.96);
-    --glass-border: rgba(203, 213, 225, 0.85); 
-    --glass-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 4px 6px -2px rgba(15, 23, 42, 0.03);
-    --text-primary: #0f172a;
-    --text-secondary: #334155;
-    --border-color: rgba(203, 213, 225, 0.85);
-    --gemini-spark: linear-gradient(135deg, #0071e3 0%, #8b5cf6 50%, #ec4899 100%);
-  }
-  .dark.theme-light-aurora,
-  .dark .theme-light-aurora {
-    --app-bg: #090d16;
-    --glass-bg: rgba(18, 24, 38, 0.86);
-    --glass-bg-hover: rgba(28, 38, 58, 0.94);
-    --glass-border: rgba(255, 255, 255, 0.14);
-    --glass-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 15px -6px rgba(0, 0, 0, 0.5);
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --border-color: rgba(255, 255, 255, 0.14);
+    --glass-border: rgba(203, 213, 225, 0.9); 
+    --glass-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04);
+    --text-primary: #090d16;
+    --text-secondary: #1e293b;
+    --border-color: rgba(203, 213, 225, 0.9);
+    --gemini-spark: linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%);
   }
 
-  /* 2. Bento Grid Theme (Light & Dark) */
+  /* 2. Bento Grid Theme */
   .theme-bento {
-    --app-bg: #eef2f6;
-    --glass-bg: #ffffff;
-    --glass-bg-hover: #f8fafc;
-    --glass-border: rgba(99, 102, 241, 0.2);
-    --glass-shadow: 0 4px 16px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(99, 102, 241, 0.12);
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --border-color: rgba(99, 102, 241, 0.2);
-    --gemini-spark: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  }
-  .dark.theme-bento,
-  .dark .theme-bento {
-    --app-bg: #0a0e1a;
-    --glass-bg: #111827;
-    --glass-bg-hover: #1a2337;
+    --app-bg: #0b0f19;
+    --glass-bg: #131b2e;
+    --glass-bg-hover: #1c2742;
     --glass-border: rgba(99, 102, 241, 0.25);
-    --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.2);
+    --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.2);
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --border-color: rgba(99, 102, 241, 0.25);
+    --gemini-spark: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   }
 
-  /* 3. Claymorphism Theme (Soft 3D) */
+  /* 3. Claymorphism Theme */
   .theme-claymorphism {
-    --app-bg: #edf2f7;
-    --glass-bg: #edf2f7;
-    --glass-bg-hover: #f7fafc;
+    --app-bg: #eef2f6;
+    --glass-bg: #eef2f6;
+    --glass-bg-hover: #f5f8fc;
     --glass-border: #ffffff;
-    --glass-shadow: 6px 6px 14px rgba(163, 177, 198, 0.4), -6px -6px 14px rgba(255, 255, 255, 0.9), inset 1px 1px 2px rgba(255, 255, 255, 0.8);
+    --glass-shadow: 8px 8px 16px rgba(163, 177, 198, 0.6), -8px -8px 16px rgba(255, 255, 255, 0.8), inset 2px 2px 4px rgba(255, 255, 255, 0.7);
     --text-primary: #1e293b;
-    --text-secondary: #475569;
-    --border-color: #cbd5e1;
+    --text-secondary: #64748b;
+    --border-color: #d1d5db;
     --gemini-spark: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
   }
-  .dark.theme-claymorphism,
-  .dark .theme-claymorphism {
-    --app-bg: #0f141f;
-    --glass-bg: #151c2c;
-    --glass-bg-hover: #1c263c;
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-shadow: 8px 8px 20px rgba(0, 0, 0, 0.5), -4px -4px 12px rgba(255, 255, 255, 0.04);
-    --text-primary: #f8fafc;
-    --text-secondary: #cbd5e1;
-    --border-color: rgba(255, 255, 255, 0.1);
-  }
 
-  /* 4. Minimalism Theme (Apple Studio Clean) */
+  /* 4. Minimalism Theme */
   .theme-minimalism {
-    --app-bg: #f9fafb;
+    --app-bg: #fafafa;
     --glass-bg: #ffffff;
-    --glass-bg-hover: #f3f4f6;
-    --glass-border: #e5e7eb;
-    --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-    --text-primary: #111827;
-    --text-secondary: #4b5563;
-    --border-color: #e5e7eb;
-    --gemini-spark: linear-gradient(135deg, #111827 0%, #4b5563 100%);
-  }
-  .dark.theme-minimalism,
-  .dark .theme-minimalism {
-    --app-bg: #09090b;
-    --glass-bg: #18181b;
-    --glass-bg-hover: #27272a;
-    --glass-border: #27272a;
-    --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    --text-primary: #f4f4f5;
-    --text-secondary: #a1a1aa;
-    --border-color: #27272a;
-  }
-
-  /* 5. Maximalism / Neobrutalism Theme (Eye-Friendly Pop) */
-  .theme-maximalism {
-    --app-bg: #fef9c3;
-    --glass-bg: #ffffff;
-    --glass-bg-hover: #fef08a;
-    --glass-border: #18181b;
-    --glass-shadow: 4px 4px 0px #18181b;
+    --glass-bg-hover: #f4f4f5;
+    --glass-border: #e4e4e7;
+    --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     --text-primary: #18181b;
-    --text-secondary: #27272a;
-    --border-color: #18181b;
-    --gemini-spark: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-  }
-  .dark.theme-maximalism,
-  .dark .theme-maximalism {
-    --app-bg: #180828;
-    --glass-bg: #2e1065;
-    --glass-bg-hover: #3b0764;
-    --glass-border: #a855f7;
-    --glass-shadow: 4px 4px 0px #a855f7;
-    --text-primary: #ffffff;
-    --text-secondary: #e9d5ff;
-    --border-color: #a855f7;
+    --text-secondary: #71717a;
+    --border-color: #e4e4e7;
+    --gemini-spark: linear-gradient(135deg, #18181b 0%, #52525b 100%);
   }
 
-  /* 6. Luxe Gold & Noir Theme (Apple Titanium Gold & Velvet Noir) */
+  /* 5. Maximalism / Neobrutalism Theme */
+  .theme-maximalism {
+    --app-bg: #fef08a;
+    --glass-bg: #ffffff;
+    --glass-bg-hover: #dfff00;
+    --glass-border: #000000;
+    --glass-shadow: 4px 4px 0px #000000;
+    --text-primary: #000000;
+    --text-secondary: #000000;
+    --border-color: #000000;
+    --gemini-spark: linear-gradient(135deg, #ccff00 0%, #ff007f 100%);
+  }
+
+  /* 6. Luxe Gold & Noir Theme (زرد، سفید و مشکی سازمانی) */
   .theme-gold-noir {
-    --app-bg: #070a10;
-    --glass-bg: rgba(14, 19, 30, 0.94);
-    --glass-bg-hover: rgba(22, 30, 48, 0.98);
-    --glass-border: rgba(245, 158, 11, 0.32);
-    --glass-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.75), 0 0 18px rgba(245, 158, 11, 0.1);
+    --app-bg: #090c10;
+    --glass-bg: rgba(15, 20, 30, 0.94);
+    --glass-bg-hover: rgba(22, 29, 44, 0.98);
+    --glass-border: rgba(251, 191, 36, 0.35);
+    --glass-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.7), 0 0 20px rgba(251, 191, 36, 0.12);
     --text-primary: #ffffff;
     --text-secondary: #fef08a;
-    --border-color: rgba(245, 158, 11, 0.3);
+    --border-color: rgba(251, 191, 36, 0.3);
     --gemini-spark: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-  }
-  html:not(.dark).theme-gold-noir {
-    --app-bg: #faf8f5;
-    --glass-bg: #ffffff;
-    --glass-bg-hover: #fffdfa;
-    --glass-border: rgba(217, 119, 6, 0.28);
-    --glass-shadow: 0 4px 20px -2px rgba(120, 53, 15, 0.06);
-    --text-primary: #1c1917;
-    --text-secondary: #78350f;
-    --border-color: rgba(217, 119, 6, 0.28);
   }
 }
 
@@ -293,40 +225,39 @@ html:not(.theme-light-aurora):not(.has-custom-bg):not(.has-preset-bg-cosmic-dark
 /* Soothing Light Aurora Background Preset */
 .bg-preset-aurora-light {
   background: 
-    radial-gradient(circle at 15% 15%, rgba(186, 230, 253, 0.45) 0%, transparent 50%),
+    radial-gradient(circle at 15% 15%, rgba(186, 230, 253, 0.4) 0%, transparent 50%),
     radial-gradient(circle at 85% 20%, rgba(254, 215, 170, 0.35) 0%, transparent 50%),
-    radial-gradient(circle at 50% 85%, rgba(233, 213, 255, 0.35) 0%, transparent 50%),
-    #f2f4f8 !important;
+    radial-gradient(circle at 50% 85%, rgba(251, 207, 232, 0.35) 0%, transparent 50%),
+    #f1f5f9 !important;
   background-size: cover !important;
-  background-attachment: fixed !important;
 }
 
 /* Custom Background Presets */
 .bg-preset-cosmic-dark {
   background: 
-    radial-gradient(circle at 20% 25%, rgba(139, 92, 246, 0.28) 0%, transparent 50%),
-    radial-gradient(circle at 80% 30%, rgba(14, 165, 233, 0.25) 0%, transparent 50%),
-    radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.2) 0%, transparent 55%),
-    linear-gradient(145deg, #060913 0%, #0c1222 50%, #060913 100%) !important;
+    radial-gradient(circle at 20% 25%, rgba(168, 85, 247, 0.45) 0%, transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(6, 182, 212, 0.4) 0%, transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.35) 0%, transparent 55%),
+    linear-gradient(135deg, #0d0221 0%, #260840 35%, #0a2d4a 70%, #051829 100%) !important;
   background-size: cover !important;
   background-attachment: fixed !important;
 }
 
 .bg-preset-cyan-cosmic {
   background: 
-    radial-gradient(circle at 15% 20%, rgba(20, 184, 166, 0.25) 0%, transparent 50%),
-    radial-gradient(circle at 85% 75%, rgba(59, 130, 246, 0.25) 0%, transparent 50%),
-    linear-gradient(145deg, #050c18 0%, #09172c 50%, #040a14 100%) !important;
+    radial-gradient(circle at 15% 20%, rgba(20, 184, 166, 0.45) 0%, transparent 50%),
+    radial-gradient(circle at 85% 75%, rgba(59, 130, 246, 0.4) 0%, transparent 50%),
+    linear-gradient(135deg, #04101e 0%, #0c2340 50%, #031322 100%) !important;
   background-size: cover !important;
   background-attachment: fixed !important;
 }
 
 .bg-preset-dark-midnight {
-  background: #090d16 !important;
+  background: #0f172a !important;
 }
 
 .bg-preset-light-modern {
-  background: #f2f4f8 !important;
+  background: #f8fafc !important;
 }
 
 
@@ -1075,11 +1006,28 @@ tr {
 }
 
 tr:hover {
-  background-color: rgba(0, 0, 0, 0.008) !important;
+  background-color: rgba(0, 0, 0, 0.02) !important;
 }
 
-.dark tr:hover {
-  background-color: rgba(255, 255, 255, 0.008) !important;
+.dark tr:hover,
+html.dark tr:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Universal Dark Mode Safe Hovers - Prevent White/Bright Hover on Dark Mode */
+.dark [class*="hover:bg-gray-50"]:hover,
+.dark [class*="hover:bg-gray-100"]:hover,
+.dark [class*="hover:bg-slate-50"]:hover,
+.dark [class*="hover:bg-slate-100"]:hover,
+.dark [class*="hover:bg-zinc-50"]:hover,
+.dark [class*="hover:bg-zinc-100"]:hover,
+html.dark [class*="hover:bg-gray-50"]:hover,
+html.dark [class*="hover:bg-gray-100"]:hover,
+html.dark [class*="hover:bg-slate-50"]:hover,
+html.dark [class*="hover:bg-slate-100"]:hover,
+html.dark [class*="hover:bg-zinc-50"]:hover,
+html.dark [class*="hover:bg-zinc-100"]:hover {
+  background-color: rgba(255, 255, 255, 0.07) !important;
 }
 
 td {

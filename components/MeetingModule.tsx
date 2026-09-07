@@ -716,7 +716,7 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 pb-32 md:pb-40 animate-fade-in">
             {/* Header Area */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/70 dark:bg-gray-900/50 p-6 rounded-[2.5rem] border border-white dark:border-white/5 backdrop-blur-3xl shadow-xl">
                 <div className="flex items-center gap-4">
@@ -808,161 +808,195 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center justify-between text-[11px] font-bold text-gray-500 px-2">
+                                <div className="flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 px-1 pt-1">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-1.5 text-blue-600">
+                                        <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
                                             <CheckSquare size={14} />
                                             <span>{meeting.items.length} مصوبه</span>
                                         </div>
                                         {((meeting.imageAttachments?.length || 0) + (meeting.pdfAttachments?.length || 0)) > 0 && (
-                                            <div className="flex items-center gap-1 text-teal-600">
+                                            <div className="flex items-center gap-1 text-teal-600 dark:text-teal-400">
                                                 <Paperclip size={14} />
                                                 <span>{(meeting.imageAttachments?.length || 0) + (meeting.pdfAttachments?.length || 0)} فایل</span>
                                             </div>
                                         )}
                                     </div>
-                                    <div className="text-[10px]">توسط: {meeting.createdBy}</div>
+                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">توسط: {meeting.createdBy}</div>
                                 </div>
+
+                                {/* Attachments Chips List */}
+                                {((meeting.imageAttachments?.length || 0) + (meeting.pdfAttachments?.length || 0)) > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100/70 dark:border-white/5">
+                                        {meeting.imageAttachments?.map((att, idx) => (
+                                            <div key={`img-${idx}`} className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 rounded-lg px-2 py-1 border border-teal-200/60 dark:border-teal-800/50 text-[10px] font-bold max-w-full">
+                                                <Image size={13} className="shrink-0 text-teal-600 dark:text-teal-400" />
+                                                <button 
+                                                    onClick={() => setPreviewAttachment({ isOpen: true, url: att.url, fileName: att.fileName })} 
+                                                    className="hover:underline truncate max-w-[100px] text-right" 
+                                                    title={`مشاهده تصویر: ${att.fileName}`}
+                                                >
+                                                    {att.fileName}
+                                                </button>
+                                                <div className="flex items-center gap-0.5 border-r border-teal-200 dark:border-teal-800/60 pr-1 mr-0.5 shrink-0">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); downloadAndOpenFile(att.url, att.fileName); }}
+                                                        className="p-0.5 hover:bg-teal-200/60 dark:hover:bg-teal-800/60 rounded text-teal-700 dark:text-teal-300 transition-colors"
+                                                        title="دانلود"
+                                                    >
+                                                        <Download size={12} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openSendToChat({
+                                                                fileUrl: att.url,
+                                                                fileName: att.fileName,
+                                                                title: `ارسال تصویر پیوست جلسه به گفتگو`,
+                                                                defaultMessage: `📎 تصویر پیوست صورتجلسه شماره ${meeting.meetingNumber}: ${att.fileName}`
+                                                            });
+                                                        }}
+                                                        className="p-0.5 hover:bg-emerald-200/60 dark:hover:bg-emerald-800/60 rounded text-emerald-700 dark:text-emerald-300 transition-colors"
+                                                        title="ارسال به گفتگو"
+                                                    >
+                                                        <MessageSquare size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {meeting.pdfAttachments?.map((att, idx) => (
+                                            <div key={`pdf-${idx}`} className="inline-flex items-center gap-1 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 rounded-lg px-2 py-1 border border-rose-200/60 dark:border-rose-800/50 text-[10px] font-bold max-w-full">
+                                                <FileText size={13} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                                                <button 
+                                                    onClick={() => setPreviewAttachment({ isOpen: true, url: att.url, fileName: att.fileName })} 
+                                                    className="hover:underline truncate max-w-[100px] text-right" 
+                                                    title={`مشاهده سند PDF: ${att.fileName}`}
+                                                >
+                                                    {att.fileName}
+                                                </button>
+                                                <div className="flex items-center gap-0.5 border-r border-rose-200 dark:border-rose-800/60 pr-1 mr-0.5 shrink-0">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); downloadAndOpenFile(att.url, att.fileName); }}
+                                                        className="p-0.5 hover:bg-rose-200/60 dark:hover:bg-rose-800/60 rounded text-rose-700 dark:text-rose-300 transition-colors"
+                                                        title="دانلود"
+                                                    >
+                                                        <Download size={12} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            openSendToChat({
+                                                                fileUrl: att.url,
+                                                                fileName: att.fileName,
+                                                                title: `ارسال سند PDF جلسه به گفتگو`,
+                                                                defaultMessage: `📄 فایل PDF پیوست صورتجلسه شماره ${meeting.meetingNumber}: ${att.fileName}`
+                                                            });
+                                                        }}
+                                                        className="p-0.5 hover:bg-emerald-200/60 dark:hover:bg-emerald-800/60 rounded text-emerald-700 dark:text-emerald-300 transition-colors"
+                                                        title="ارسال به گفتگو"
+                                                    >
+                                                        <MessageSquare size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                              </div>
 
-                             <div className="mt-5 pt-4 border-t border-gray-100 dark:border-white/5 flex flex-col gap-3">
-                                <div className="flex items-center justify-between gap-2">
+                             {/* Dedicated Action Area */}
+                             <div className="mt-4 pt-3 border-t border-gray-100 dark:border-white/10 flex flex-col gap-2.5">
+                                {/* Primary Action Button (Approve / Sign / Send) */}
+                                {((meeting.status === MeetingStatus.PENDING_APPROVAL || meeting.status === MeetingStatus.DRAFT) && isFactoryManager) ? (
+                                    <button 
+                                        onClick={() => handleFactoryManagerApprove(meeting)} 
+                                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        <CheckCircle size={16} />
+                                        <span>تایید مدیر کارخانه</span>
+                                    </button>
+                                ) : (meeting.status === MeetingStatus.PENDING_CEO && isCeo) ? (
+                                    <button 
+                                        onClick={() => handleCeoFinalApprove(meeting)} 
+                                        className="w-full py-2.5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-teal-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        <CheckCircle size={16} />
+                                        <span>تایید و بایگانی مدیرعامل</span>
+                                    </button>
+                                ) : (meeting.status === MeetingStatus.PENDING_APPROVAL && 
+                                     !isFactoryManager &&
+                                     meeting.attendees.some(a => a.fullName === currentUser.fullName || a.username === currentUser.username) && 
+                                     !meeting.approvals?.[currentUser.username]?.approved) ? (
+                                    <button 
+                                        onClick={() => handleSignMeeting(meeting)} 
+                                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 animate-pulse cursor-pointer"
+                                    >
+                                        <UserCheck size={16} />
+                                        <span>امضای صورتجلسه</span>
+                                    </button>
+                                ) : (canManage && meeting.status === MeetingStatus.DRAFT) ? (
+                                    <button 
+                                        onClick={() => handleStatusChange(meeting, MeetingStatus.PENDING_APPROVAL)} 
+                                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        <Send size={16} />
+                                        <span>ارسال جهت تایید</span>
+                                    </button>
+                                ) : (canManage && meeting.status === MeetingStatus.APPROVED) ? (
+                                    <button 
+                                        onClick={() => handleSendToGroup(meeting.id)} 
+                                        className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        <MessageSquare size={16} />
+                                        <span>ارسال به گروه</span>
+                                    </button>
+                                ) : null}
+
+                                {/* Secondary Toolbar */}
+                                <div className="flex items-center justify-between gap-1">
                                     <div className="flex items-center gap-1">
-                                        <button onClick={() => setViewMeeting(meeting)} className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 rounded-xl transition-colors" title="مشاهده">
+                                        <button 
+                                            onClick={() => setViewMeeting(meeting)} 
+                                            className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl transition-colors cursor-pointer" 
+                                            title="مشاهده جزئیات"
+                                        >
                                             <Eye size={18} />
                                         </button>
-                                        {((meeting.imageAttachments?.length || 0) + (meeting.pdfAttachments?.length || 0)) > 0 && (
-                                            <div className="flex items-center gap-1 border-r border-gray-100 dark:border-white/5 mr-1 pr-1">
-                                                {meeting.imageAttachments?.map((att, idx) => (
-                                                    <div key={`img-${idx}`} className="flex items-center bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 rounded-lg p-0.5 border border-teal-200/50">
-                                                        <button 
-                                                            onClick={() => setPreviewAttachment({ isOpen: true, url: att.url, fileName: att.fileName })} 
-                                                            className="p-1.5 hover:bg-teal-100 dark:hover:bg-teal-800/40 rounded-md transition-colors flex items-center gap-1 text-[10px] font-bold" 
-                                                            title={`مشاهده تصویر: ${att.fileName}`}
-                                                        >
-                                                            <Image size={15} />
-                                                            <span className="hidden xl:inline max-w-[80px] truncate">{att.fileName}</span>
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); downloadAndOpenFile(att.url, att.fileName); }}
-                                                            className="p-1 hover:bg-teal-200/60 dark:hover:bg-teal-700/60 rounded text-teal-800 dark:text-teal-200 transition-colors"
-                                                            title="دانلود مستقیم"
-                                                        >
-                                                            <Download size={13} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openSendToChat({
-                                                                    fileUrl: att.url,
-                                                                    fileName: att.fileName,
-                                                                    title: `ارسال تصویر پیوست جلسه به گفتگو`,
-                                                                    defaultMessage: `📎 تصویر پیوست صورتجلسه شماره ${meeting.meetingNumber}: ${att.fileName}`
-                                                                });
-                                                            }}
-                                                            className="p-1 hover:bg-emerald-200/60 dark:hover:bg-emerald-700/60 rounded text-emerald-800 dark:text-emerald-200 transition-colors cursor-pointer"
-                                                            title="ارسال تصویر به گفتگو"
-                                                        >
-                                                            <MessageSquare size={13} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                                {meeting.pdfAttachments?.map((att, idx) => (
-                                                    <div key={`pdf-${idx}`} className="flex items-center bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 rounded-lg p-0.5 border border-rose-200/50">
-                                                        <button 
-                                                            onClick={() => setPreviewAttachment({ isOpen: true, url: att.url, fileName: att.fileName })} 
-                                                            className="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-800/40 rounded-md transition-colors flex items-center gap-1 text-[10px] font-bold" 
-                                                            title={`مشاهده سند PDF: ${att.fileName}`}
-                                                        >
-                                                            <FileText size={15} />
-                                                            <span className="hidden xl:inline max-w-[80px] truncate">{att.fileName}</span>
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); downloadAndOpenFile(att.url, att.fileName); }}
-                                                            className="p-1 hover:bg-rose-200/60 dark:hover:bg-rose-700/60 rounded text-rose-800 dark:text-rose-200 transition-colors"
-                                                            title="دانلود مستقیم"
-                                                        >
-                                                            <Download size={13} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openSendToChat({
-                                                                    fileUrl: att.url,
-                                                                    fileName: att.fileName,
-                                                                    title: `ارسال سند PDF جلسه به گفتگو`,
-                                                                    defaultMessage: `📄 فایل PDF پیوست صورتجلسه شماره ${meeting.meetingNumber}: ${att.fileName}`
-                                                                });
-                                                            }}
-                                                            className="p-1 hover:bg-emerald-200/60 dark:hover:bg-emerald-700/60 rounded text-emerald-800 dark:text-emerald-200 transition-colors cursor-pointer"
-                                                            title="ارسال فایل به گفتگو"
-                                                        >
-                                                            <MessageSquare size={13} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                        <button onClick={() => setShowPrintModal(meeting)} className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 rounded-xl transition-colors" title="دریافت PDF و چاپ">
+                                        <button 
+                                            onClick={() => setShowPrintModal(meeting)} 
+                                            className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl transition-colors cursor-pointer" 
+                                            title="دریافت PDF و چاپ"
+                                        >
                                             <Printer size={18} />
                                         </button>
                                         <button 
                                             onClick={() => setShowPrintModal(meeting)} 
-                                            className="p-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-xl transition-colors cursor-pointer" 
+                                            className="p-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-xl transition-colors cursor-pointer" 
                                             title="ارسال صورتجلسه به گفتگو"
                                         >
                                             <MessageSquare size={18} />
                                         </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
                                         {canCreate && meeting.status === MeetingStatus.DRAFT && (
-                                            <button onClick={() => handleEditMeeting(meeting)} className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-600 rounded-xl transition-colors" title="ویرایش">
+                                            <button 
+                                                onClick={() => handleEditMeeting(meeting)} 
+                                                className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl transition-colors cursor-pointer" 
+                                                title="ویرایش"
+                                            >
                                                 <Edit size={18} />
                                             </button>
                                         )}
                                         {canManage && (
-                                            <button onClick={() => handleDeleteMeeting(meeting.id)} className="p-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-600 rounded-xl transition-colors" title="حذف">
+                                            <button 
+                                                onClick={() => handleDeleteMeeting(meeting.id)} 
+                                                className="p-2 hover:bg-rose-50 dark:hover:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-xl transition-colors cursor-pointer" 
+                                                title="حذف"
+                                            >
                                                 <Trash2 size={18} />
                                             </button>
                                         )}
                                     </div>
-
-                                    <div className="flex items-center gap-2">
-                                        {(meeting.status === MeetingStatus.PENDING_APPROVAL || meeting.status === MeetingStatus.DRAFT) && isFactoryManager && (
-                                            <button onClick={() => handleFactoryManagerApprove(meeting)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center gap-1">
-                                                <CheckCircle size={14} />
-                                                تایید مدیر کارخانه
-                                            </button>
-                                        )}
-                                        {meeting.status === MeetingStatus.PENDING_CEO && isCeo && (
-                                            <button onClick={() => handleCeoFinalApprove(meeting)} className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[10px] font-black shadow-lg shadow-teal-500/20 active:scale-95 transition-all flex items-center gap-1">
-                                                <CheckCircle size={14} />
-                                                تایید و بایگانی مدیرعامل
-                                            </button>
-                                        )}
-                                        {meeting.status === MeetingStatus.PENDING_APPROVAL && 
-                                         !isFactoryManager &&
-                                         meeting.attendees.some(a => a.fullName === currentUser.fullName || a.username === currentUser.username) && 
-                                         !meeting.approvals?.[currentUser.username]?.approved && (
-                                            <button onClick={() => handleSignMeeting(meeting)} className="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center gap-1 animate-pulse">
-                                                <UserCheck size={14} />
-                                                امضای صورتجلسه
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-2 w-full">
-                                    {canManage && meeting.status === MeetingStatus.DRAFT && (
-                                        <button onClick={() => handleStatusChange(meeting, MeetingStatus.PENDING_APPROVAL)} className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5">
-                                            <Send size={14} />
-                                            ارسال جهت تایید
-                                        </button>
-                                    )}
-                                    {canManage && meeting.status === MeetingStatus.APPROVED && (
-                                        <button onClick={() => handleSendToGroup(meeting.id)} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5">
-                                            <MessageSquare size={14} />
-                                            ارسال به گروه
-                                        </button>
-                                    )}
                                 </div>
                              </div>
                         </div>

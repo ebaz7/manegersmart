@@ -41,6 +41,7 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
   const [driverInfo, setDriverInfo] = useState({ 
     plateNumber: permit.plateNumber || '', 
     driverName: permit.driverName || '', 
+    driverPhone: permit.driverPhone || '',
     description: permit.description || '' 
   });
   
@@ -265,6 +266,7 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
       destinationAddress: destinations[0]?.address,
       plateNumber: driverInfo.plateNumber,
       driverName: driverInfo.driverName,
+      driverPhone: driverInfo.driverPhone,
       description: driverInfo.description,
       attachments: attachments,
       
@@ -286,10 +288,11 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
       // 1. Save to DB
       await editExitPermit(updatedPermit);
 
-      if (driverInfo.driverName || driverInfo.plateNumber) {
+      if (driverInfo.driverName || driverInfo.plateNumber || driverInfo.driverPhone) {
         saveDriverToMemory({
           driverName: driverInfo.driverName,
-          plateNumber: driverInfo.plateNumber
+          plateNumber: driverInfo.plateNumber,
+          driverPhone: driverInfo.driverPhone
         });
       }
       
@@ -378,7 +381,7 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
 
       <div 
         ref={containerRef}
-        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200"
+        className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95dvh] overflow-y-auto relative border border-gray-200 dark:border-zinc-800 text-gray-800 dark:text-gray-200"
       >
         {/* Sticky Header */}
         <div className="p-5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md z-20">
@@ -713,19 +716,31 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
                     setDriverInfo(prev => ({
                       ...prev,
                       driverName: name,
-                      plateNumber: match?.plateNumber || prev.plateNumber
+                      plateNumber: match?.plateNumber || prev.plateNumber,
+                      driverPhone: match?.driverPhone || prev.driverPhone
                     }));
                   }} 
                 />
               </div>
-              <div>
-                <label className="text-xs font-bold block mb-1 text-gray-600 dark:text-gray-400">شماره پلاک خودرو</label>
-                <input 
-                  className="w-full border border-gray-300 dark:border-zinc-700 rounded-xl p-2 text-xs dir-ltr bg-white dark:bg-zinc-900 outline-none" 
-                  placeholder="12 A 345 67" 
-                  value={driverInfo.plateNumber} 
-                  onChange={e => setDriverInfo({...driverInfo, plateNumber: e.target.value})} 
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold block mb-1 text-gray-600 dark:text-gray-400">پلاک</label>
+                  <input 
+                    className="w-full border border-gray-300 dark:border-zinc-700 rounded-xl p-2 text-xs dir-ltr bg-white dark:bg-zinc-900 outline-none font-mono" 
+                    placeholder="12 A 345 67" 
+                    value={driverInfo.plateNumber} 
+                    onChange={e => setDriverInfo({...driverInfo, plateNumber: e.target.value})} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold block mb-1 text-gray-600 dark:text-gray-400">شماره تماس</label>
+                  <input 
+                    className="w-full border border-gray-300 dark:border-zinc-700 rounded-xl p-2 text-xs dir-ltr bg-white dark:bg-zinc-900 outline-none font-mono text-center" 
+                    placeholder="09..." 
+                    value={driverInfo.driverPhone} 
+                    onChange={e => setDriverInfo({...driverInfo, driverPhone: e.target.value})} 
+                  />
+                </div>
               </div>
             </div>
             <div>

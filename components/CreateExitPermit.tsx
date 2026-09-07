@@ -23,7 +23,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
 
     const [items, setItems] = useState<ExitPermitItem[]>([{ id: generateUUID(), goodsName: '', cartonCount: 0, weight: 0, price: 0 }]);
     const [destinations, setDestinations] = useState<ExitPermitDestination[]>([{ id: generateUUID(), recipientName: '', address: '', phone: '' }]);
-    const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', description: '' });
+    const [driverInfo, setDriverInfo] = useState({ plateNumber: '', driverName: '', driverPhone: '', description: '' });
     const [price, setPrice] = useState(0);
     const [savedContacts, setSavedContacts] = useState<SalesContact[]>([]);
     const [botSubscribers, setBotSubscribers] = useState<any[]>([]);
@@ -262,6 +262,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                 weight: items.reduce((acc, i) => acc + (Number(i.weight) || 0), 0),
                 plateNumber: driverInfo.plateNumber,
                 driverName: driverInfo.driverName,
+                driverPhone: driverInfo.driverPhone,
                 description: driverInfo.description,
                 attachments: attachments,
                 price: items.reduce((acc, i) => acc + (Number(i.price) || 0), 0), // Kept for backwards compatibility or total
@@ -274,10 +275,11 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
             // Call API (Server automatically triggers bot notifications based on settings & ticks)
             await saveExitPermit(newPermit);
 
-            if (driverInfo.driverName || driverInfo.plateNumber) {
+            if (driverInfo.driverName || driverInfo.plateNumber || driverInfo.driverPhone) {
                 saveDriverToMemory({
                     driverName: driverInfo.driverName,
-                    plateNumber: driverInfo.plateNumber
+                    plateNumber: driverInfo.plateNumber,
+                    driverPhone: driverInfo.driverPhone
                 });
             }
             
@@ -485,13 +487,17 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                                         setDriverInfo(prev => ({
                                             ...prev,
                                             driverName: name,
-                                            plateNumber: match?.plateNumber || prev.plateNumber
+                                            plateNumber: match?.plateNumber || prev.plateNumber,
+                                            driverPhone: match?.driverPhone || prev.driverPhone
                                         }));
                                     }} 
                                     placeholder="مثلاً: احمد حسینی"
                                 />
                             </div>
-                            <div><label className="text-xs font-bold block mb-1">پلاک خودرو</label><input className="w-full border rounded-xl p-2 text-sm glass-panel dir-ltr text-center font-mono font-bold tracking-widest" placeholder="12 A 345 67" value={driverInfo.plateNumber} onChange={e => setDriverInfo({...driverInfo, plateNumber: e.target.value})} /></div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div><label className="text-xs font-bold block mb-1">پلاک خودرو</label><input className="w-full border rounded-xl p-2 text-sm glass-panel dir-ltr text-center font-mono font-bold tracking-widest" placeholder="12 A 345 67" value={driverInfo.plateNumber} onChange={e => setDriverInfo({...driverInfo, plateNumber: e.target.value})} /></div>
+                                <div><label className="text-xs font-bold block mb-1">شماره تماس راننده</label><input className="w-full border rounded-xl p-2 text-sm glass-panel dir-ltr font-mono text-center" placeholder="09..." value={driverInfo.driverPhone} onChange={e => setDriverInfo({...driverInfo, driverPhone: e.target.value})} /></div>
+                            </div>
                             <div><label className="text-xs font-bold block mb-1">توضیحات تکمیلی</label><textarea className="w-full border rounded-xl p-2 text-sm glass-panel h-20 resize-none" placeholder="توضیحات..." value={driverInfo.description} onChange={e => setDriverInfo({...driverInfo, description: e.target.value})} /></div>
                         </div>
                     </div>
@@ -589,7 +595,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                 {/* Lead Merge Modal */}
                 {showMergeModal && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-2 md:p-4 overflow-hidden animate-fade-in">
-                        <div className="glass-panel w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh] shadow-2xl animate-fade-in border border-white/20">
+                        <div className="glass-panel w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col max-h-[95dvh] shadow-2xl animate-fade-in border border-white/20">
                             <div className="bg-teal-900 p-4 text-white flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                     <Users size={20}/>

@@ -712,20 +712,22 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             </div>
 
             {/* List */}
-            <div className={`${isMobile ? 'space-y-3' : 'space-y-4'} min-h-[300px]`}>
-                {loading && permits.length === 0 ? (
-                    <div className="text-center py-20 text-gray-400 flex flex-col items-center gap-2">
-                        <Loader2 className="animate-spin text-blue-500"/> در حال بارگذاری...
-                    </div>
-                ) : displayPermits.length === 0 ? (
-                    <div className="text-center py-20 glass-panel rounded-2xl border border-dashed border-gray-300">
-                        <div className="text-gray-400 font-bold">موردی یافت نشد.</div>
-                        {activeTab === 'CARTABLE' && <div className="text-xs text-gray-300 mt-2">خوشبختانه کارتابل شما خالی است! 🎉</div>}
-                    </div>
-                ) : (
-                    displayPermits.map(p => renderPermitCard(p))
-                )}
-            </div>
+            {React.useMemo(() => (
+                <div className={`${isMobile ? 'space-y-3' : 'space-y-4'} min-h-[300px]`}>
+                    {loading && permits.length === 0 ? (
+                        <div className="text-center py-20 text-gray-400 flex flex-col items-center gap-2">
+                            <Loader2 className="animate-spin text-blue-500"/> در حال بارگذاری...
+                        </div>
+                    ) : displayPermits.length === 0 ? (
+                        <div className="text-center py-20 glass-panel rounded-2xl border border-dashed border-gray-300">
+                            <div className="text-gray-400 font-bold">موردی یافت نشد.</div>
+                            {activeTab === 'CARTABLE' && <div className="text-xs text-gray-300 mt-2">خوشبختانه کارتابل شما خالی است! 🎉</div>}
+                        </div>
+                    ) : (
+                        displayPermits.map(p => renderPermitCard(p))
+                    )}
+                </div>
+            ), [displayPermits, loading, permits.length, activeTab, isMobile, processingId])}
 
             {/* Modals */}
             {viewPermit && (

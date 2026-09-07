@@ -236,7 +236,7 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
 
   const modalContent = (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 bg-black/75 sm:backdrop-blur-sm overflow-hidden animate-fade-in">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-200 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-2xl max-h-[95dvh] flex flex-col shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-200 overflow-hidden">
         {/* Modal Header */}
         <div className="p-4 md:p-5 border-b flex justify-between items-center bg-gradient-to-r from-blue-700 to-indigo-800 text-white shrink-0">
           <div className="flex items-center gap-3">

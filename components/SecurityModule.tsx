@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { User, SecurityLog, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings, PersonnelOvertime, SecurityGoodsItem } from '../types';
 import { 
     getSecurityLogs, saveSecurityLog, updateSecurityLog, deleteSecurityLog, 
@@ -270,8 +271,8 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const [activeTab, setActiveTab] = useState<'logs' | 'delays' | 'overtimes' | 'incidents' | 'cartable' | 'archive' | 'in_progress'>('logs');
     const [subTab, setSubTab] = useState<'current' | 'archived'>('current');
     const [deletingItemKey, setDeletingItemKey] = useState<string | null>(null);
-    const yesterdayShamsi = getYesterdayShamsiDate();
-    const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : yesterdayShamsi.year, month: yesterdayShamsi.month, day: yesterdayShamsi.day });
+    const currentShamsi = getCurrentShamsiDate();
+    const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
 
     const [overtimes, setOvertimes] = useState<PersonnelOvertime[]>([]);
     const [overtimeForm, setOvertimeForm] = useState<Partial<PersonnelOvertime>>({ registrant: 'مقصود محمدی' });
@@ -401,8 +402,8 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 }
             } else if (index === focusables.length - 1) {
                 // If it is the last field, focus the submit button
-                const submitBtn = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
-                    b => b.textContent === 'ثبت گزارش' || b.textContent === 'ثبت تاخیر' || b.textContent === 'ثبت واقعه'
+                const submitBtn = document.getElementById('security-submit-btn') || Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+                    b => b.textContent?.includes('ثبت') || b.textContent?.includes('بروزرسانی')
                 );
                 if (submitBtn) {
                     submitBtn.focus();
@@ -1581,25 +1582,63 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         <div className="p-2 sm:p-4 md:p-6 bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200 h-[calc(100dvh-130px)] md:h-[calc(100vh-100px)] overflow-y-auto animate-fade-in relative">
             
             {/* Shift Meta Modal */}
-            {showShiftModal && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-fade-in">
-                    <div className="glass-panel rounded-2xl shadow-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">اطلاعات شیفت ({formatDate(getIsoSelectedDate())})</h3><button onClick={()=>setShowShiftModal(false)}><X/></button></div>
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold text-gray-600"><div>شیفت</div><div>نگهبان</div><div>ورود / خروج</div></div>
-                            <div className="grid grid-cols-3 gap-2 items-center"><span className="text-sm font-bold">صبح</span><input className="border rounded p-1 text-sm" placeholder="نام" value={metaForm.morningGuard?.name} onChange={e=>setMetaForm({...metaForm, morningGuard:{...metaForm.morningGuard!, name:e.target.value}})}/><div className="flex gap-1"><input className="border rounded p-1 w-full text-center" placeholder="07:00" value={metaForm.morningGuard?.entry} onChange={e=>setMetaForm({...metaForm, morningGuard:{...metaForm.morningGuard!, entry:e.target.value}})}/><input className="border rounded p-1 w-full text-center" placeholder="15:00" value={metaForm.morningGuard?.exit} onChange={e=>setMetaForm({...metaForm, morningGuard:{...metaForm.morningGuard!, exit:e.target.value}})}/></div></div>
-                            <div className="grid grid-cols-3 gap-2 items-center"><span className="text-sm font-bold">عصر</span><input className="border rounded p-1 text-sm" placeholder="نام" value={metaForm.eveningGuard?.name} onChange={e=>setMetaForm({...metaForm, eveningGuard:{...metaForm.eveningGuard!, name:e.target.value}})}/><div className="flex gap-1"><input className="border rounded p-1 w-full text-center" placeholder="15:00" value={metaForm.eveningGuard?.entry} onChange={e=>setMetaForm({...metaForm, eveningGuard:{...metaForm.eveningGuard!, entry:e.target.value}})}/><input className="border rounded p-1 w-full text-center" placeholder="23:00" value={metaForm.eveningGuard?.exit} onChange={e=>setMetaForm({...metaForm, eveningGuard:{...metaForm.eveningGuard!, exit:e.target.value}})}/></div></div>
-                            <div className="grid grid-cols-3 gap-2 items-center"><span className="text-sm font-bold">شب</span><input className="border rounded p-1 text-sm" placeholder="نام" value={metaForm.nightGuard?.name} onChange={e=>setMetaForm({...metaForm, nightGuard:{...metaForm.nightGuard!, name:e.target.value}})}/><div className="flex gap-1"><input className="border rounded p-1 w-full text-center" placeholder="23:00" value={metaForm.nightGuard?.entry} onChange={e=>setMetaForm({...metaForm, nightGuard:{...metaForm.nightGuard!, entry:e.target.value}})}/><input className="border rounded p-1 w-full text-center" placeholder="07:00" value={metaForm.nightGuard?.exit} onChange={e=>setMetaForm({...metaForm, nightGuard:{...metaForm.nightGuard!, exit:e.target.value}})}/></div></div>
-                            <div><label className="text-xs font-bold block mb-1">توضیحات کلی شیفت</label><textarea className="w-full border rounded p-2 text-sm h-20" value={metaForm.dailyDescription} onChange={e=>setMetaForm({...metaForm, dailyDescription:e.target.value})} /></div>
-                            <button onClick={handleSaveShiftMeta} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold">ذخیره اطلاعات شیفت</button>
+            {showShiftModal && typeof document !== 'undefined' && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/75 backdrop-blur-xs z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in touch-manipulation"
+                    onClick={() => setShowShiftModal(false)}
+                >
+                    <div 
+                        className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[95dvh] sm:max-h-[85dvh] overflow-hidden border border-gray-200/80 dark:border-gray-800 modal-container"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Fixed Header */}
+                        <div className="flex justify-between items-center px-4 py-3.5 sm:px-6 sm:py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-zinc-900 shrink-0 z-20">
+                            <h3 className="font-bold text-base sm:text-lg text-gray-900 dark:text-gray-100">
+                                اطلاعات شیفت ({formatDate(getIsoSelectedDate())})
+                            </h3>
+                            <button 
+                                type="button"
+                                onClick={() => setShowShiftModal(false)}
+                                className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+                                title="بستن"
+                            >
+                                <X size={20}/>
+                            </button>
+                        </div>
+                        {/* Scrollable Body */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar min-h-0">
+                            <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300"><div>شیفت</div><div>نگهبان</div><div>ورود / خروج</div></div>
+                            <div className="grid grid-cols-3 gap-2 items-center"><span className="text-sm font-bold">صبح</span><input className="border rounded p-1 text-sm dark:bg-zinc-800 dark:border-zinc-700" placeholder="نام" value={metaForm.morningGuard?.name} onChange={e=>setMetaForm({...metaForm, morningGuard:{...metaForm.morningGuard!, name:e.target.value}})}/><div className="flex gap-1"><input className="border rounded p-1 w-full text-center dark:bg-zinc-800 dark:border-zinc-700 text-xs" placeholder="07:00" value={metaForm.morningGuard?.entry} onChange={e=>setMetaForm({...metaForm, morningGuard:{...metaForm.morningGuard!, entry:e.target.value}})}/><input className="border rounded p-1 w-full text-center dark:bg-zinc-800 dark:border-zinc-700 text-xs" placeholder="15:00" value={metaForm.morningGuard?.exit} onChange={e=>setMetaForm({...metaForm, morningGuard:{...metaForm.morningGuard!, exit:e.target.value}})}/></div></div>
+                            <div className="grid grid-cols-3 gap-2 items-center"><span className="text-sm font-bold">عصر</span><input className="border rounded p-1 text-sm dark:bg-zinc-800 dark:border-zinc-700" placeholder="نام" value={metaForm.eveningGuard?.name} onChange={e=>setMetaForm({...metaForm, eveningGuard:{...metaForm.eveningGuard!, name:e.target.value}})}/><div className="flex gap-1"><input className="border rounded p-1 w-full text-center dark:bg-zinc-800 dark:border-zinc-700 text-xs" placeholder="15:00" value={metaForm.eveningGuard?.entry} onChange={e=>setMetaForm({...metaForm, eveningGuard:{...metaForm.eveningGuard!, entry:e.target.value}})}/><input className="border rounded p-1 w-full text-center dark:bg-zinc-800 dark:border-zinc-700 text-xs" placeholder="23:00" value={metaForm.eveningGuard?.exit} onChange={e=>setMetaForm({...metaForm, eveningGuard:{...metaForm.eveningGuard!, exit:e.target.value}})}/></div></div>
+                            <div className="grid grid-cols-3 gap-2 items-center"><span className="text-sm font-bold">شب</span><input className="border rounded p-1 text-sm dark:bg-zinc-800 dark:border-zinc-700" placeholder="نام" value={metaForm.nightGuard?.name} onChange={e=>setMetaForm({...metaForm, nightGuard:{...metaForm.nightGuard!, name:e.target.value}})}/><div className="flex gap-1"><input className="border rounded p-1 w-full text-center dark:bg-zinc-800 dark:border-zinc-700 text-xs" placeholder="23:00" value={metaForm.nightGuard?.entry} onChange={e=>setMetaForm({...metaForm, nightGuard:{...metaForm.nightGuard!, entry:e.target.value}})}/><input className="border rounded p-1 w-full text-center dark:bg-zinc-800 dark:border-zinc-700 text-xs" placeholder="07:00" value={metaForm.nightGuard?.exit} onChange={e=>setMetaForm({...metaForm, nightGuard:{...metaForm.nightGuard!, exit:e.target.value}})}/></div></div>
+                            <div><label className="text-xs font-bold block mb-1">توضیحات کلی شیفت</label><textarea className="w-full border rounded p-2 text-sm h-20 dark:bg-zinc-800 dark:border-zinc-700" value={metaForm.dailyDescription} onChange={e=>setMetaForm({...metaForm, dailyDescription:e.target.value})} /></div>
+                        </div>
+                        {/* Fixed Footer */}
+                        <div className="px-4 py-3 sm:px-6 sm:py-3.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/95 dark:bg-zinc-900/95 backdrop-blur-md flex items-center gap-2.5 shrink-0 z-20 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                            <button 
+                                type="button"
+                                onClick={() => setShowShiftModal(false)}
+                                className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer"
+                            >
+                                انصراف
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={handleSaveShiftMeta} 
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <CheckCircle size={16} />
+                                ذخیره اطلاعات شیفت
+                            </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Print Preview Modal */}
-            {showPrintModal && printTarget && (
-                <div className="fixed inset-0 bg-black/80 z-[100] flex flex-col items-center justify-between p-2 md:p-4 overflow-hidden animate-fade-in">
+            {showPrintModal && printTarget && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 bg-black/80 z-[99999] flex flex-col items-center justify-between p-2 md:p-4 overflow-hidden animate-fade-in touch-manipulation">
                     <div className="w-full max-w-7xl flex items-center justify-between bg-gray-900/90 text-white p-3 rounded-2xl shadow-xl mb-2 no-print shrink-0 border border-white/10">
                         <span className="font-black text-sm md:text-base px-2">پیش‌نمایش گزارش انتظامات</span>
                         <div className="flex gap-2">
@@ -1623,12 +1662,13 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                             </div>
                         </ScaledContainer>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Cartable Action Modal */}
-            {viewCartableItem && (
-                <div className="fixed inset-0 bg-black/80 z-[100] flex flex-col items-center justify-between p-2 md:p-4 overflow-hidden animate-fade-in">
+            {viewCartableItem && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 bg-black/80 z-[99999] flex flex-col items-center justify-between p-2 md:p-4 overflow-hidden animate-fade-in touch-manipulation">
                     <div className="w-full max-w-7xl flex items-center justify-between bg-gray-900/90 text-white p-3 rounded-2xl shadow-xl mb-2 no-print shrink-0 border border-white/10">
                         <div className="font-black text-sm md:text-base px-2">{viewCartableItem.type === 'daily_approval' || viewCartableItem.type === 'daily_archive' ? `گزارش روزانه - ${formatDate(viewCartableItem.date)}` : 'بررسی'}</div>
                         <div className="flex gap-2 items-center">
@@ -1696,13 +1736,14 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                             </div>
                         </ScaledContainer>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* View Image Attachment Lightbox Modal */}
-            {viewAttachmentUrl && (
-                <div className="fixed inset-0 bg-black/80 z-[120] flex items-center justify-center p-4 transition-all">
-                    <div className="bg-white rounded-xl shadow-2xl p-4 max-w-2xl w-full relative">
+            {viewAttachmentUrl && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 bg-black/80 z-[99999] flex items-center justify-center p-4 transition-all touch-manipulation" onClick={() => setViewAttachmentUrl(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl p-4 max-w-2xl w-full relative" onClick={e => e.stopPropagation()}>
                         <button 
                             onClick={() => setViewAttachmentUrl(null)}
                             className="absolute -top-3 -left-3 bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 shadow-lg transition-all"
@@ -1733,14 +1774,52 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Input Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-fade-in">
-                    <div className="glass-panel rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg">{activeTab === 'logs' ? 'ثبت ورود و خروج' : activeTab === 'delays' ? 'ثبت تاخیر پرسنل' : activeTab === 'overtimes' ? 'ثبت اضافه کار پرسنل' : 'ثبت وقایع'}</h3><button onClick={resetForms}><X size={20}/></button></div>
+            {showModal && typeof document !== 'undefined' && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/75 backdrop-blur-xs z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in touch-manipulation"
+                    onClick={resetForms}
+                >
+                    <div 
+                        className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[95dvh] sm:max-h-[85dvh] overflow-hidden border border-gray-200/80 dark:border-gray-800 modal-container"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Fixed Header */}
+                        <div className="flex justify-between items-center px-4 py-3.5 sm:px-6 sm:py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-zinc-900 shrink-0 z-20">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                                    {activeTab === 'logs' ? <Truck size={18}/> : activeTab === 'delays' ? <Clock size={18}/> : activeTab === 'overtimes' ? <FileText size={18}/> : <AlertTriangle size={18}/>}
+                                </div>
+                                <h3 className="font-bold text-base sm:text-lg text-gray-900 dark:text-gray-100">
+                                    {editingId 
+                                        ? 'ویرایش مورد' 
+                                        : activeTab === 'logs' 
+                                        ? 'ثبت ورود و خروج' 
+                                        : activeTab === 'delays' 
+                                        ? 'ثبت تاخیر پرسنل' 
+                                        : activeTab === 'overtimes' 
+                                        ? 'ثبت اضافه کار پرسنل' 
+                                        : 'ثبت وقایع'
+                                    }
+                                </h3>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={resetForms}
+                                className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+                                title="بستن پنجره"
+                                aria-label="بستن"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Scrollable Form Body */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 custom-scrollbar min-h-0">
                         {activeTab === 'logs' && (
                             <div className="space-y-3" onKeyDown={handleFormKeyDown}>
                                 <div className="grid grid-cols-2 gap-3">
@@ -2211,7 +2290,6 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 </div>
                                 <div><label className="text-xs font-bold block mb-1">تحویل گیرنده</label><input className="w-full border rounded p-2" value={logForm.receiver} onChange={e=>setLogForm({...logForm, receiver:e.target.value})}/></div>
                                 <div><label className="text-xs font-bold block mb-1">توضیحات</label><textarea className="w-full border rounded p-2 h-16" value={logForm.workDescription} onChange={e=>setLogForm({...logForm, workDescription:e.target.value})}/></div>
-                                <button onClick={handleSaveLog} className="w-full bg-blue-600 text-white py-2 rounded font-bold">ثبت گزارش</button>
                             </div>
                         )}
                         {activeTab === 'delays' && (
@@ -2236,7 +2314,6 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                         onChange={e => setDelayForm({ ...delayForm, managementInstruction: e.target.value })}
                                     />
                                 </div>
-                                <button onClick={handleSaveDelay} className="w-full bg-blue-600 text-white py-2 rounded font-bold">ثبت تاخیر</button>
                             </div>
                         )}
                         {activeTab === 'overtimes' && (
@@ -2325,7 +2402,6 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                         onChange={e => setOvertimeForm({ ...overtimeForm, managementInstruction: e.target.value })}
                                     />
                                 </div>
-                                <button onClick={handleSaveOvertime} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold text-sm transition-colors shadow-xs">ثبت فرم اضافه کار</button>
                             </div>
                         )}
                         {activeTab === 'incidents' && (
@@ -2339,11 +2415,48 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div><label className="text-xs font-bold block mb-1">شیفت</label><select className="w-full border rounded p-2" value={incidentForm.shift} onChange={e=>setPartialIncidentForm({...incidentForm, shift:e.target.value})}><option>صبح</option><option>عصر</option><option>شب</option></select></div>
                                 </div>
-                                <button onClick={handleSaveIncident} className="w-full bg-blue-600 text-white py-2 rounded font-bold">ثبت واقعه</button>
                             </div>
                         )}
+                        </div>
+
+                        {/* Fixed Footer */}
+                        <div className="px-4 py-3 sm:px-6 sm:py-3.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/95 dark:bg-zinc-900/95 backdrop-blur-md flex items-center gap-2.5 shrink-0 z-20 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                            <button 
+                                type="button"
+                                onClick={resetForms}
+                                className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer"
+                            >
+                                انصراف
+                            </button>
+                            <button 
+                                id="security-submit-btn"
+                                type="button"
+                                onClick={() => {
+                                    if (activeTab === 'logs') handleSaveLog();
+                                    else if (activeTab === 'delays') handleSaveDelay();
+                                    else if (activeTab === 'overtimes') handleSaveOvertime();
+                                    else if (activeTab === 'incidents') handleSaveIncident();
+                                }}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <CheckCircle size={16} />
+                                <span>
+                                    {editingId 
+                                        ? 'بروزرسانی اطلاعات' 
+                                        : activeTab === 'logs' 
+                                        ? 'ثبت گزارش' 
+                                        : activeTab === 'delays' 
+                                        ? 'ثبت تاخیر' 
+                                        : activeTab === 'overtimes' 
+                                        ? 'ثبت فرم اضافه کار' 
+                                        : 'ثبت واقعه'
+                                    }
+                                </span>
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             <div className="flex flex-col gap-3 mb-4">

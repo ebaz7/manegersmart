@@ -111,7 +111,8 @@ export const formatDate = (dateValue: string | number): string => {
     return date.toLocaleDateString('fa-IR-u-ca-persian', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Tehran'
     });
   } catch (e) {
     // Fallback if Persian calendar not supported
@@ -194,7 +195,13 @@ export const getIsoFromJalali = (y: number, m: number, d: number): string => {
 export const getCurrentShamsiDate = () => {
   try {
       const now = new Date();
-      const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
+      const options: Intl.DateTimeFormatOptions = { 
+          calendar: 'persian', 
+          year: 'numeric', 
+          month: 'numeric', 
+          day: 'numeric',
+          timeZone: 'Asia/Tehran'
+      };
       const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(now);
       const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
       const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
@@ -212,7 +219,13 @@ export const getYesterdayShamsiDate = () => {
   try {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
+      const options: Intl.DateTimeFormatOptions = { 
+          calendar: 'persian', 
+          year: 'numeric', 
+          month: 'numeric', 
+          day: 'numeric',
+          timeZone: 'Asia/Tehran'
+      };
       const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(yesterday);
       const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
       const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
@@ -234,9 +247,15 @@ export const getShamsiDateFromIso = (isoDate: string) => {
       const [yStr, mStr, dStr] = datePart.split('-').map(Number);
       if(isNaN(yStr) || isNaN(mStr) || isNaN(dStr)) return { year: 1403, month: 1, day: 1 }; // Parsing failed
 
-      // Use noon to avoid timezone rollover issues shifting the day
-      const date = new Date(yStr, mStr - 1, dStr, 12, 0, 0); 
-      const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric', day: 'numeric' };
+      // Use noon UTC to avoid timezone rollover issues shifting the day
+      const date = new Date(Date.UTC(yStr, mStr - 1, dStr, 12, 0, 0)); 
+      const options: Intl.DateTimeFormatOptions = { 
+          calendar: 'persian', 
+          year: 'numeric', 
+          month: 'numeric', 
+          day: 'numeric',
+          timeZone: 'Asia/Tehran'
+      };
       const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(date);
       const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
       const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');

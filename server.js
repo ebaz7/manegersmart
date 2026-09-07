@@ -1898,6 +1898,16 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             }
         });
 
+        // Add goods in transit, customs, and purchasing to the current weight
+        const overview = db.warehouseOverview || {};
+        const calculateCustomTableSum = (items, field) => (items || []).reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+        const extraWeight = calculateCustomTableSum(overview.goodsInTransit, 'weight')
+                          + calculateCustomTableSum(overview.goodsInCustoms, 'weight')
+                          + calculateCustomTableSum(overview.purchasingGoods, 'weight');
+        
+        totalCurrentAllWeight += extraWeight;
+        totalPositiveWeight += extraWeight; // These are additions to the current stock
+
         const diffAllWeight = totalCurrentAllWeight - totalLastYearAllWeight;
         const ratioAllWeight = totalLastYearAllWeight > 0 ? (diffAllWeight / totalLastYearAllWeight) * 100 : 0;
 
@@ -9000,10 +9010,7 @@ async function executeReportJob(job) {
                 const diffYarnsWeight = totalCurrentYarnsWeight - totalLastYearYarnsWeight;
                 const ratioYarnsWeight = totalLastYearYarnsWeight > 0 ? (diffYarnsWeight / totalLastYearYarnsWeight) * 100 : 0;
 
-                const totalLastYearRawWeight = alignedImported.reduce((sum, item) => sum + getItemValue(item.code, true, 'weight', true), 0)
-                    + calculateCustomTableSum(goodsInTransit, 'weight')
-                    + calculateCustomTableSum(goodsInCustoms, 'weight')
-                    + calculateCustomTableSum(purchasingGoods, 'weight');
+                const totalLastYearRawWeight = alignedImported.reduce((sum, item) => sum + getItemValue(item.code, true, 'weight', true), 0);
 
                 const totalCurrentRawWeight = alignedImported.reduce((sum, item) => sum + getItemValue(item.code, false, 'weight', true), 0)
                     + calculateCustomTableSum(goodsInTransit, 'weight')

@@ -1753,7 +1753,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 {/* --- LIST SIDEBAR --- */}
                 <div className={`w-full md:w-80 lg:w-96 shrink-0 md:border-l border-gray-100 dark:border-white/5 flex-col min-h-0 h-full bg-white dark:bg-[#1c1c1e] z-20 ${activeChannel ? 'hidden md:flex' : 'flex'}`}>
                 {/* Header */}
-                <div className="sticky top-0 z-10 shrink-0 p-3 border-b bg-gray-50/90 dark:bg-gray-900/60 backdrop-blur-md text-slate-900 dark:text-slate-100">
+                <div className="sticky top-0 z-10 shrink-0 p-3 pt-12 md:pt-3 border-b bg-gray-50/90 dark:bg-gray-900/60 backdrop-blur-md text-slate-900 dark:text-slate-100">
                     <div className="flex justify-between items-center mb-3">
                         <div className="flex flex-wrap md:flex-nowrap gap-1 bg-slate-200/80 dark:bg-white/15 p-1 rounded-lg text-[11px] font-bold w-full">
                             <button onClick={() => setActiveTab('ALL')} className={`flex-1 py-1.5 px-2 rounded-md transition-all whitespace-nowrap ${activeTab === 'ALL' ? 'bg-white dark:bg-zinc-800 shadow text-blue-700 dark:text-blue-300 font-black' : 'text-slate-700 dark:text-slate-300 hover:text-blue-600 font-bold'}`}>همه</button>
@@ -1855,7 +1855,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 {activeChannel ? (
                     <>
                         {/* Chat Header - Slim & compact header */}
-                        <div className="sticky top-0 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-md px-3 py-1.5 sm:py-2 flex justify-between items-center shadow-xs border-b border-gray-100 dark:border-zinc-800/80 z-30 shrink-0">
+                        <div className="sticky top-0 bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-md px-3 py-1.5 pt-12 md:pt-1.5 sm:py-2 flex justify-between items-center shadow-xs border-b border-gray-100 dark:border-zinc-800/80 z-30 shrink-0">
                             <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                                 <button 
                                     onClick={() => setActiveChannel(null)} 

@@ -488,9 +488,9 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         );
     };
 
-    // Mobile Card Renderer
-    const MobilePermitCard = ({ p, canAct }: { p: ExitPermit, canAct: boolean }) => (
-        <div className={`glass-panel rounded-xl border p-4 mb-3 shadow-sm relative overflow-hidden ${canAct ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-200'}`}>
+    // Mobile Card Renderer (as helper to avoid component unmount churn on mobile)
+    const renderMobilePermitCard = (p: ExitPermit, canAct: boolean) => (
+        <div key={p.id} className={`glass-panel rounded-xl border p-4 mb-3 shadow-sm relative overflow-hidden ${canAct ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-200'}`}>
             <div className="flex justify-between items-start mb-2">
                 <div>
                     <span className="text-xs font-mono text-gray-400">#{p.permitNumber}</span>
@@ -534,7 +534,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             <div className="flex gap-2 mt-2">
                 {canAct && (
                      <>
-                         <button onClick={() => { setViewMode(p.status === ExitPermitStatus.EXITED ? 'EXIT' : 'PROFORMA'); handleApprove(p); }} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold shadow-sm flex items-center justify-center gap-1">
+                         <button onClick={() => handleApprove(p)} className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-xs font-bold shadow-sm flex items-center justify-center gap-1 active:scale-95 transition-transform">
                              <CheckCircle size={14}/> {getActionLabel(p.status)}
                          </button>
                          <button onClick={() => handleReject(p)} className="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg border border-red-200 transition-colors" title="رد و بازگشت به مرحله قبل">
@@ -569,11 +569,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         const canAct = isMyTurn(p);
         
         if (isMobile) {
-            return (
-                <React.Fragment key={p.id}>
-                    <MobilePermitCard p={p} canAct={canAct} />
-                </React.Fragment>
-            );
+            return renderMobilePermitCard(p, canAct);
         }
 
         return (

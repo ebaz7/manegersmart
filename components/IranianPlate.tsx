@@ -277,13 +277,19 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
   const refCity = useRef<HTMLInputElement>(null);
 
   const isInternalChangeRef = useRef(false);
+  const prevValueRef = useRef(value);
 
   // Keep state synced ONLY if parent value changes externally (e.g. from memory recall or permit load)
   useEffect(() => {
     if (isInternalChangeRef.current) {
       isInternalChangeRef.current = false;
+      prevValueRef.current = value;
       return;
     }
+    if (prevValueRef.current === value) {
+      return;
+    }
+    prevValueRef.current = value;
     const curParsed = parsePlateParts(value);
     setP1(curParsed.p1);
     if (curParsed.char) setChar(curParsed.char);

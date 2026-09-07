@@ -8,6 +8,9 @@ export interface SavedDriver {
 
 const STORAGE_KEY = 'SAVED_DRIVERS_MEMORY';
 
+// In-memory cache for ultra-fast instant access without repeated JSON.parse
+let memoryCache: SavedDriver[] | null = null;
+
 // Normalize Persian/Arabic text and digits for uniform comparison
 export const normalizeText = (str: string): string => {
   if (!str) return '';
@@ -31,18 +34,21 @@ export const normalizePlate = (plate: string): string => {
 };
 
 export const getSavedDrivers = (): SavedDriver[] => {
+  if (memoryCache) return memoryCache;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+        memoryCache = parsed.sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+        return memoryCache;
       }
     }
   } catch (e) {
     console.error('Failed to read saved drivers', e);
   }
-  return [];
+  memoryCache = [];
+  return memoryCache;
 };
 
 export const saveDriverToMemory = (driver: { driverName: string; driverPhone?: string; plateNumber?: string }) => {
@@ -53,7 +59,7 @@ export const saveDriverToMemory = (driver: { driverName: string; driverPhone?: s
   if (!cleanName && !cleanPlate) return;
 
   try {
-    const current = getSavedDrivers();
+    const current = [...getSavedDrivers()];
 
     const normName = normalizeText(cleanName);
     const normPlate = normalizePlate(cleanPlate);
@@ -87,11 +93,11 @@ export const saveDriverToMemory = (driver: { driverName: string; driverPhone?: s
 
     // Keep top 100 most recent
     const trimmed = current.slice(0, 100);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-
-    // Dispatch custom event to notify all components to refresh suggestions / chips
+    memoryCache = trimmed;
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('driver-memory-updated', { detail: current[0] }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      // Dispatch custom event to notify all components to refresh suggestions / chips
+      window.dispatchEvent(new CustomEvent('driver-memory-updated', { detail: trimmed[0] }));
     }
   } catch (e) {
     console.error('Failed to save driver memory', e);
@@ -165,57 +171,88 @@ export const searchSavedDrivers = (query: string): SavedDriver[] => {
   }).slice(0, 10);
 };
 
-// Sync historical records (from exit permits or security logs) into driver memory
+// Sync historical records (from exit permits or security logs) into driver memory asynchronously without blocking UI
 export const syncDriversFromRecords = (records: Array<{ driverName?: string; driverPhone?: string; plateNumber?: string }>) => {
   if (!Array.isArray(records) || records.length === 0) return;
-  try {
-    const current = getSavedDrivers();
-    let modified = false;
 
-    for (const r of records) {
-      const name = (r.driverName || '').trim();
-      const phone = (r.driverPhone || '').trim();
-      const plate = (r.plateNumber || '').trim();
+  const executeSync = () => {
+    try {
+      const current = [...getSavedDrivers()];
+      let modified = false;
 
-      if (!name && !plate) continue;
+      // Build quick lookup maps with normalized keys: O(1) hash lookups instead of O(N*M) nested scans
+      const nameMap = new Map<string, number>();
+      const plateMap = new Map<string, number>();
 
-      const normN = normalizeText(name);
-      const normP = normalizePlate(plate);
-
-      const existsIdx = current.findIndex(d => {
-        const dN = normalizeText(d.driverName);
-        const dP = normalizePlate(d.plateNumber);
-        return (normN && dN === normN) || (normP && dP === normP);
+      current.forEach((d, idx) => {
+        const n = normalizeText(d.driverName);
+        const p = normalizePlate(d.plateNumber);
+        if (n) nameMap.set(n, idx);
+        if (p) plateMap.set(p, idx);
       });
 
-      if (existsIdx >= 0) {
-        // Update missing fields if new record has them
-        if (!current[existsIdx].driverPhone && phone) {
-          current[existsIdx].driverPhone = phone;
-          modified = true;
-        }
-        if (!current[existsIdx].plateNumber && plate) {
-          current[existsIdx].plateNumber = plate;
-          modified = true;
-        }
-      } else {
-        current.push({
-          id: 'driver_sync_' + Math.random().toString(36).substring(2, 8),
-          driverName: name,
-          driverPhone: phone,
-          plateNumber: plate,
-          lastUsed: Date.now() - 1000000 // lower priority than actively used
-        });
-        modified = true;
-      }
-    }
+      // Limit to latest 100 permits to avoid excessive scanning
+      const recentSlice = records.slice(0, 100);
 
-    if (modified) {
-      const trimmed = current.slice(0, 100);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      for (const r of recentSlice) {
+        const name = (r.driverName || '').trim();
+        const phone = (r.driverPhone || '').trim();
+        const plate = (r.plateNumber || '').trim();
+
+        if (!name && !plate) continue;
+
+        const normN = normalizeText(name);
+        const normP = normalizePlate(plate);
+
+        let existsIdx = -1;
+        if (normN && nameMap.has(normN)) {
+          existsIdx = nameMap.get(normN)!;
+        } else if (normP && plateMap.has(normP)) {
+          existsIdx = plateMap.get(normP)!;
+        }
+
+        if (existsIdx >= 0) {
+          // Update missing fields if new record has them
+          if (!current[existsIdx].driverPhone && phone) {
+            current[existsIdx].driverPhone = phone;
+            modified = true;
+          }
+          if (!current[existsIdx].plateNumber && plate) {
+            current[existsIdx].plateNumber = plate;
+            modified = true;
+          }
+        } else {
+          const newDriver: SavedDriver = {
+            id: 'driver_sync_' + Math.random().toString(36).substring(2, 8),
+            driverName: name,
+            driverPhone: phone,
+            plateNumber: plate,
+            lastUsed: Date.now() - 1000000 // lower priority than actively used
+          };
+          current.push(newDriver);
+          const newIdx = current.length - 1;
+          if (normN) nameMap.set(normN, newIdx);
+          if (normP) plateMap.set(normP, newIdx);
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        const trimmed = current.slice(0, 100);
+        memoryCache = trimmed;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+        }
+      }
+    } catch (e) {
+      console.error('Error syncing drivers from records:', e);
     }
-  } catch (e) {
-    console.error('Error syncing drivers from records:', e);
+  };
+
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(executeSync, { timeout: 1000 });
+  } else {
+    setTimeout(executeSync, 50);
   }
 };
 

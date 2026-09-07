@@ -12,19 +12,44 @@ interface Props {
 }
 
 const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) => {
-  const [driverName, setDriverName] = useState(permit.driverName || '');
-  const [driverPhone, setDriverPhone] = useState(permit.driverPhone || '');
-  const [exitTime, setExitTime] = useState(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }));
-  const [plateNumber, setPlateNumber] = useState(permit.plateNumber || '');
+  // Pre-resolve matched driver info synchronously from memory so there's zero lag or layout shift
+  const initialData = React.useMemo(() => {
+    let name = permit.driverName || '';
+    let phone = permit.driverPhone || '';
+    let plate = permit.plateNumber || '';
+    let notice: string | null = null;
+
+    if (name && (!plate || !phone)) {
+      const match = findDriverByName(name);
+      if (match) {
+        if (!phone && match.driverPhone) phone = match.driverPhone;
+        if (!plate && match.plateNumber) plate = match.plateNumber;
+        notice = `اطلاعات راننده «${match.driverName}» به صورت خودکار از حافظه سیستم پر شد.`;
+      }
+    } else if (plate && !name) {
+      const match = findDriverByPlate(plate);
+      if (match) {
+        name = match.driverName;
+        if (match.driverPhone && !phone) phone = match.driverPhone;
+        notice = `اطلاعات راننده «${match.driverName}» بر اساس پلاک خودرو از حافظه فراخوانی شد.`;
+      }
+    }
+    return { name, phone, plate, notice };
+  }, [permit.driverName, permit.driverPhone, permit.plateNumber]);
+
+  const [driverName, setDriverName] = useState(() => initialData.name);
+  const [driverPhone, setDriverPhone] = useState(() => initialData.phone);
+  const [exitTime, setExitTime] = useState(() => new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }));
+  const [plateNumber, setPlateNumber] = useState(() => initialData.plate);
   
   const [driverSuggestions, setDriverSuggestions] = useState<SavedDriver[]>([]);
   const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
   
   // Quick Recall Search (by Name or Plate)
   const [quickQuery, setQuickQuery] = useState('');
-  const [quickResults, setQuickResults] = useState<SavedDriver[]>([]);
+  const [quickResults, setQuickResults] = useState<SavedDriver[]>(() => getSavedDrivers().slice(0, 8));
   const [showQuickDropdown, setShowQuickDropdown] = useState(false);
-  const [recalledNotice, setRecalledNotice] = useState<string | null>(null);
+  const [recalledNotice, setRecalledNotice] = useState<string | null>(() => initialData.notice);
 
   const driverNameInputRef = useRef<HTMLInputElement>(null);
   const driverPhoneInputRef = useRef<HTMLInputElement>(null);
@@ -44,25 +69,6 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
     window.addEventListener('driver-memory-updated', handleUpdate);
     return () => window.removeEventListener('driver-memory-updated', handleUpdate);
   }, [quickQuery]);
-
-  // On mount: If permit already has driverName or plateNumber, auto-link remaining info from memory
-  useEffect(() => {
-    if (permit.driverName && (!permit.plateNumber || !permit.driverPhone)) {
-      const match = findDriverByName(permit.driverName);
-      if (match) {
-        if (!driverPhone && match.driverPhone) setDriverPhone(match.driverPhone);
-        if (!plateNumber && match.plateNumber) setPlateNumber(match.plateNumber);
-        setRecalledNotice(`اطلاعات راننده «${match.driverName}» به صورت خودکار از حافظه سیستم پر شد.`);
-      }
-    } else if (permit.plateNumber && !permit.driverName) {
-      const match = findDriverByPlate(permit.plateNumber);
-      if (match) {
-        setDriverName(match.driverName);
-        if (match.driverPhone) setDriverPhone(match.driverPhone);
-        setRecalledNotice(`اطلاعات راننده «${match.driverName}» بر اساس پلاک خودرو از حافظه فراخوانی شد.`);
-      }
-    }
-  }, []);
 
   // Filter suggestions and check for exact/strong auto-fill match when typing driver name
   const handleDriverNameChange = (val: string) => {
@@ -229,7 +235,7 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 bg-black/70 backdrop-blur-md overflow-hidden animate-fade-in">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 bg-black/75 sm:backdrop-blur-sm overflow-hidden animate-fade-in">
       <div className="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-200 overflow-hidden">
         {/* Modal Header */}
         <div className="p-4 md:p-5 border-b flex justify-between items-center bg-gradient-to-r from-blue-700 to-indigo-800 text-white shrink-0">

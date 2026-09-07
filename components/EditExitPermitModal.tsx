@@ -10,6 +10,7 @@ import { apiCall } from '../services/apiService';
 import { searchSayanPersons } from '../services/sayanExitService';
 import html2canvas from 'html2canvas';
 import { FileViewerModal } from './FileViewerModal';
+import { findDriverByName, saveDriverToMemory } from '../services/driverMemoryService';
 
 interface EditExitPermitModalProps {
   permit: ExitPermit;
@@ -284,6 +285,13 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
     try {
       // 1. Save to DB
       await editExitPermit(updatedPermit);
+
+      if (driverInfo.driverName || driverInfo.plateNumber) {
+        saveDriverToMemory({
+          driverName: driverInfo.driverName,
+          plateNumber: driverInfo.plateNumber
+        });
+      }
       
       // 2. Prepare for Capture
       setTempPermitForCapture(updatedPermit);
@@ -699,7 +707,15 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
                 <input 
                   className="w-full border border-gray-300 dark:border-zinc-700 rounded-xl p-2 text-xs bg-white dark:bg-zinc-900 outline-none" 
                   value={driverInfo.driverName} 
-                  onChange={e => setDriverInfo({...driverInfo, driverName: e.target.value})} 
+                  onChange={e => {
+                    const name = e.target.value;
+                    const match = findDriverByName(name.trim());
+                    setDriverInfo(prev => ({
+                      ...prev,
+                      driverName: name,
+                      plateNumber: match?.plateNumber || prev.plateNumber
+                    }));
+                  }} 
                 />
               </div>
               <div>

@@ -21,6 +21,19 @@ export const parsePlateParts = (plateStr: string) => {
   if (!plateStr) return { p1: '', char: '', p2: '', city: '' };
   
   const raw = toEnglishDigits(plateStr).trim();
+
+  // Pattern 0: Delimited with spaces or dashes or "ایران"
+  // e.g. "15 ج 831 ایران 57" or "15-ج-831-57" or "15 ج 831 57"
+  const spaced = raw.match(/^(\d{1,2})\s*[-/]?\s*([^\d\s\-_/]{1,5})\s*[-/]?\s*(\d{1,3})\s*(?:[-/]|ایران|\s)*\s*(\d{1,2})?$/);
+  if (spaced) {
+    return {
+      p1: spaced[1] || '',
+      char: spaced[2] || 'ب',
+      p2: spaced[3] || '',
+      city: spaced[4] || ''
+    };
+  }
+  
   const clean = raw.replace(/\s+/g, '').replace(/[-|/_]/g, '').replace(/ایران/g, '');
   
   // Pattern 1: Standard order: 2 digits + 1+ Persian/Latin characters + 3 digits + 2 digits (e.g. 12ب34567 or 12الف34567)
@@ -66,6 +79,18 @@ export const parsePlateParts = (plateStr: string) => {
       city: ''
     };
   }
+
+  // Pattern 5: Any combination separated by letter
+  const letterMatch = clean.match(/^(\d{1,2})([^\d\s]+)(\d*)$/);
+  if (letterMatch) {
+    const afterDigits = letterMatch[3];
+    return {
+      p1: letterMatch[1],
+      char: letterMatch[2],
+      p2: afterDigits.length > 3 ? afterDigits.slice(0, 3) : afterDigits,
+      city: afterDigits.length > 3 ? afterDigits.slice(3, 5) : ''
+    };
+  }
   
   // Partial match attempt
   const digits = clean.replace(/[^0-9]/g, '');
@@ -79,10 +104,14 @@ export const parsePlateParts = (plateStr: string) => {
   };
 };
 
-// Format parts back to a unified plate string (e.g. "12ب34567")
+// Format parts back to a unified plate string (e.g. "12 ب 345 ایران 67")
 export const formatPlateParts = (p1: string, char: string, p2: string, city: string) => {
   if (!p1 && !char && !p2 && !city) return '';
-  return `${p1}${char}${p2}${city}`;
+  const c = char || 'ب';
+  if (city) {
+    return `${p1} ${c} ${p2} ایران ${city}`.trim();
+  }
+  return `${p1} ${c} ${p2}`.trim();
 };
 
 // ==================== PLATE DISPLAY COMPONENT ====================
@@ -247,18 +276,23 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
   const ref2 = useRef<HTMLInputElement>(null);
   const refCity = useRef<HTMLInputElement>(null);
 
-  // Keep state synced if parent value changes externally
+  const isInternalChangeRef = useRef(false);
+
+  // Keep state synced ONLY if parent value changes externally (e.g. from memory recall or permit load)
   useEffect(() => {
-    const curParsed = parsePlateParts(value);
-    if (curParsed.p1 !== p1 || curParsed.char !== char || curParsed.p2 !== p2 || curParsed.city !== city) {
-      setP1(curParsed.p1);
-      if (curParsed.char) setChar(curParsed.char);
-      setP2(curParsed.p2);
-      setCity(curParsed.city);
+    if (isInternalChangeRef.current) {
+      isInternalChangeRef.current = false;
+      return;
     }
+    const curParsed = parsePlateParts(value);
+    setP1(curParsed.p1);
+    if (curParsed.char) setChar(curParsed.char);
+    setP2(curParsed.p2);
+    setCity(curParsed.city);
   }, [value]);
 
   const updateAll = (np1: string, nchar: string, np2: string, ncity: string) => {
+    isInternalChangeRef.current = true;
     setP1(np1);
     setChar(nchar);
     setP2(np2);
@@ -266,54 +300,53 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
     onChange(formatPlateParts(np1, nchar, np2, ncity));
   };
 
+  // 1. First 2 digits (p1)
   const handleP1Change = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 2);
+    const raw = toEnglishDigits(e.target.value).replace(/\D/g, '');
+    const val = raw.length > 2 ? raw.slice(-2) : raw;
     updateAll(val, char, p2, city);
-    if (val.length === 2) {
-      refChar.current?.focus();
-    }
   };
 
+  // 2. Persian letter dropdown (char)
   const handleCharChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     updateAll(p1, val, p2, city);
-    if (val) {
-      ref2.current?.focus();
-    }
+    ref2.current?.focus();
   };
 
+  // 3. Middle 3 digits (p2)
   const handleP2Change = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 3);
+    const raw = toEnglishDigits(e.target.value).replace(/\D/g, '');
+    const val = raw.length > 3 ? raw.slice(-3) : raw;
     updateAll(p1, char, val, city);
-    if (val.length === 3) {
-      refCity.current?.focus();
-    }
   };
 
+  // 4. City code 2 digits (city)
   const handleCityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 2);
+    const raw = toEnglishDigits(e.target.value).replace(/\D/g, '');
+    const val = raw.length > 2 ? raw.slice(-2) : raw;
     updateAll(p1, char, p2, val);
   };
 
-  // Keyboard Navigation: Enter advances, Backspace in empty field goes back
+  // Keyboard Navigation: Enter advances to next field; Backspace in empty field goes back
   const handleKeyDownP1 = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.keyCode === 13) {
       e.preventDefault();
       refChar.current?.focus();
     }
   };
 
   const handleKeyDownChar = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.keyCode === 13) {
       e.preventDefault();
       ref2.current?.focus();
-    } else if (e.key === 'Backspace') {
+    } else if (e.key === 'Backspace' && !char) {
       ref1.current?.focus();
     }
   };
 
   const handleKeyDownP2 = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.keyCode === 13) {
       e.preventDefault();
       refCity.current?.focus();
     } else if (e.key === 'Backspace' && !p2) {
@@ -322,9 +355,13 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
   };
 
   const handleKeyDownCity = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.keyCode === 13) {
       e.preventDefault();
-      if (onEnter) onEnter();
+      if (onEnter) {
+        onEnter();
+      } else {
+        refCity.current?.blur();
+      }
     } else if (e.key === 'Backspace' && !city) {
       ref2.current?.focus();
     }
@@ -382,12 +419,13 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
             ref={ref1}
             type="text"
             inputMode="numeric"
-            maxLength={2}
+            enterKeyHint="next"
             className="w-full h-full text-center text-lg sm:text-2xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
             placeholder="۱۲"
             value={p1}
             onChange={handleP1Change}
             onKeyDown={handleKeyDownP1}
+            onFocus={e => e.target.select()}
           />
         </div>
 
@@ -395,6 +433,7 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
         <div className="w-12 sm:w-14 h-full flex items-center justify-center bg-gray-50/50 border-r border-gray-200 shrink-0">
           <select
             ref={refChar}
+            enterKeyHint="next"
             className="w-full h-full text-center text-base sm:text-xl font-black bg-transparent outline-none appearance-none cursor-pointer text-blue-900 text-center"
             value={char}
             onChange={handleCharChange}
@@ -412,12 +451,13 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
             ref={ref2}
             type="text"
             inputMode="numeric"
-            maxLength={3}
+            enterKeyHint="next"
             className="w-full h-full text-center text-lg sm:text-2xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
             placeholder="۳۴۵"
             value={p2}
             onChange={handleP2Change}
             onKeyDown={handleKeyDownP2}
+            onFocus={e => e.target.select()}
           />
         </div>
 
@@ -430,18 +470,19 @@ export const IranianPlateInput: React.FC<IranianPlateInputProps> = ({
             ref={refCity}
             type="text"
             inputMode="numeric"
-            maxLength={2}
+            enterKeyHint="done"
             className="w-full flex-1 h-full text-center text-base sm:text-xl font-black outline-none bg-transparent focus:bg-blue-50/60 transition-colors text-gray-900"
             placeholder="۶۷"
             value={city}
             onChange={handleCityChange}
             onKeyDown={handleKeyDownCity}
+            onFocus={e => e.target.select()}
           />
         </div>
       </div>
 
       <div className="flex items-center justify-between w-full max-w-[340px] px-1 text-[11px] text-gray-500">
-        <span className="text-[10px] text-gray-400 font-medium">پرش بین بخش‌ها با Enter</span>
+        <span className="text-[10px] text-gray-400 font-medium">پرش بین بخش‌ها با Enter یا Next</span>
         <button
           type="button"
           onClick={() => setShowDirect(!showDirect)}

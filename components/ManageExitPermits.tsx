@@ -17,6 +17,7 @@ import EditExitPermitModal from './EditExitPermitModal';
 import useIsMobile from '../hooks/useIsMobile';
 
 import { isInFinancialYear } from '../utils/dateUtils';
+import { syncDriversFromRecords } from '../services/driverMemoryService';
 
 const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings, statusFilter?: any, financialYear?: string, mode?: 'INVOICE' | 'EXIT' }> = ({ currentUser, settings, statusFilter, financialYear, mode = 'EXIT' }) => {
     const isMobile = useIsMobile();
@@ -67,6 +68,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                     safeData = safeData.filter((p: ExitPermit) => isInFinancialYear(p.date, financialYear));
                 }
                 setPermits(safeData.sort((a: ExitPermit, b: ExitPermit) => ((b.createdAt || 0) - (a.createdAt || 0)) || ((b.permitNumber || 0) - (a.permitNumber || 0))));
+                syncDriversFromRecords(safeData);
                 return;
             }
             // Silently refresh without showing loading spinners
@@ -76,6 +78,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                     safeData = safeData.filter(p => isInFinancialYear(p.date, financialYear));
                 }
                 setPermits(safeData.sort((a, b) => ((b.createdAt || 0) - (a.createdAt || 0)) || ((b.permitNumber || 0) - (a.permitNumber || 0)) ));
+                syncDriversFromRecords(safeData);
             }).catch(() => {});
         };
 
@@ -126,6 +129,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                 safeData = safeData.filter(p => isInFinancialYear(p.date, financialYear));
             }
             setPermits(safeData.sort((a, b) => ((b.createdAt || 0) - (a.createdAt || 0)) || ((b.permitNumber || 0) - (a.permitNumber || 0)) ));
+            syncDriversFromRecords(safeData);
         } catch (e) {
             console.error("Failed to load permits", e);
         } finally {

@@ -12,7 +12,7 @@ import { generateUUID, getCurrentShamsiDate, getYesterdayShamsiDate, jalaliToGre
 import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck } from 'lucide-react';
 import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport, PrintPersonnelOvertime } from './security/SecurityPrints';
 import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
-import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, SavedDriver } from '../services/driverMemoryService';
+import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, findDriverByName, findDriverByPlate, syncDriversFromRecords, SavedDriver } from '../services/driverMemoryService';
 import { getRolePermissions } from '../services/authService';
 import { generatePdf } from '../utils/pdfGenerator';
 import { isInFinancialYear } from '../utils/dateUtils';
@@ -544,10 +544,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             const data = await response.json();
             if (data.success) {
                 playBeep();
+                const matchedDriver = data.plateNumber ? findDriverByPlate(data.plateNumber) : undefined;
                 setLogForm(prev => ({
                     ...prev,
                     plateNumber: data.plateNumber || prev.plateNumber || '',
-                    driverName: data.driverName || prev.driverName || '',
+                    driverName: data.driverName || matchedDriver?.driverName || prev.driverName || '',
+                    driverPhone: matchedDriver?.driverPhone || prev.driverPhone || '',
                     attachment: data.attachment
                 }));
             }
@@ -584,9 +586,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             const data = await response.json();
             if (data.success) {
                 playBeep();
+                const matchedDriver = data.plateNumber ? findDriverByPlate(data.plateNumber) : undefined;
                 setLogForm(prev => ({
                     ...prev,
                     plateNumber: data.plateNumber || prev.plateNumber || '',
+                    driverName: prev.driverName || matchedDriver?.driverName || '',
+                    driverPhone: prev.driverPhone || matchedDriver?.driverPhone || '',
                     attachment: data.attachment
                 }));
             }
@@ -728,6 +733,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             }
             
             setLogs(safeL);
+            syncDriversFromRecords(safeL);
             setDelays(safeD);
             setOvertimes(safeO);
             setIncidents(safeI);
@@ -787,15 +793,81 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         setLogForm({ ...logForm, goodsItems: updated, goodsName: summaryName, quantity: summaryQty });
     };
 
+    const [recentDrivers, setRecentDrivers] = useState<SavedDriver[]>(() => getSavedDrivers().slice(0, 6));
+
+    useEffect(() => {
+        const handleUpdate = () => setRecentDrivers(getSavedDrivers().slice(0, 6));
+        window.addEventListener('driver-memory-updated', handleUpdate);
+        return () => window.removeEventListener('driver-memory-updated', handleUpdate);
+    }, []);
+
     const handleDriverNameChange = (name: string) => {
-        setLogForm(prev => ({ ...prev, driverName: name }));
-        if (name.trim().length > 0) {
+        const trimmed = name.trim();
+        const exactMatch = findDriverByName(trimmed);
+
+        setLogForm(prev => {
+            const next = { ...prev, driverName: name };
+            if (exactMatch) {
+                if (exactMatch.driverPhone) next.driverPhone = exactMatch.driverPhone;
+                if (exactMatch.plateNumber) next.plateNumber = exactMatch.plateNumber;
+            }
+            return next;
+        });
+
+        if (trimmed.length > 0) {
             const matches = searchSavedDrivers(name);
             setDriverSuggestions(matches);
             setShowDriverSuggestions(matches.length > 0);
         } else {
             setShowDriverSuggestions(false);
         }
+    };
+
+    const handleDriverNameBlur = () => {
+        setTimeout(() => {
+            setShowDriverSuggestions(false);
+            if (logForm.driverName && logForm.driverName.trim().length >= 2) {
+                const match = findDriverByName(logForm.driverName);
+                if (match) {
+                    setLogForm(prev => ({
+                        ...prev,
+                        driverPhone: prev.driverPhone || match.driverPhone || '',
+                        plateNumber: prev.plateNumber || match.plateNumber || ''
+                    }));
+                }
+            }
+        }, 250);
+    };
+
+    const handleDriverNameKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            setShowDriverSuggestions(false);
+            if (driverSuggestions.length > 0) {
+                handleSelectDriverMemory(driverSuggestions[0]);
+            } else if (logForm.driverName) {
+                const match = findDriverByName(logForm.driverName);
+                if (match) {
+                    handleSelectDriverMemory(match);
+                }
+            }
+            const phoneEl = document.querySelector<HTMLInputElement>('input[placeholder="09..."]');
+            phoneEl?.focus();
+        }
+    };
+
+    const handlePlateChangeInLog = (plate: string) => {
+        setLogForm(prev => {
+            const next = { ...prev, plateNumber: plate };
+            if (plate && !prev.driverName) {
+                const match = findDriverByPlate(plate);
+                if (match) {
+                    next.driverName = match.driverName;
+                    if (match.driverPhone) next.driverPhone = match.driverPhone;
+                }
+            }
+            return next;
+        });
     };
 
     const handleSelectDriverMemory = (driver: SavedDriver) => {
@@ -1679,13 +1751,48 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     <div><label className="text-xs font-bold block mb-1">ساعت ورود</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={logForm.entryTime || ''} onChange={e=>setLogForm({...logForm, entryTime: e.target.value})}/></div>
                                     <div><label className="text-xs font-bold block mb-1">ساعت خروج</label><input type="time" className="w-full border rounded p-2 text-center font-mono" value={logForm.exitTime || ''} onChange={e=>setLogForm({...logForm, exitTime: e.target.value})}/></div>
                                 </div>
+                                {recentDrivers.length > 0 && (
+                                    <div className="p-2.5 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200/60 dark:border-blue-900/40 space-y-1.5">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <span className="text-[11px] font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                                                <Clock size={13} className="text-blue-600 dark:text-blue-400" />
+                                                رانندگان اخیر (فراخوانی و پر شدن خودکار با یک کلیک):
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {recentDrivers.map((d, idx) => (
+                                                <button
+                                                    key={d.id || idx}
+                                                    type="button"
+                                                    onClick={() => handleSelectDriverMemory(d)}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-200 transition-all shadow-2xs cursor-pointer"
+                                                >
+                                                    <span>{d.driverName}</span>
+                                                    {d.plateNumber && <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">({d.plateNumber})</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="relative">
-                                        <label className="text-xs font-bold block mb-1">نام راننده</label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-xs font-bold block">نام راننده</label>
+                                            {(logForm.driverName && (logForm.plateNumber || logForm.driverPhone)) && (
+                                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                                                    <Check size={11} /> متصل به پلاک
+                                                </span>
+                                            )}
+                                        </div>
                                         <input 
                                             className="w-full border rounded p-2 text-sm" 
                                             value={logForm.driverName || ''} 
                                             onChange={e => handleDriverNameChange(e.target.value)}
+                                            onBlur={handleDriverNameBlur}
+                                            onKeyDown={handleDriverNameKeyDown}
+                                            enterKeyHint="next"
+                                            placeholder="نام راننده..."
                                             onFocus={() => {
                                                 if (logForm.driverName && logForm.driverName.trim().length > 0) {
                                                     const matches = searchSavedDrivers(logForm.driverName);
@@ -2030,7 +2137,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
                                 <div className="bg-gray-50/70 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/60 rounded-xl p-3 flex flex-col items-center justify-center shadow-xs">
                                     <label className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">شماره پلاک خودرو</label>
-                                    <IranianPlateInput value={logForm.plateNumber} onChange={val => setLogForm({...logForm, plateNumber: val})}/>
+                                    <IranianPlateInput value={logForm.plateNumber} onChange={handlePlateChangeInLog}/>
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold block mb-1">مجوز دهنده</label>

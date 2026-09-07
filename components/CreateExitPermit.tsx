@@ -10,6 +10,7 @@ import PrintExitPermit from './PrintExitPermit';
 import html2canvas from 'html2canvas';
 import { searchSayanPersons, SayanPersonResult } from '../services/sayanExitService';
 import { FileViewerModal } from './FileViewerModal';
+import { findDriverByName, saveDriverToMemory } from '../services/driverMemoryService';
 
 const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> = ({ onSuccess, currentUser }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -272,6 +273,13 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
 
             // Call API (Server automatically triggers bot notifications based on settings & ticks)
             await saveExitPermit(newPermit);
+
+            if (driverInfo.driverName || driverInfo.plateNumber) {
+                saveDriverToMemory({
+                    driverName: driverInfo.driverName,
+                    plateNumber: driverInfo.plateNumber
+                });
+            }
             
             setIsSubmitting(false);
             onSuccess();
@@ -466,7 +474,23 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                             <Truck size={16}/> حمل و نقل و مالی (بخش مدیریت)
                         </div>
                         <div className="space-y-3 mt-2">
-                            <div><label className="text-xs font-bold block mb-1">نام راننده</label><input className="w-full border rounded-xl p-2 text-sm glass-panel" value={driverInfo.driverName} onChange={e => setDriverInfo({...driverInfo, driverName: e.target.value})} /></div>
+                            <div>
+                                <label className="text-xs font-bold block mb-1">نام راننده</label>
+                                <input 
+                                    className="w-full border rounded-xl p-2 text-sm glass-panel" 
+                                    value={driverInfo.driverName} 
+                                    onChange={e => {
+                                        const name = e.target.value;
+                                        const match = findDriverByName(name.trim());
+                                        setDriverInfo(prev => ({
+                                            ...prev,
+                                            driverName: name,
+                                            plateNumber: match?.plateNumber || prev.plateNumber
+                                        }));
+                                    }} 
+                                    placeholder="مثلاً: احمد حسینی"
+                                />
+                            </div>
                             <div><label className="text-xs font-bold block mb-1">پلاک خودرو</label><input className="w-full border rounded-xl p-2 text-sm glass-panel dir-ltr text-center font-mono font-bold tracking-widest" placeholder="12 A 345 67" value={driverInfo.plateNumber} onChange={e => setDriverInfo({...driverInfo, plateNumber: e.target.value})} /></div>
                             <div><label className="text-xs font-bold block mb-1">توضیحات تکمیلی</label><textarea className="w-full border rounded-xl p-2 text-sm glass-panel h-20 resize-none" placeholder="توضیحات..." value={driverInfo.description} onChange={e => setDriverInfo({...driverInfo, description: e.target.value})} /></div>
                         </div>

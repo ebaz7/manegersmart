@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ExitPermit } from '../types';
-import { X, ShieldCheck, CheckCircle, Smartphone, User, Truck, Paperclip, Trash2, Clock } from 'lucide-react';
-import { IranianPlateInput } from './IranianPlate';
-import { searchSavedDrivers, saveDriverToMemory, SavedDriver } from '../services/driverMemoryService';
+import { X, ShieldCheck, CheckCircle, Smartphone, User, Truck, Paperclip, Trash2, Clock, Search, Sparkles, History, Check } from 'lucide-react';
+import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
+import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, findDriverByName, findDriverByPlate, SavedDriver } from '../services/driverMemoryService';
 
 interface Props {
   permit: ExitPermit;
@@ -19,21 +19,139 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
   
   const [driverSuggestions, setDriverSuggestions] = useState<SavedDriver[]>([]);
   const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
+  
+  // Quick Recall Search (by Name or Plate)
+  const [quickQuery, setQuickQuery] = useState('');
+  const [quickResults, setQuickResults] = useState<SavedDriver[]>([]);
+  const [showQuickDropdown, setShowQuickDropdown] = useState(false);
+  const [recalledNotice, setRecalledNotice] = useState<string | null>(null);
 
+  const driverNameInputRef = useRef<HTMLInputElement>(null);
+  const driverPhoneInputRef = useRef<HTMLInputElement>(null);
+  const exitTimeInputRef = useRef<HTMLInputElement>(null);
+
+  const [recentDrivers, setRecentDrivers] = useState<SavedDriver[]>(() => getSavedDrivers().slice(0, 6));
+
+  // Keep recent drivers synchronized in real time with Security and other tabs
   useEffect(() => {
-    if (driverName.trim().length > 0) {
-      const results = searchSavedDrivers(driverName);
+    const handleUpdate = () => {
+      const all = getSavedDrivers();
+      setRecentDrivers(all.slice(0, 6));
+      if (!quickQuery) {
+        setQuickResults(all.slice(0, 8));
+      }
+    };
+    window.addEventListener('driver-memory-updated', handleUpdate);
+    return () => window.removeEventListener('driver-memory-updated', handleUpdate);
+  }, [quickQuery]);
+
+  // On mount: If permit already has driverName or plateNumber, auto-link remaining info from memory
+  useEffect(() => {
+    if (permit.driverName && (!permit.plateNumber || !permit.driverPhone)) {
+      const match = findDriverByName(permit.driverName);
+      if (match) {
+        if (!driverPhone && match.driverPhone) setDriverPhone(match.driverPhone);
+        if (!plateNumber && match.plateNumber) setPlateNumber(match.plateNumber);
+        setRecalledNotice(`اطلاعات راننده «${match.driverName}» به صورت خودکار از حافظه سیستم پر شد.`);
+      }
+    } else if (permit.plateNumber && !permit.driverName) {
+      const match = findDriverByPlate(permit.plateNumber);
+      if (match) {
+        setDriverName(match.driverName);
+        if (match.driverPhone) setDriverPhone(match.driverPhone);
+        setRecalledNotice(`اطلاعات راننده «${match.driverName}» بر اساس پلاک خودرو از حافظه فراخوانی شد.`);
+      }
+    }
+  }, []);
+
+  // Filter suggestions and check for exact/strong auto-fill match when typing driver name
+  const handleDriverNameChange = (val: string) => {
+    setDriverName(val);
+    const trimmed = val.trim();
+    if (trimmed.length > 0) {
+      const results = searchSavedDrivers(val);
       setDriverSuggestions(results);
+      setShowDriverSuggestions(true);
+
+      // If an exact name match is found in memory, instantly link phone and plate
+      const match = findDriverByName(trimmed);
+      if (match) {
+        if (match.driverPhone) setDriverPhone(match.driverPhone);
+        if (match.plateNumber) setPlateNumber(match.plateNumber);
+        setRecalledNotice(`اطلاعات «${match.driverName}» از حافظه سیستم متصل شد (قابل ویرایش).`);
+      }
     } else {
       setDriverSuggestions([]);
+      setShowDriverSuggestions(false);
     }
-  }, [driverName]);
+  };
+
+  const handleDriverNameBlur = () => {
+    setTimeout(() => {
+      setShowDriverSuggestions(false);
+      if (driverName.trim().length >= 2) {
+        const match = findDriverByName(driverName);
+        if (match) {
+          if (!driverPhone && match.driverPhone) setDriverPhone(match.driverPhone);
+          if (!plateNumber && match.plateNumber) setPlateNumber(match.plateNumber);
+          setRecalledNotice(`اطلاعات راننده «${match.driverName}» از حافظه فراخوانی شد.`);
+        }
+      }
+    }, 250);
+  };
+
+  const handleDriverNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setShowDriverSuggestions(false);
+      if (driverSuggestions.length > 0) {
+        selectDriver(driverSuggestions[0]);
+      } else if (driverName.trim().length > 0) {
+        const match = findDriverByName(driverName);
+        if (match) {
+          selectDriver(match);
+        } else {
+          driverPhoneInputRef.current?.focus();
+        }
+      } else {
+        driverPhoneInputRef.current?.focus();
+      }
+    }
+  };
+
+  const handlePlateChange = (val: string) => {
+    setPlateNumber(val);
+    if (val && !driverName.trim()) {
+      const match = findDriverByPlate(val);
+      if (match) {
+        setDriverName(match.driverName);
+        if (match.driverPhone) setDriverPhone(match.driverPhone);
+        setRecalledNotice(`اطلاعات راننده «${match.driverName}» بر اساس پلاک خودرو خودکار پر شد.`);
+      }
+    }
+  };
+
+  // Filter quick recall search by name or plate
+  useEffect(() => {
+    if (quickQuery.trim().length > 0) {
+      const results = searchSavedDrivers(quickQuery);
+      setQuickResults(results);
+    } else {
+      setQuickResults(getSavedDrivers().slice(0, 8));
+    }
+  }, [quickQuery]);
 
   const selectDriver = (d: SavedDriver) => {
     setDriverName(d.driverName);
     if (d.driverPhone) setDriverPhone(d.driverPhone);
     if (d.plateNumber) setPlateNumber(d.plateNumber);
     setShowDriverSuggestions(false);
+    setShowQuickDropdown(false);
+    setQuickQuery('');
+    setRecalledNotice(`مشخصات «${d.driverName}» فراخوانی شد؛ در صورت نیاز اطلاعات را در کادرهای زیر ویرایش کنید.`);
+    setTimeout(() => {
+      driverPhoneInputRef.current?.focus();
+    }, 100);
   };
   
   const [attachments, setAttachments] = useState<{fileName: string, data: string}[]>(permit.attachments || []);
@@ -126,7 +244,93 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
         </div>
 
         {/* Modal Body - Scrollable */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50/50 dark:bg-gray-900/50">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 bg-gray-50/50 dark:bg-gray-900/50">
+          
+          {/* Quick Driver Recall Section */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-3.5 shadow-sm space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                <Sparkles size={16} className="text-blue-600 dark:text-blue-400" />
+                فراخوانی سریع راننده (با نام یا پلاک)
+              </span>
+              <span className="text-[11px] text-blue-600/80 dark:text-blue-300">حافظه سیستم</span>
+            </div>
+
+            {/* Quick Search Input */}
+            <div className="relative">
+              <input
+                type="text"
+                className="w-full bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded-xl px-3 py-2 pr-9 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 outline-none transition-all placeholder:text-gray-400 font-medium"
+                placeholder="جستجو بر اساس نام راننده یا پلاک خودرو (مثلاً: حسینی یا 831)..."
+                value={quickQuery}
+                onChange={e => {
+                  setQuickQuery(e.target.value);
+                  setShowQuickDropdown(true);
+                }}
+                onFocus={() => setShowQuickDropdown(true)}
+              />
+              <Search className="absolute right-2.5 top-2.5 text-blue-500" size={16} />
+              
+              {showQuickDropdown && quickResults.length > 0 && (
+                <div className="absolute top-full right-0 left-0 mt-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-30 max-h-56 overflow-y-auto divide-y dark:divide-gray-700 animate-fade-in">
+                  <div className="p-2 text-[10px] font-bold text-gray-500 bg-gray-50 dark:bg-gray-700/50 flex justify-between items-center">
+                    <span>نتایج حافظه سیستم (برای انتخاب کلیک کنید):</span>
+                    <button type="button" onClick={() => setShowQuickDropdown(false)} className="text-gray-400 hover:text-gray-600 text-[10px]">بستن ✕</button>
+                  </div>
+                  {quickResults.map(d => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => selectDriver(d)}
+                      className="w-full text-right p-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-between text-xs transition-colors gap-2"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                          <User size={13} className="text-blue-600" />
+                          {d.driverName}
+                        </span>
+                        {d.driverPhone && <span className="text-[11px] text-gray-500 font-mono mt-0.5">{d.driverPhone}</span>}
+                      </div>
+                      {d.plateNumber && (
+                        <div className="shrink-0 scale-90 origin-left">
+                          <IranianPlateDisplay value={d.plateNumber} size="xs" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Drivers Quick Chips */}
+            {recentDrivers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1 shrink-0 font-medium">
+                  <History size={12} /> اخیراً:
+                </span>
+                {recentDrivers.map(d => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => selectDriver(d)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-white/90 dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200/80 dark:border-blue-800 text-blue-900 dark:text-blue-200 rounded-lg text-[11px] font-bold transition-all shadow-2xs active:scale-95"
+                  >
+                    <span>{d.driverName}</span>
+                    {d.plateNumber && <span className="text-[10px] text-gray-500 font-mono">({d.plateNumber.slice(0, 8)})</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Recalled Notice */}
+            {recalledNotice && (
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1.5 rounded-lg animate-fade-in">
+                <Check size={14} className="text-emerald-600 shrink-0" />
+                <span className="flex-1 font-medium">{recalledNotice}</span>
+              </div>
+            )}
+          </div>
+
           {/* Driver Section */}
           <div className="space-y-3">
             <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm flex items-center gap-2 border-r-4 border-blue-500 pr-2.5">
@@ -137,20 +341,27 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300 block mb-1">نام و نام خانوادگی راننده</label>
                 <div className="relative">
                   <input 
+                    ref={driverNameInputRef}
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded-xl p-2.5 pr-9 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm" 
                     value={driverName} 
-                    onChange={e => {
-                      setDriverName(e.target.value);
-                      setShowDriverSuggestions(true);
-                    }} 
-                    onFocus={() => setShowDriverSuggestions(true)}
+                    enterKeyHint="next"
+                    onChange={e => handleDriverNameChange(e.target.value)} 
+                    onBlur={handleDriverNameBlur}
+                    onFocus={() => {
+                      if (driverName.trim().length > 0) {
+                        const results = searchSavedDrivers(driverName);
+                        setDriverSuggestions(results);
+                        setShowDriverSuggestions(results.length > 0);
+                      }
+                    }}
+                    onKeyDown={handleDriverNameKeyDown}
                     placeholder="مثلاً: احمد حسینی" 
                   />
                   <User className="absolute right-2.5 top-3 text-gray-400" size={17} />
                 </div>
                 {showDriverSuggestions && driverSuggestions.length > 0 && (
                   <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto">
-                    <div className="p-1.5 text-[10px] text-gray-400 font-bold border-b dark:border-gray-700">رانندگان ذخیره شده در حافظه:</div>
+                    <div className="p-1.5 text-[10px] text-gray-400 font-bold border-b dark:border-gray-700">رانندگان منطبق در حافظه:</div>
                     {driverSuggestions.map(d => (
                       <button
                         key={d.id}
@@ -172,10 +383,19 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
                 <label className="text-xs font-bold text-gray-600 dark:text-gray-300 block mb-1">شماره تماس راننده</label>
                 <div className="relative">
                   <input 
+                    ref={driverPhoneInputRef}
                     className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded-xl p-2.5 pr-9 text-sm font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all shadow-sm" 
                     dir="ltr" 
+                    enterKeyHint="next"
                     value={driverPhone} 
                     onChange={e => setDriverPhone(e.target.value)} 
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const plateFirstInput = document.querySelector<HTMLInputElement>('input[placeholder="۱۲"]');
+                        plateFirstInput?.focus();
+                      }
+                    }}
                     placeholder="0912..." 
                   />
                   <Smartphone className="absolute right-2.5 top-3 text-gray-400" size={17} />
@@ -186,13 +406,27 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
 
           {/* Vehicle & Plate Section */}
           <div className="space-y-3">
-            <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm flex items-center gap-2 border-r-4 border-orange-500 pr-2.5">
-              <Truck size={18} className="text-orange-500" /> مشخصات پلاک خودرو
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-800 dark:text-gray-200 text-sm flex items-center gap-2 border-r-4 border-orange-500 pr-2.5">
+                <Truck size={18} className="text-orange-500" /> مشخصات پلاک خودرو
+              </h3>
+              {plateNumber && (
+                <button
+                  type="button"
+                  onClick={() => setPlateNumber('')}
+                  className="text-xs text-red-500 hover:text-red-700 font-medium"
+                >
+                  پاک کردن پلاک
+                </button>
+              )}
+            </div>
             <div className="flex flex-col items-center gap-3 bg-white dark:bg-gray-800 p-4 md:p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
                 <IranianPlateInput
                   value={plateNumber}
-                  onChange={setPlateNumber}
+                  onChange={handlePlateChange}
+                  onEnter={() => {
+                    exitTimeInputRef.current?.focus();
+                  }}
                 />
             </div>
           </div>
@@ -204,10 +438,18 @@ const SecurityFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) 
               <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300">ساعت ثبت خروج از کارخانه:</label>
                 <input 
+                  ref={exitTimeInputRef}
                   type="text"
+                  enterKeyHint="done"
                   className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded-lg px-3 py-1.5 text-center text-sm font-bold w-28 dir-ltr outline-none focus:border-blue-500"
                   value={exitTime}
                   onChange={e => setExitTime(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
                   placeholder="00:00"
                 />
               </div>

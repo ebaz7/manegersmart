@@ -40,6 +40,7 @@ import * as Renderer from './backend/renderer.js';
 import mammoth from 'mammoth';
 import { GoogleGenAI, Type } from '@google/genai';
 import * as jalaali from 'jalaali-js';
+import * as sayanOrderAuto from './backend/sayan-order-automation.js';
 
 const getDb = dbManager.getDb;
 const saveDb = dbManager.saveDb;
@@ -1631,6 +1632,124 @@ app.post('/api/sayan-proxy', async (req, res) => {
     } catch (err) {
         console.error("Sayan Proxy Error:", err);
         res.status(500).json({ error: err.message || 'خطا در برقراری ارتباط با وب‌سرویس سایان' });
+    }
+});
+
+// =========================================================================
+// SAYAN ORDER AUTOMATION (53 -> 57) API ENDPOINTS
+// =========================================================================
+
+// 1. Get status, config & pending overview
+app.get('/api/sayan/order-automation/status', async (req, res) => {
+    try {
+        const db = getDb();
+        const config = sayanOrderAuto.getAutomationConfig(db);
+        const logs = sayanOrderAuto.getAutomationLogs(db, 20);
+        res.json({
+            success: true,
+            config,
+            recentLogs: logs
+        });
+    } catch (err) {
+        console.error("Order automation status error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 2. Get all pending 53 purchase requests with items & detected vendors
+app.get('/api/sayan/order-automation/pending', async (req, res) => {
+    try {
+        const db = getDb();
+        const config = sayanOrderAuto.getAutomationConfig(db);
+        const fiscalYear = req.query.fiscalYear || config.fiscalYear || '4';
+        const pending = await sayanOrderAuto.getPendingPurchaseRequests(fiscalYear);
+        res.json({
+            success: true,
+            fiscalYear,
+            totalPending: pending.length,
+            readyCount: pending.filter(p => p.isReady).length,
+            items: pending
+        });
+    } catch (err) {
+        console.error("Order automation pending fetch error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 3. Get items of a specific 53 document
+app.get('/api/sayan/order-automation/items/:docNo', async (req, res) => {
+    try {
+        const db = getDb();
+        const config = sayanOrderAuto.getAutomationConfig(db);
+        const fiscalYear = req.query.fiscalYear || config.fiscalYear || '4';
+        const items = await sayanOrderAuto.getPurchaseRequestItems(req.params.docNo, fiscalYear);
+        res.json({
+            success: true,
+            items
+        });
+    } catch (err) {
+        console.error("Order automation items fetch error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 4. Update configuration
+app.post('/api/sayan/order-automation/config', (req, res) => {
+    try {
+        const db = getDb();
+        const updated = sayanOrderAuto.saveAutomationConfig(db, req.body || {});
+        res.json({ success: true, config: updated });
+    } catch (err) {
+        console.error("Order automation save config error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 5. Convert single 53 request to 57 pre-invoice
+app.post('/api/sayan/order-automation/convert-single', async (req, res) => {
+    try {
+        const { doc53Id, vendorCode, vendorName, isDryRun, user } = req.body || {};
+        if (!doc53Id) {
+            return res.status(400).json({ success: false, error: 'شناسه درخواست خرید (doc53Id) الزامی است.' });
+        }
+        const result = await sayanOrderAuto.convert53To57(doc53Id, {
+            vendorCode,
+            vendorName,
+            isDryRun: Boolean(isDryRun),
+            user: user || 'کاربر سیستم'
+        });
+        res.json(result);
+    } catch (err) {
+        console.error("Order automation single convert error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 6. Run full batch cycle
+app.post('/api/sayan/order-automation/run-batch', async (req, res) => {
+    try {
+        const { isDryRun, user } = req.body || {};
+        const summary = await sayanOrderAuto.runAutomationCycle({
+            isDryRun,
+            user: user || 'اجرای دستی گروهی'
+        });
+        res.json({ success: true, summary });
+    } catch (err) {
+        console.error("Order automation batch run error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 7. Get audit logs
+app.get('/api/sayan/order-automation/logs', (req, res) => {
+    try {
+        const db = getDb();
+        const limit = parseInt(req.query.limit, 10) || 100;
+        const logs = sayanOrderAuto.getAutomationLogs(db, limit);
+        res.json({ success: true, logs });
+    } catch (err) {
+        console.error("Order automation logs error:", err);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
@@ -10282,6 +10401,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         setupDailyReports();
         setupLegacyDailyReports();
         setupTaskRecurringReminders();
+        sayanOrderAuto.initAutomationCron();
     }, 1000);
 });
 

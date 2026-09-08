@@ -246,7 +246,10 @@ export const getDb = () => {
 };
 
 export const saveDb = (data) => {
-    MEMORY_DB_CACHE = data;
+    if (data) {
+        MEMORY_DB_CACHE = data;
+    }
+    if (!MEMORY_DB_CACHE) return true;
     
     // Throttle disk writes to every 3 seconds to avoid event loop blockage
     if (saveTimeout) return true;
@@ -255,7 +258,9 @@ export const saveDb = (data) => {
         try {
             if (isSaving) return;
             isSaving = true;
-            fs.writeFileSync(DB_FILE, JSON.stringify(MEMORY_DB_CACHE, null, 2));
+            if (MEMORY_DB_CACHE) {
+                fs.writeFileSync(DB_FILE, JSON.stringify(MEMORY_DB_CACHE, null, 2));
+            }
             saveTimeout = null;
             isSaving = false;
         } catch (e) {
@@ -271,9 +276,13 @@ export const saveDb = (data) => {
 // Immediate save for critical operations (e.g. backup, restore)
 export const saveDbImmediate = (data) => {
     try {
-        MEMORY_DB_CACHE = data;
+        if (data) {
+            MEMORY_DB_CACHE = data;
+        }
         if (saveTimeout) { clearTimeout(saveTimeout); saveTimeout = null; }
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+        if (MEMORY_DB_CACHE) {
+            fs.writeFileSync(DB_FILE, JSON.stringify(MEMORY_DB_CACHE, null, 2));
+        }
         return true;
     } catch (e) {
         console.error("Immediate DB Save Error:", e);

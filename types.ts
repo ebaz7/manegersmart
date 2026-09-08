@@ -474,6 +474,7 @@ export interface SystemSettings {
   
   // SAYAN ONLINE EXIT PERMITS INTEGRATION
   sayanOnlineExitPermitsEnabled?: boolean;
+  sayanYearClosed?: boolean;
   
   // MINI APPS
   miniAppCarPriceUrl?: string;

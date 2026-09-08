@@ -7207,6 +7207,23 @@ const Settings: React.FC<SettingsProps> = ({
                             <div className="text-xs text-indigo-700 mt-0.5">در صورت فعال بودن، در بخش خروج کارخانه و تاییدات انبار با سایان ارتباط برقرار می‌شود.</div>
                           </div>
                         </label>
+                        
+                        <label className="flex items-center gap-2 cursor-pointer p-3 bg-rose-50 border border-rose-100 rounded-xl mt-3">
+                          <div className="relative">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only" 
+                              checked={settings.sayanYearClosed || false}
+                              onChange={(e) => setSettings({ ...settings, sayanYearClosed: e.target.checked })}
+                            />
+                            <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanYearClosed ? 'bg-rose-600' : 'bg-gray-300'}`}></div>
+                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanYearClosed ? 'transform translate-x-4' : ''}`}></div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-rose-900">سال مالی سایان بسته شده است (صدور سند افتتاحیه جدید)</div>
+                            <div className="text-xs text-rose-700 mt-0.5">با فعال کردن این گزینه، سیستم موجودی اول دوره را از ابتدای سال جدید محاسبه می‌کند تا آمار سال قبل دوباره جمع زده نشود.</div>
+                          </div>
+                        </label>
                       </div>
                     </div>
                     <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex gap-3 items-start">

@@ -1827,9 +1827,13 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             });
         }
 
+        const isYearClosed = settings.sayanYearClosed === true;
+
         const lastYearDateFrom = '2024-03-20';
         const lastYearDateTo = '2025-03-20';
-        const currentYearDateFrom = '2025-03-21';
+        // If year is closed, an opening balance (افتتاحیه) is struck for 1405 (2025-03-21) and we shouldn't pull 1404 data
+        // If not closed, we must sum from 1404 (2024-03-20) to get cumulative total stock!
+        const currentYearDateFrom = isYearClosed ? '2025-03-21' : '2024-03-20';
         const currentYearDateTo = new Date().toISOString().split('T')[0];
 
         const getStockWeights = async (targetDate, fromDate) => {
@@ -8719,12 +8723,15 @@ async function executeReportJob(job) {
                     return '2025-03-21';
                 };
 
+                const settings = db.settings || {};
+                const isYearClosed = settings.sayanYearClosed === true;
+                
                 const report1Jalali = meta.report1Jalali || '۱۴۰۴/۱۲/۲۹';
                 const report2Jalali = getTodayJalaliStr();
                 const reportDate = getTodayJalaliStr();
                 const report1Miladi = meta.report1Miladi || '2025-03-20';
                 const report2Miladi = new Date().toISOString().split('T')[0];
-                const cumulativeFromLastYear = meta.cumulativeFromLastYear ?? true;
+                const cumulativeFromLastYear = !isYearClosed;
 
                 const y1 = getJalaliYear(report1Jalali);
                 const y2 = getJalaliYear(report2Jalali);

@@ -113,6 +113,8 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
     const [logs, setLogs] = useState<AutomationLog[]>([]);
     const [activeTab, setActiveTab] = useState<'READY' | 'MANUAL' | 'ARCHIVED' | 'LOGS'>('READY');
     const [searchQuery, setSearchQuery] = useState('');
+    const [logDateFilter, setLogDateFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH'>('ALL');
+    const [logStatusFilter, setLogStatusFilter] = useState<'ALL' | 'SUCCESS' | 'FAILED' | 'DRY_RUN'>('ALL');
     
     // Item Details Modal
     const [selectedDocForItems, setSelectedDocForItems] = useState<{ docNo: string; fiscalYear: string; note?: string } | null>(null);
@@ -183,7 +185,14 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
 
     useEffect(() => {
         fetchStatusAndData();
-    }, []);
+        
+        // Auto-refresh every 15 seconds to track background automatic conversions in real time
+        const interval = setInterval(() => {
+            fetchStatusAndData();
+        }, 15000);
+
+        return () => clearInterval(interval);
+    }, [selectedFiscalYear]);
 
     const readyItems = useMemo(() => pendingList.filter(item => item.isReady), [pendingList]);
     const manualItems = useMemo(() => pendingList.filter(item => !item.isReady), [pendingList]);
@@ -220,6 +229,74 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
             item.preInvoiceVendorCode?.toLowerCase().includes(q)
         );
     }, [archivedList, searchQuery]);
+
+    const filteredLogs = useMemo(() => {
+        let result = logs;
+        
+        // Date filter
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const startOfYesterday = startOfToday - (24 * 60 * 60 * 1000);
+        const startOfWeek = startOfToday - (7 * 24 * 60 * 60 * 1000);
+        const startOfMonth = startOfToday - (30 * 24 * 60 * 60 * 1000);
+
+        if (logDateFilter === 'TODAY') {
+            result = result.filter(l => new Date(l.timestamp).getTime() >= startOfToday);
+        } else if (logDateFilter === 'YESTERDAY') {
+            result = result.filter(l => {
+                const t = new Date(l.timestamp).getTime();
+                return t >= startOfYesterday && t < startOfToday;
+            });
+        } else if (logDateFilter === 'WEEK') {
+            result = result.filter(l => new Date(l.timestamp).getTime() >= startOfWeek);
+        } else if (logDateFilter === 'MONTH') {
+            result = result.filter(l => new Date(l.timestamp).getTime() >= startOfMonth);
+        }
+
+        // Status filter
+        if (logStatusFilter === 'SUCCESS') {
+            result = result.filter(l => l.success && !l.action?.includes('DRY_RUN'));
+        } else if (logStatusFilter === 'FAILED') {
+            result = result.filter(l => !l.success);
+        } else if (logStatusFilter === 'DRY_RUN') {
+            result = result.filter(l => l.action?.includes('DRY_RUN'));
+        }
+
+        // Text search
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            result = result.filter(l => 
+                l.doc53No?.toLowerCase().includes(q) ||
+                l.created57DocNo?.toLowerCase().includes(q) ||
+                l.vendorName?.toLowerCase().includes(q) ||
+                l.vendorCode?.toLowerCase().includes(q) ||
+                l.note?.toLowerCase().includes(q) ||
+                l.user?.toLowerCase().includes(q)
+            );
+        }
+
+        return result;
+    }, [logs, logDateFilter, logStatusFilter, searchQuery]);
+
+    const logStats = useMemo(() => {
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const todayLogs = logs.filter(l => new Date(l.timestamp).getTime() >= startOfToday);
+        const successfulToday = todayLogs.filter(l => l.success && !l.action?.includes('DRY_RUN')).length;
+        const failedToday = todayLogs.filter(l => !l.success).length;
+        const dryRunsToday = todayLogs.filter(l => l.action?.includes('DRY_RUN')).length;
+        const totalItemsConvertedToday = todayLogs
+            .filter(l => l.success && !l.action?.includes('DRY_RUN'))
+            .reduce((acc, cur) => acc + (cur.itemsCount || 0), 0);
+
+        return {
+            todayTotal: todayLogs.length,
+            successfulToday,
+            failedToday,
+            dryRunsToday,
+            totalItemsConvertedToday
+        };
+    }, [logs]);
 
     const parseSafeJson = async (res: Response) => {
         const contentType = res.headers.get('content-type') || '';
@@ -291,10 +368,13 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
             });
             const data = await parseSafeJson(res);
             if (data.success) {
-                const summary = data.summary;
+                const summary = data.summary || {};
+                const converted = summary.convertedCount ?? summary.converted ?? 0;
+                const total = summary.readyToConvert ?? summary.totalPending ?? summary.processed ?? 0;
+                const errors = summary.failedCount ?? summary.errors ?? 0;
                 showToast(
-                    `عملیات انجام شد: ${summary.processed} سند بررسی، ${summary.converted} تبدیل موفق، ${summary.errors} خطا`,
-                    summary.errors > 0 ? 'info' : 'success'
+                    `عملیات انجام شد: ${total} سند بررسی شد | ${converted} پیش‌فاکتور جدید صادر شد ${errors > 0 ? `| ${errors} خطا` : ''}`,
+                    errors > 0 ? 'info' : 'success'
                 );
                 await fetchStatusAndData();
             } else {
@@ -824,66 +904,177 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                                 <span className="text-xs text-slate-500">در حال دریافت اسناد و پیش‌فاکتورها از دیتابیس سایان...</span>
                             </div>
                         ) : activeTab === 'LOGS' ? (
-                            /* Logs Table */
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-right text-xs">
-                                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-800">
-                                        <tr>
-                                            <th className="py-3 px-4">زمان</th>
-                                            <th className="py-3 px-4">عملیات</th>
-                                            <th className="py-3 px-4">شماره درخواست (۵۳)</th>
-                                            <th className="py-3 px-4">پیش‌فاکتور صادره (۵۷)</th>
-                                            <th className="py-3 px-4">تامین‌کننده</th>
-                                            <th className="py-3 px-4">کاربر / محرک</th>
-                                            <th className="py-3 px-4">وضعیت</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                        {logs.length === 0 ? (
+                            /* Daily Audit & Logs View */
+                            <div className="flex flex-col">
+                                {/* Daily KPI Summary Header */}
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                                        <div className="text-[11px] text-slate-500 font-medium">کل وقایع امروز</div>
+                                        <div className="text-lg font-bold text-slate-900 dark:text-white font-mono mt-0.5">
+                                            {logStats.todayTotal}
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">ثبت‌های موفق در سایان</div>
+                                        <div className="text-lg font-bold text-emerald-600 font-mono mt-0.5">
+                                            {logStats.successfulToday}
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                                        <div className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">اقلام صادرشده امروز</div>
+                                        <div className="text-lg font-bold text-blue-600 font-mono mt-0.5">
+                                            {logStats.totalItemsConvertedToday}
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                                        <div className="text-[11px] text-purple-600 dark:text-purple-400 font-medium">تست‌های آزمایشی</div>
+                                        <div className="text-lg font-bold text-purple-600 font-mono mt-0.5">
+                                            {logStats.dryRunsToday}
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm col-span-2 sm:col-span-1">
+                                        <div className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">خطاهای سیستمی</div>
+                                        <div className="text-lg font-bold text-rose-600 font-mono mt-0.5">
+                                            {logStats.failedToday}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Filter Controls Bar */}
+                                <div className="p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="text-slate-500 font-medium text-[11px] ml-1">بازه زمانی:</span>
+                                        {[
+                                            { id: 'ALL', label: 'همه سوابق' },
+                                            { id: 'TODAY', label: 'امروز' },
+                                            { id: 'YESTERDAY', label: 'دیروز' },
+                                            { id: 'WEEK', label: '۷ روز گذشته' },
+                                            { id: 'MONTH', label: '۳۰ روز گذشته' }
+                                        ].map((filter) => (
+                                            <button
+                                                key={filter.id}
+                                                onClick={() => setLogDateFilter(filter.id as any)}
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                                                    logDateFilter === filter.id
+                                                        ? 'bg-blue-600 text-white shadow-xs'
+                                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                                                }`}
+                                            >
+                                                {filter.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-slate-500 font-medium text-[11px] ml-1">وضعیت:</span>
+                                        {[
+                                            { id: 'ALL', label: 'همه' },
+                                            { id: 'SUCCESS', label: 'موفق' },
+                                            { id: 'FAILED', label: 'خطادار' },
+                                            { id: 'DRY_RUN', label: 'آزمایشی' }
+                                        ].map((sf) => (
+                                            <button
+                                                key={sf.id}
+                                                onClick={() => setLogStatusFilter(sf.id as any)}
+                                                className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                                                    logStatusFilter === sf.id
+                                                        ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
+                                                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                                                }`}
+                                            >
+                                                {sf.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Table */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-right text-xs">
+                                        <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-800">
                                             <tr>
-                                                <td colSpan={7} className="py-12 text-center text-slate-400">
-                                                    هنوز سابقه‌ای در این نشست ثبت نشده است.
-                                                </td>
+                                                <th className="py-3 px-4">تاریخ و زمان</th>
+                                                <th className="py-3 px-4">نوع عملیات</th>
+                                                <th className="py-3 px-4">درخواست مبدا (۵۳)</th>
+                                                <th className="py-3 px-4">پیش‌فاکتور مقصد در سایان (۵۷)</th>
+                                                <th className="py-3 px-4">طرف حساب / تامین‌کننده</th>
+                                                <th className="py-3 px-4">اقلام کالا</th>
+                                                <th className="py-3 px-4">کاربر / محرک</th>
+                                                <th className="py-3 px-4 text-center">وضعیت ثبت</th>
                                             </tr>
-                                        ) : (
-                                            logs.map((log) => (
-                                                <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                                                    <td className="py-3 px-4 text-slate-500 font-mono">
-                                                        {formatDate(log.timestamp)}
-                                                    </td>
-                                                    <td className="py-3 px-4 font-medium text-slate-800 dark:text-slate-200">
-                                                        {log.action}
-                                                    </td>
-                                                    <td className="py-3 px-4 font-mono font-bold">
-                                                        {log.doc53No ? `#${log.doc53No}` : '-'}
-                                                    </td>
-                                                    <td className="py-3 px-4 font-mono font-bold text-emerald-600">
-                                                        {log.created57DocNo ? `#${log.created57DocNo}` : '-'}
-                                                    </td>
-                                                    <td className="py-3 px-4">
-                                                        {log.vendorName || log.vendorCode || '-'}
-                                                    </td>
-                                                    <td className="py-3 px-4 text-slate-500">
-                                                        {log.user || 'اتوماسیون سیستم'}
-                                                    </td>
-                                                    <td className="py-3 px-4">
-                                                        {log.success ? (
-                                                            <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
-                                                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                                                موفق
-                                                            </span>
-                                                        ) : (
-                                                            <span className="inline-flex items-center gap-1 text-rose-600 font-bold" title={log.error}>
-                                                                <AlertCircle className="w-3.5 h-3.5" />
-                                                                خطا: {log.error?.substring(0, 30)}...
-                                                            </span>
-                                                        )}
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                            {filteredLogs.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                                                        هیچ سابقه‌ای مطابق با فیلترهای انتخابی یافت نشد.
                                                     </td>
                                                 </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
+                                            ) : (
+                                                filteredLogs.map((log) => (
+                                                    <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                                        <td className="py-3 px-4 text-slate-500 font-mono">
+                                                            {formatDate(log.timestamp)}
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${
+                                                                log.action?.includes('DRY_RUN')
+                                                                    ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                                                                    : log.action?.includes('BATCH')
+                                                                    ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                                                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                                            }`}>
+                                                                {log.action?.includes('DRY_RUN') ? 'اجرای آزمایشی' : log.action?.includes('BATCH') ? 'تبدیل خودکار دسته‌ای' : 'صدور مستقیم'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                                                            {log.doc53No ? `درخواست #${log.doc53No}` : '-'}
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            {log.created57DocNo ? (
+                                                                <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                                                                    <FileText className="w-3.5 h-3.5" />
+                                                                    پیش‌فاکتور #{log.created57DocNo}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-400 font-mono">-</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                                                {log.vendorName || '-'}
+                                                            </div>
+                                                            {log.vendorCode && (
+                                                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                                    کد: {log.vendorCode}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
+                                                            {log.itemsCount ? `${log.itemsCount} قلم` : '-'}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-slate-500">
+                                                            {log.user || 'اتوماسیون سایان'}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            {log.success ? (
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                                    موفق
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800" title={log.error}>
+                                                                    <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                                                                    خطا در ثبت
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         ) : activeTab === 'ARCHIVED' ? (
                             /* Archived Table */

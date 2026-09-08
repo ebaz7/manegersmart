@@ -710,31 +710,58 @@ export const runAutomationCycle = async (options = {}) => {
 };
 
 /**
- * Initialize hourly cron scheduler
+ * Dynamic High-Precision Scheduler
+ * Supports 1-minute, 5-minute, 15-minute, 30-minute, 60-minute intervals with zero drift.
  */
-let cronJob = null;
+let automationIntervalTimer = null;
+let isCycleRunning = false;
 
-export const initAutomationCron = () => {
-    if (cronJob) {
-        cronJob.stop();
-        cronJob = null;
+export const initAutomationScheduler = () => {
+    if (automationIntervalTimer) {
+        clearInterval(automationIntervalTimer);
+        automationIntervalTimer = null;
     }
 
-    // Run at minute 15 of every hour
-    cronJob = cron.schedule('15 * * * *', async () => {
+    console.log('[Sayan Order Automation] Initializing high-precision background runner...');
+
+    automationIntervalTimer = setInterval(async () => {
         try {
             const db = getDb();
             const config = getAutomationConfig(db);
+            
             if (!config.enabled) {
                 return;
             }
-            console.log('[Sayan Order Automation] Running scheduled hourly check...');
-            const result = await runAutomationCycle({ user: 'کرون‌جاب خودکار' });
-            console.log(`[Sayan Order Automation] Cycle completed. Converted: ${result.convertedCount}, Skipped: ${result.skippedCount}, Failed: ${result.failedCount}`);
-        } catch (err) {
-            console.error('[Sayan Order Automation] Error during scheduled run:', err);
-        }
-    });
 
-    console.log('[Sayan Order Automation] Hourly scheduler registered.');
+            if (isCycleRunning) {
+                return;
+            }
+
+            const intervalMs = Math.max(1, parseInt(config.intervalMinutes, 10) || 1) * 60 * 1000;
+            const now = Date.now();
+            const lastRunTime = config.lastRunAt ? new Date(config.lastRunAt).getTime() : 0;
+            
+            // Check if elapsed time matches interval
+            if (now - lastRunTime >= intervalMs) {
+                isCycleRunning = true;
+                console.log(`[Sayan Order Automation] ⏰ Triggering scheduled cycle (Interval: ${config.intervalMinutes}m)...`);
+                
+                try {
+                    const result = await runAutomationCycle({ user: 'اتوماسیون زمان‌بندی‌شده سیستم' });
+                    console.log(`[Sayan Order Automation] Cycle finished: ${result.convertedCount} converted, ${result.skippedCount} skipped, ${result.failedCount} failed.`);
+                } catch (cycleErr) {
+                    console.error('[Sayan Order Automation] Error inside cycle run:', cycleErr);
+                } finally {
+                    isCycleRunning = false;
+                }
+            }
+        } catch (err) {
+            isCycleRunning = false;
+            console.error('[Sayan Order Automation] Scheduler tick error:', err);
+        }
+    }, 5000); // Check every 5 seconds for exact timing
 };
+
+// Backward-compatible export alias
+export const initAutomationCron = initAutomationScheduler;
+

@@ -1717,6 +1717,7 @@ app.post('/api/sayan/order-automation/config', (req, res) => {
     try {
         const db = getDb();
         const updated = sayanOrderAuto.saveAutomationConfig(db, req.body || {});
+        sayanOrderAuto.initAutomationScheduler();
         res.json({ success: true, config: updated });
     } catch (err) {
         console.error("Order automation save config error:", err);

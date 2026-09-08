@@ -1676,6 +1676,25 @@ app.get('/api/sayan/order-automation/pending', async (req, res) => {
     }
 });
 
+// 2.1. Get archived / converted 53 purchase requests with their linked 57 pre-invoices
+app.get('/api/sayan/order-automation/archived', async (req, res) => {
+    try {
+        const db = getDb();
+        const config = sayanOrderAuto.getAutomationConfig(db);
+        const fiscalYear = req.query.fiscalYear || config.fiscalYear || '4';
+        const archived = await sayanOrderAuto.getArchivedPurchaseRequests(fiscalYear);
+        res.json({
+            success: true,
+            fiscalYear,
+            totalArchived: archived.length,
+            items: archived
+        });
+    } catch (err) {
+        console.error("Order automation archived fetch error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // 3. Get items of a specific 53 document
 app.get('/api/sayan/order-automation/items/:docNo', async (req, res) => {
     try {

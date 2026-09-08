@@ -8,7 +8,8 @@ import {
   Smartphone, MonitorDown, BellRing, Smartphone as MobileIcon, Trash2, Menu, Edit3, Sun, Moon, 
   ShoppingCart, Wallet, Sparkles, Pin, PinOff, Zap,
   BadgePlus, Receipt, ArrowLeftRight, ScrollText, ClipboardCheck, Warehouse, BarChart3, 
-  CalendarDays, FolderArchive, Banknote, MessagesSquare, Globe, Boxes, Handshake, Headset, UserCog
+  CalendarDays, FolderArchive, Banknote, MessagesSquare, Globe, Boxes, Handshake, Headset, UserCog,
+  FileCheck2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserRole, AppNotification, SystemSettings } from '../types';
@@ -560,6 +561,11 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
       perms.canViewSayanWarehouseOverview === true || 
       perms.canAccessSayanReports === true;
 
+    const canSeeSayanOps = currentUser.role === UserRole.ADMIN || 
+      canSeeSayan || 
+      perms.canAccessSayanRegistrations === true || 
+      perms.canAccessSayanPendingDocs === true;
+
     const items = [
       { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
     ];
@@ -571,6 +577,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
     if (canViewExit) items.push({ id: 'manage-exit', label: 'سوابق خروج', icon: ClipboardCheck });
     if (canManageWarehouse) items.push({ id: 'warehouse', label: 'مدیریت انبار', icon: Warehouse });
     if (canSeeSayan) items.push({ id: 'sayan', label: 'گزارشات سایان', icon: BarChart3 });
+    if (canSeeSayanOps) items.push({ id: 'sayan-operations', label: 'ثبت‌های سایان', icon: FileCheck2 });
     if (canSeeSecurity) items.push({ id: 'security', label: 'انتظامات', icon: ShieldCheck });
     if (canSeeMeetings) items.push({ id: 'meetings', label: 'جلسات تولید', icon: CalendarDays });
     if (canSeePurchase) items.push({ id: 'purchase', label: 'درخواست خرید', icon: ShoppingCart });

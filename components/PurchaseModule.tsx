@@ -33,7 +33,6 @@ import PrintPurchaseBarcode from './PrintPurchaseBarcode';
 import { generatePdf } from '../utils/pdfGenerator';
 import { getRolePermissions } from '../services/authService';
 import { AiPurchaseAdvisorModal } from './AiPurchaseAdvisorModal';
-import { SayanOrderAutomationModal } from './SayanOrderAutomationModal';
 
 const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
     const isMobile = useIsMobile();
@@ -47,7 +46,6 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
     // Requests State
     const [requests, setRequests] = useState<PurchaseRequest[]>([]);
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [showSayanAutoModal, setShowSayanAutoModal] = useState(false);
     const [requestSearch, setRequestSearch] = useState('');
     const [viewRequest, setViewRequest] = useState<PurchaseRequest | null>(null);
 
@@ -129,14 +127,6 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
                     <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
                         <ShoppingCart className="text-indigo-600"/> مدیریت خرید و کالا
                     </h1>
-                    <button
-                        type="button"
-                        onClick={() => setShowSayanAutoModal(true)}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer"
-                    >
-                        <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-                        <span>اتوماسیون ۵۳ به ۵۷ سایان (پیش‌فاکتور با فی ۱ ریال)</span>
-                    </button>
                 </div>
                 
                 <div className="flex flex-wrap md:flex-nowrap p-1 bg-gray-200 rounded-xl gap-1 md:gap-0">
@@ -227,15 +217,6 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
                     data-subtab-back="true" 
                     onClick={() => setActiveTab('DASHBOARD')} 
                     className="hidden"
-                />
-            )}
-
-            {/* Sayan Order Automation Modal (Opcode 53 -> 57) */}
-            {showSayanAutoModal && (
-                <SayanOrderAutomationModal
-                    isOpen={showSayanAutoModal}
-                    onClose={() => setShowSayanAutoModal(false)}
-                    currentUser={currentUser}
                 />
             )}
         </div>

@@ -42,6 +42,7 @@ export interface User {
   canAccessSayanPendingDocs?: boolean;
   canAccessSayanDailySales?: boolean;
   canAccessSayanCompareSales?: boolean;
+  canAccessSayanRegistrations?: boolean;
   canViewSayan?: boolean;
   canViewSayanTraz?: boolean;
   canViewSayanSales?: boolean;
@@ -189,6 +190,7 @@ export interface RolePermissions {
   canAccessSayanPendingDocs?: boolean;
   canAccessSayanDailySales?: boolean;
   canAccessSayanCompareSales?: boolean;
+  canAccessSayanRegistrations?: boolean;
   canAccessSecretariat?: boolean;
   canManageSecretariatSettings?: boolean;
   [key: string]: boolean | undefined;

@@ -180,9 +180,9 @@ export const resolveVendorForNote = (note, vendorMap) => {
 };
 
 /**
- * Get all pending Purchase Requests (Opcode 53) in Fiscal Year 4
+ * Fetch all Purchase Requests (Opcode 53) in Fiscal Year 4 with Pre-Invoice (Opcode 57) detection
  */
-export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
+export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
     const vendorMap = await getHistoricalVendorMap();
 
     const sql = `
@@ -197,32 +197,37 @@ export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
             t10.Field_017 as Note,
             t10.Field_029 as DescText,
             t10.Field_036 as RegDate,
-            COUNT(t11.Field_001) as ItemsCount,
-            SUM(t11.Field_006) as TotalQty
+            (SELECT COUNT(*) FROM STR_TBL_011 i WHERE i.Field_003 = t10.Field_004 AND i.Field_004 = t10.Field_005 AND i.Field_012 = 3) as ItemsCount,
+            (SELECT SUM(Field_006) FROM STR_TBL_011 i WHERE i.Field_003 = t10.Field_004 AND i.Field_004 = t10.Field_005 AND i.Field_012 = 3) as TotalQty,
+            t57.Field_005 as PreInvoiceDocNo,
+            t57.Field_001 as PreInvoiceDocId,
+            t57.Field_008 as PreInvoiceDate,
+            t57.Field_010 as PreInvoiceVendorCode,
+            p.Field_006 as PreInvoiceVendorName
         FROM STR_TBL_010 t10
-        LEFT JOIN STR_TBL_011 t11 
-            ON t10.Field_004 = t11.Field_003 
-            AND t10.Field_005 = t11.Field_004 
-            AND t11.Field_012 = 3
-        WHERE t10.Field_009 = '53' 
-          AND t10.Field_004 = '${fiscalYear}'
-          AND t10.Field_001 NOT IN (
-              SELECT DISTINCT l.Field_003 
-              FROM STR_TBL_029 l
-              JOIN STR_TBL_010 d57 ON l.Field_001 = d57.Field_001
-              WHERE l.Field_007 = '53' AND d57.Field_009 = '57'
-          )
-        GROUP BY 
-            t10.Field_001, t10.Field_004, t10.Field_005, t10.Field_006, 
-            t10.Field_007, t10.Field_008, t10.Field_010, t10.Field_017, 
-            t10.Field_029, t10.Field_036
-        ORDER BY CAST(t10.Field_005 AS INT) ASC
+        OUTER APPLY (
+            SELECT TOP 1 d.Field_001, d.Field_005, d.Field_008, d.Field_010
+            FROM STR_TBL_010 d
+            WHERE d.Field_009 = '57' AND d.Field_004 = t10.Field_004
+              AND (
+                  (t10.Field_007 IS NOT NULL AND t10.Field_007 <> '' AND d.Field_007 = t10.Field_007)
+                  OR EXISTS (
+                      SELECT 1 FROM STR_TBL_029 l
+                      WHERE l.Field_003 = t10.Field_001 AND l.Field_007 = '53' AND l.Field_001 = d.Field_001
+                  )
+              )
+            ORDER BY CAST(d.Field_005 AS INT) DESC
+        ) t57
+        LEFT JOIN ACT_TBL_007 p ON t57.Field_010 = p.Field_005
+        WHERE t10.Field_009 = '53' AND t10.Field_004 = '${fiscalYear}'
+        ORDER BY CAST(t10.Field_005 AS INT) DESC
     `;
 
     const rows = await executeSayanQuery(sql);
 
     return rows.map(r => {
         const vendor = resolveVendorForNote(r.Note, vendorMap);
+        const hasPreInvoice = Boolean(r.PreInvoiceDocNo);
         return {
             doc53Id: r.Doc53Id,
             fiscalYear: r.FiscalYear,
@@ -236,13 +241,36 @@ export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
             itemsCount: Number(r.ItemsCount || 0),
             totalQty: Number(r.TotalQty || 0),
             detectedVendor: vendor,
-            isReady: vendor.confidence >= 75
+            isReady: vendor.confidence >= 75,
+            hasPreInvoice,
+            preInvoiceDocNo: r.PreInvoiceDocNo || null,
+            preInvoiceDocId: r.PreInvoiceDocId || null,
+            preInvoiceDate: r.PreInvoiceDate || null,
+            preInvoiceVendorCode: r.PreInvoiceVendorCode || null,
+            preInvoiceVendorName: r.PreInvoiceVendorName || null
         };
     });
 };
 
 /**
- * Get items of a specific 53 document
+ * Get all pending Purchase Requests (Opcode 53) in Fiscal Year 4
+ * STRICTLY excludes any request that already has a Pre-Invoice (Opcode 57) issued in Sayan
+ */
+export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
+    const all = await getAllPurchaseRequestsWithStatus(fiscalYear);
+    return all.filter(r => !r.hasPreInvoice);
+};
+
+/**
+ * Get all archived / processed Purchase Requests (Opcode 53) that have Pre-Invoices (Opcode 57) in Sayan
+ */
+export const getArchivedPurchaseRequests = async (fiscalYear = '4') => {
+    const all = await getAllPurchaseRequestsWithStatus(fiscalYear);
+    return all.filter(r => r.hasPreInvoice);
+};
+
+/**
+ * Get items of a specific 53 document with authentic item names from GNR_TBL_003 / STR_TBL_004 / IND_TBL_022
  */
 export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
     const sql = `
@@ -257,11 +285,19 @@ export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
             t11.Field_031 as ItemDesc,
             t11.Field_036 as UnitId,
             t11.Field_037 as WarehouseCode,
-            COALESCE(s04.Field_003, t22.Field_004, N'کالای عمومی') as ItemName,
+            COALESCE(
+                NULLIF(RTRIM(LTRIM(g03.Field_008)), ''),
+                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
+                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
+                RTRIM(LTRIM(t11.Field_005))
+            ) as ItemName,
             COALESCE(u.Field_003, N'عدد') as UnitName
         FROM STR_TBL_011 t11
+        LEFT JOIN GNR_TBL_003 g03 ON RTRIM(LTRIM(g03.Field_003)) = RTRIM(LTRIM(t11.Field_005))
         LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
         LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
         LEFT JOIN GNR_TBL_002 u ON RTRIM(LTRIM(u.Field_006)) = RTRIM(LTRIM(t11.Field_036))
         WHERE t11.Field_003 = '${fiscalYear}' AND t11.Field_004 = '${docNo}' AND t11.Field_012 = 3
         ORDER BY t11.Field_001 ASC
@@ -302,13 +338,19 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     // 2. Verify that it is not already converted
     const verifyNotConverted = `
         SELECT COUNT(*) as ExistsCount
-        FROM STR_TBL_029 l
-        JOIN STR_TBL_010 d57 ON l.Field_001 = d57.Field_001
-        WHERE l.Field_003 = '${doc53Id}' AND l.Field_007 = '53' AND d57.Field_009 = '57'
+        FROM STR_TBL_010 t57
+        WHERE t57.Field_009 = '57' AND t57.Field_004 = '${doc53.FiscalYear}'
+          AND (
+              ('${doc53.SubCode || ''}' <> '' AND t57.Field_007 = '${doc53.SubCode}')
+              OR EXISTS (
+                  SELECT 1 FROM STR_TBL_029 l
+                  WHERE l.Field_003 = '${doc53Id}' AND l.Field_007 = '53' AND l.Field_001 = t57.Field_001
+              )
+          )
     `;
     const convertedRows = await executeSayanQuery(verifyNotConverted);
     if (convertedRows[0]?.ExistsCount > 0) {
-        throw new Error(`این درخواست خرید (شماره ${doc53.DocNo}) قبلاً به پیش‌فاکتور تبدیل شده است.`);
+        throw new Error(`این درخواست خرید (شماره ${doc53.DocNo}) قبلاً در سایان به پیش‌فاکتور تبدیل شده است.`);
     }
 
     // 3. Resolve Vendor

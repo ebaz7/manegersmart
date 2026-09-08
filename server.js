@@ -41,6 +41,7 @@ import mammoth from 'mammoth';
 import { GoogleGenAI, Type } from '@google/genai';
 import * as jalaali from 'jalaali-js';
 import * as sayanOrderAuto from './backend/sayan-order-automation.js';
+import * as sayanChequeService from './backend/sayan-cheque-service.js';
 
 const getDb = dbManager.getDb;
 const saveDb = dbManager.saveDb;
@@ -1772,6 +1773,170 @@ app.get('/api/sayan/order-automation/logs', (req, res) => {
         res.json({ success: true, logs });
     } catch (err) {
         console.error("Order automation logs error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 8. Get authentic real Sayan ERP document inspection (Doc 57 & linked Doc 53)
+app.get('/api/sayan/order-automation/sayan-doc/:docNo', async (req, res) => {
+    try {
+        const fiscalYear = req.query.fiscalYear || '4';
+        const docNo = req.params.docNo;
+        const details = await sayanOrderAuto.getRealSayanDocumentDetails(docNo, fiscalYear);
+        res.json({ success: true, ...details });
+    } catch (err) {
+        console.error("Error fetching Sayan real document details:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// =========================================================================
+// SAYAN CHEQUE RECEIPTS (BURSARY OP 11) API ENDPOINTS
+// =========================================================================
+
+// 1. Get next numbers and metadata for Cheque Receipt
+app.get('/api/sayan/cheque-receipts/meta', async (req, res) => {
+    try {
+        const fiscalYear = req.query.fiscalYear || '4';
+        const meta = await sayanChequeService.getNextChequeReceiptNumbers(fiscalYear);
+        res.json({ success: true, ...meta });
+    } catch (err) {
+        console.error("Error fetching cheque receipt meta:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 2. Search Sayan Tafsili / Persons by query
+app.get('/api/sayan/cheque-receipts/persons', async (req, res) => {
+    try {
+        const query = req.query.q || req.query.search || '';
+        const limit = parseInt(req.query.limit, 10) || 30;
+        const persons = await sayanChequeService.searchSayanPersons(query, limit);
+        res.json({ success: true, persons });
+    } catch (err) {
+        console.error("Error searching Sayan persons:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 3. Get Cheque Receipts history (combines live Sayan docs + local drafts)
+app.get('/api/sayan/cheque-receipts/history', async (req, res) => {
+    try {
+        const fiscalYear = req.query.fiscalYear || '4';
+        const search = req.query.search || '';
+        const history = await sayanChequeService.getChequeReceiptsHistory(fiscalYear, search);
+        res.json({ success: true, history, count: history.length });
+    } catch (err) {
+        console.error("Error fetching cheque receipts history:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 4. Save or update Cheque Receipt Draft
+app.post('/api/sayan/cheque-receipts/draft', async (req, res) => {
+    try {
+        const { receipt, currentUser } = req.body || {};
+        if (!receipt) {
+            return res.status(400).json({ success: false, error: 'اطلاعات رسید چک ارسال نشده است.' });
+        }
+        const saved = await sayanChequeService.saveChequeReceiptDraft(receipt, currentUser);
+        res.json({ success: true, receipt: saved });
+    } catch (err) {
+        console.error("Error saving cheque receipt draft:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 5. Stage 1: Accounting Staff Review, In-flight Edit & Approval
+app.post('/api/sayan/cheque-receipts/accounting-approve', async (req, res) => {
+    try {
+        const { receiptId, currentUser, note, updatePayload } = req.body || {};
+        if (!receiptId) {
+            return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
+        }
+        const approved = await sayanChequeService.approveAccountingReceipt(receiptId, currentUser, note, updatePayload);
+        res.json({ success: true, receipt: approved });
+    } catch (err) {
+        console.error("Error in accounting approval of cheque receipt:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 6. Stage 2: CEO / Admin Approval
+app.post('/api/sayan/cheque-receipts/approve', async (req, res) => {
+    try {
+        const { receiptId, currentUser, note, registerImmediately } = req.body || {};
+        if (!receiptId) {
+            return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
+        }
+        const approved = await sayanChequeService.approveCEOReceipt(receiptId, currentUser, note);
+
+        let sayanResult = null;
+        if (registerImmediately) {
+            sayanResult = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
+        }
+
+        res.json({ success: true, receipt: approved, sayanResult });
+    } catch (err) {
+        console.error("Error approving cheque receipt:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 7. Reject / Return Cheque Receipt for Revision
+app.post('/api/sayan/cheque-receipts/reject', async (req, res) => {
+    try {
+        const { receiptId, currentUser, reason, returnTo } = req.body || {};
+        if (!receiptId) {
+            return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
+        }
+        const rejected = await sayanChequeService.rejectChequeReceipt(receiptId, currentUser, reason, returnTo);
+        res.json({ success: true, receipt: rejected });
+    } catch (err) {
+        console.error("Error rejecting cheque receipt:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 6. Dry-run validate Cheque Receipt before registering
+app.post('/api/sayan/cheque-receipts/dry-run', async (req, res) => {
+    try {
+        const receiptData = req.body.receipt || req.body;
+        const validation = await sayanChequeService.validateAndDryRunChequeReceipt(receiptData);
+        res.json({ success: true, validation });
+    } catch (err) {
+        console.error("Error in dry run cheque receipt:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 7. Register approved Cheque Receipt directly in Sayan DB
+app.post('/api/sayan/cheque-receipts/register-in-sayan', async (req, res) => {
+    try {
+        const { receiptId, currentUser } = req.body || {};
+        if (!receiptId) {
+            return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
+        }
+        const result = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("Error registering cheque receipt in Sayan:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 8. Delete draft / cancel receipt
+app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
+    try {
+        const { receiptId } = req.body || {};
+        const db = getDb();
+        if (db.sayan_cheque_receipts) {
+            db.sayan_cheque_receipts = db.sayan_cheque_receipts.filter(r => r.id !== receiptId);
+            saveDb();
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Error deleting cheque receipt draft:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });

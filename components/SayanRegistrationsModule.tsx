@@ -5,10 +5,11 @@ import {
     ChevronUp, Sparkles, Filter, Check, AlertCircle, FileText,
     Building2, Hash, Calendar, DollarSign, ArrowLeftRight, Loader2,
     Package, Database, CheckSquare, Search, Sliders, ExternalLink,
-    FileSpreadsheet, ArrowUpRight, History, X
+    FileSpreadsheet, ArrowUpRight, History, X, CreditCard, FileCheck
 } from 'lucide-react';
 import { formatDate } from '../constants';
 import { User } from '../types';
+import SayanChequeReceiptsTab from './SayanChequeReceiptsTab';
 
 interface PendingRequest {
     doc53Id: string;
@@ -99,8 +100,8 @@ interface Props {
 }
 
 export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
-    // Main module sub-navigation: Tab 1 = Purchase Pre-Invoices (53 -> 57), Tab 2 = Other future Sayan registrations
-    const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
+    // Main module sub-navigation: Tab 1 = Purchase Pre-Invoices (53 -> 57), Tab 2 = Cheque Receipts (Bursary 11), Tab 3 = Other future Sayan registrations
+    const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
 
     // State for Purchase Pre-Invoices automation
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<'4' | '3'>('4');
@@ -134,17 +135,62 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
         defaultFee: 1
     });
 
+    // Auto Refresh Rate state (Defaults to OFF or 30M based on user preference)
+    const [autoRefreshInterval, setAutoRefreshInterval] = useState<'OFF' | '5M' | '15M' | '30M'>('OFF');
+
     // Feedback banner
     const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+    // Sayan Real Document (57 & 53) Inspector Modal State
+    const [sayanInspectModal, setSayanInspectModal] = useState<{
+        isOpen: boolean;
+        loading: boolean;
+        doc57No: string;
+        fiscalYear: string;
+        data: any | null;
+        error: string | null;
+    }>({
+        isOpen: false,
+        loading: false,
+        doc57No: '',
+        fiscalYear: '4',
+        data: null,
+        error: null
+    });
 
     const showToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
         setToastMessage({ text, type });
         setTimeout(() => setToastMessage(null), 5000);
     };
 
-    const fetchStatusAndData = async (targetFy?: '4' | '3') => {
+    const handleInspectSayanDoc = async (doc57No: string, fiscalYear: string = selectedFiscalYear) => {
+        if (!doc57No) return;
+        setSayanInspectModal({
+            isOpen: true,
+            loading: true,
+            doc57No,
+            fiscalYear,
+            data: null,
+            error: null
+        });
+        try {
+            const res = await fetch(`/api/sayan/order-automation/sayan-doc/${doc57No}?fiscalYear=${fiscalYear}`);
+            const data = await res.json();
+            if (data.success) {
+                setSayanInspectModal(prev => ({ ...prev, loading: false, data }));
+            } else {
+                setSayanInspectModal(prev => ({ ...prev, loading: false, error: data.error || 'خطا در دریافت اطلاعات سند از دیتابیس سایان' }));
+            }
+        } catch (err: any) {
+            setSayanInspectModal(prev => ({ ...prev, loading: false, error: err.message || 'خطا در ارتباط با سرور' }));
+        }
+    };
+
+    const fetchStatusAndData = async (targetFy?: '4' | '3', isSilent = false) => {
         const fy = targetFy || selectedFiscalYear;
-        setLoading(true);
+        if (!isSilent) {
+            setLoading(true);
+        }
         try {
             // Status & config
             const statusRes = await fetch('/api/sayan/order-automation/status');
@@ -176,23 +222,31 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                 setArchivedList(archivedData.items || []);
             }
         } catch (err: any) {
-            console.error('Failed to load Sayan registrations data:', err);
-            showToast('خطا در دریافت اطلاعات از سرور سایان: ' + (err.message || 'نامشخص'), 'error');
+            if (!isSilent) {
+                console.error('Failed to load Sayan registrations data:', err);
+                showToast('خطا در دریافت اطلاعات از سرور سایان: ' + (err.message || 'نامشخص'), 'error');
+            }
         } finally {
-            setLoading(false);
+            if (!isSilent) {
+                setLoading(false);
+            }
         }
     };
 
     useEffect(() => {
-        fetchStatusAndData();
-        
-        // Auto-refresh every 15 seconds to track background automatic conversions in real time
+        fetchStatusAndData(selectedFiscalYear, false);
+    }, [selectedFiscalYear]);
+
+    // Optional user-configured background silent refresher (No screen flash / spinner)
+    useEffect(() => {
+        if (autoRefreshInterval === 'OFF') return;
+        const minutes = autoRefreshInterval === '5M' ? 5 : autoRefreshInterval === '15M' ? 15 : 30;
         const interval = setInterval(() => {
-            fetchStatusAndData();
-        }, 15000);
+            fetchStatusAndData(selectedFiscalYear, true); // Silent background fetch
+        }, minutes * 60 * 1000);
 
         return () => clearInterval(interval);
-    }, [selectedFiscalYear]);
+    }, [autoRefreshInterval, selectedFiscalYear]);
 
     const readyItems = useMemo(() => pendingList.filter(item => item.isReady), [pendingList]);
     const manualItems = useMemo(() => pendingList.filter(item => !item.isReady), [pendingList]);
@@ -490,6 +544,18 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                     </button>
                     <button
                         type="button"
+                        onClick={() => setMainSubTab('CHEQUE_RECEIPTS')}
+                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                            mainSubTab === 'CHEQUE_RECEIPTS'
+                                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                    >
+                        <CreditCard className="w-4 h-4 text-emerald-500" />
+                        <span>رسید دریافت چک (اسناد خزانه)</span>
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => setMainSubTab('FUTURE_DOCS')}
                         className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
                             mainSubTab === 'FUTURE_DOCS'
@@ -503,7 +569,12 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                 </div>
             </div>
 
-            {/* TAB 2: Future Document Types Placeholder */}
+            {/* TAB 2: Cheque Receipts Module */}
+            {mainSubTab === 'CHEQUE_RECEIPTS' && (
+                <SayanChequeReceiptsTab currentUser={currentUser} />
+            )}
+
+            {/* TAB 3: Future Document Types Placeholder */}
             {mainSubTab === 'FUTURE_DOCS' && (
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center space-y-4">
                     <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mx-auto border border-blue-100 dark:border-blue-900">
@@ -649,11 +720,27 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                                     <span>اجرای فوری صدور ۵۷</span>
                                 </button>
 
+                                {/* Auto-refresh interval dropdown */}
+                                <div className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-medium">
+                                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-slate-500 dark:text-slate-400 text-[11px]">بروزرسانی صفحه:</span>
+                                    <select
+                                        value={autoRefreshInterval}
+                                        onChange={(e) => setAutoRefreshInterval(e.target.value as any)}
+                                        className="bg-transparent text-slate-800 dark:text-slate-200 font-bold text-xs focus:outline-none cursor-pointer"
+                                    >
+                                        <option value="OFF">دستی</option>
+                                        <option value="5M">هر ۵ دقیقه</option>
+                                        <option value="15M">هر ۱۵ دقیقه</option>
+                                        <option value="30M">هر ۳۰ دقیقه</option>
+                                    </select>
+                                </div>
+
                                 <button
-                                    onClick={() => fetchStatusAndData()}
+                                    onClick={() => fetchStatusAndData(selectedFiscalYear, false)}
                                     disabled={loading}
                                     className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-slate-900 transition-colors shadow-sm"
-                                    title="بروزرسانی داده‌ها از سایان"
+                                    title="بروزرسانی دستی داده‌ها از سایان"
                                 >
                                     <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
                                 </button>
@@ -1099,12 +1186,13 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                                             <th className="py-3 px-4">شرح سند</th>
                                             <th className="py-3 px-4">اقلام کالا</th>
                                             <th className="py-3 px-4 text-center">وضعیت در سایان</th>
+                                            <th className="py-3 px-4 text-center">مشاهده سند واقعی در سایان</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                         {filteredArchived.length === 0 ? (
                                             <tr>
-                                                <td colSpan={8} className="py-12 text-center text-slate-400">
+                                                <td colSpan={9} className="py-12 text-center text-slate-400">
                                                     سند بایگانی‌شده‌ای با این مشخصات یافت نشد.
                                                 </td>
                                             </tr>
@@ -1154,6 +1242,20 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                                                             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                                                             صادرشده (بایگانی)
                                                         </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center">
+                                                        {doc.preInvoiceDocNo ? (
+                                                            <button
+                                                                onClick={() => handleInspectSayanDoc(doc.preInvoiceDocNo!, doc.fiscalYear)}
+                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800 transition-colors shadow-xs"
+                                                                title="مشاهده سند و توضیحات کامل ثبت‌شده در پایگاه‌داده سایان"
+                                                            >
+                                                                <FileCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                                                <span>سند واقعی سایان</span>
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-slate-400 font-mono text-[11px]">-</span>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))
@@ -1457,6 +1559,258 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                                     </button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Sayan Real Document (57 & 53) Inspector Modal */}
+            {sayanInspectModal.isOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Modal Header */}
+                        <div className="p-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white border-b border-indigo-900/40 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-300">
+                                    <FileCheck className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-black text-sm text-white">
+                                            بازبینی سند واقعی ثبت‌شده در پایگاه‌داده سایان
+                                        </h3>
+                                        <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                            پیش‌فاکتور #{sayanInspectModal.doc57No}
+                                        </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-300 mt-0.5">
+                                        واکشی مستقیم از جداول STR_TBL_010 و STR_TBL_011 دیتابیس سایان (سال مالی {sayanInspectModal.fiscalYear})
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSayanInspectModal(prev => ({ ...prev, isOpen: false }))}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4 text-xs">
+                            {sayanInspectModal.loading ? (
+                                <div className="py-16 flex flex-col items-center justify-center gap-3">
+                                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                                        در حال واکشی اطلاعات واقعی سند و ردیف‌های اقلام از پایگاه‌داده سایان...
+                                    </span>
+                                </div>
+                            ) : sayanInspectModal.error ? (
+                                <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 flex items-center gap-2">
+                                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                                    <span>{sayanInspectModal.error}</span>
+                                </div>
+                            ) : sayanInspectModal.data ? (
+                                <>
+                                    {/* Sayan Document Header Card */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {/* Doc 57 Header Details */}
+                                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                                            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                                                <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+                                                    <FileText className="w-4 h-4 text-blue-600" />
+                                                    <span>مشخصات سربرگ پیش‌فاکتور (۵۷) در سایان</span>
+                                                </span>
+                                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                                                    سند #{sayanInspectModal.data.doc57?.DocNo}
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                <div>
+                                                    <span className="text-slate-400">تاریخ سند:</span>
+                                                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                                                        {formatDate(sayanInspectModal.data.doc57?.DocDate)}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-400">شماره فرعی / کد عطف:</span>
+                                                    <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                                                        {sayanInspectModal.data.doc57?.SubCode || sayanInspectModal.data.doc57?.SubNo || '-'}
+                                                    </div>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <span className="text-slate-400">تامین‌کننده طرف حساب:</span>
+                                                    <div className="font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
+                                                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                                                        <span>{sayanInspectModal.data.doc57?.VendorName || sayanInspectModal.data.doc57?.VendorCode || '-'}</span>
+                                                        {sayanInspectModal.data.doc57?.VendorCode && (
+                                                            <span className="text-[10px] font-mono text-slate-400">
+                                                                (کد تفصیلی: {sayanInspectModal.data.doc57?.VendorCode})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="col-span-2 pt-1">
+                                                    <span className="text-slate-400">شرح سربرگ سند (Field_017):</span>
+                                                    <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 mt-1 leading-relaxed">
+                                                        {sayanInspectModal.data.doc57?.Note || 'توضیحی ثبت نشده است.'}
+                                                    </div>
+                                                </div>
+                                                {(sayanInspectModal.data.doc57?.Description || sayanInspectModal.data.doc57?.DescText) && (
+                                                    <div className="col-span-2">
+                                                        <span className="text-slate-400">توضیحات تکمیلی (Field_028 / Field_029):</span>
+                                                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                                                            {sayanInspectModal.data.doc57?.Description || sayanInspectModal.data.doc57?.DescText}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Doc 53 Origin Header Details */}
+                                        <div className="p-4 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 space-y-2.5">
+                                            <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-800 pb-2">
+                                                <span className="font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5 text-xs">
+                                                    <Layers className="w-4 h-4 text-purple-600" />
+                                                    <span>درخواست خرید مبنا (۵۳) در سایان</span>
+                                                </span>
+                                                <span className="font-mono font-bold text-purple-700 dark:text-purple-300">
+                                                    {sayanInspectModal.data.doc53 ? `درخواست #${sayanInspectModal.data.doc53.DocNo}` : 'نامشخص'}
+                                                </span>
+                                            </div>
+
+                                            {sayanInspectModal.data.doc53 ? (
+                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                    <div>
+                                                        <span className="text-slate-400">تاریخ درخواست ۵۳:</span>
+                                                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                                                            {formatDate(sayanInspectModal.data.doc53.DocDate)}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-slate-400">شماره فرعی / عطف ۵۳:</span>
+                                                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                                                            {sayanInspectModal.data.doc53.SubCode || sayanInspectModal.data.doc53.SubNo || '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-span-2 pt-1">
+                                                        <span className="text-slate-400">شرح درخواست خرید ۵۳:</span>
+                                                        <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-purple-200/60 dark:border-purple-800/60 text-slate-800 dark:text-slate-200 mt-1 leading-relaxed">
+                                                            {sayanInspectModal.data.doc53.Note || sayanInspectModal.data.doc53.DescText || 'بدون شرح'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-span-2">
+                                                        <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                                                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                            <span>ارتباط ردیف‌های ۵۷ با درخواست ۵۳ به‌صورت قانونی و اتومیک برقرار است.</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="py-8 text-center text-slate-400">
+                                                    سند ۵۳ مستقیمی برای این پیش‌فاکتور در سیستم متصل نیست یا از طریق عطف ادغام شده است.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Items Table from STR_TBL_011 */}
+                                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                        <div className="p-3 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 text-xs">
+                                                <Package className="w-4 h-4 text-blue-600" />
+                                                <span>اقلام ثبت‌شده در جدول STR_TBL_011 پیش‌فاکتور ۵۷</span>
+                                            </span>
+                                            <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-300">
+                                                {sayanInspectModal.data.items57?.length || 0} ردیف کالا
+                                            </span>
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-right text-xs">
+                                                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700">
+                                                    <tr>
+                                                        <th className="py-2.5 px-3">ردیف</th>
+                                                        <th className="py-2.5 px-3">کد کالا</th>
+                                                        <th className="py-2.5 px-3">نام و شرح کالا در سایان</th>
+                                                        <th className="py-2.5 px-3 text-center">مقدار / تعداد</th>
+                                                        <th className="py-2.5 px-3 text-center">واحد</th>
+                                                        <th className="py-2.5 px-3 text-center">فی (ریال)</th>
+                                                        <th className="py-2.5 px-3 text-center">مبلغ کل (ریال)</th>
+                                                        <th className="py-2.5 px-3 text-center">شناسه ردیف مبنا (MabnaRowId)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                    {(!sayanInspectModal.data.items57 || sayanInspectModal.data.items57.length === 0) ? (
+                                                        <tr>
+                                                            <td colSpan={8} className="py-8 text-center text-slate-400">
+                                                                هیچ ردیف کالایی برای این سند در STR_TBL_011 یافت نشد.
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                        sayanInspectModal.data.items57.map((item: any, idx: number) => (
+                                                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                                                <td className="py-2.5 px-3 font-mono text-slate-400">
+                                                                    {idx + 1}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                    {item.ItemCode}
+                                                                </td>
+                                                                <td className="py-2.5 px-3">
+                                                                    <div className="font-semibold text-slate-900 dark:text-white">
+                                                                        {item.ItemName}
+                                                                    </div>
+                                                                    {item.ItemNote && (
+                                                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                                                            {item.ItemNote}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">
+                                                                    {Number(item.Quantity || 0).toLocaleString('fa-IR')}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center text-slate-500">
+                                                                    {item.UnitName || 'عدد'}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center font-mono text-slate-700 dark:text-slate-300">
+                                                                    {Number(item.Fee || 0).toLocaleString('fa-IR')}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center font-mono text-slate-700 dark:text-slate-300">
+                                                                    {Number(item.TotalPrice || 0).toLocaleString('fa-IR')}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center">
+                                                                    {item.MabnaRowId || item.SecondaryMabna ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                                                            <Check className="w-3 h-3 text-emerald-500" />
+                                                                            <span>{item.MabnaRowId || item.SecondaryMabna}</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 font-mono text-[10px]">-</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : null}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                            <span className="text-slate-500 dark:text-slate-400 text-xs">
+                                داده‌های فوق به‌صورت لحظه‌ای و بدون واسطه از سرور پایگاه‌داده سایان استعلام شده‌اند.
+                            </span>
+                            <button
+                                onClick={() => setSayanInspectModal(prev => ({ ...prev, isOpen: false }))}
+                                className="px-5 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold hover:opacity-90 transition-opacity"
+                            >
+                                بستن پنجره
+                            </button>
                         </div>
                     </div>
                 </div>

@@ -762,6 +762,115 @@ export const initAutomationScheduler = () => {
     }, 5000); // Check every 5 seconds for exact timing
 };
 
+/**
+ * Fetch complete real Sayan ERP document details (Opcode 57 Pre-Invoice and its linked 53 Purchase Request)
+ * Directly from STR_TBL_010 and STR_TBL_011
+ */
+export const getRealSayanDocumentDetails = async (doc57No, fiscalYear = '4') => {
+    // 1. Fetch 57 Header
+    const doc57Sql = `
+        SELECT 
+            t10.Field_001 as DocId,
+            t10.Field_004 as FiscalYear,
+            t10.Field_005 as DocNo,
+            t10.Field_006 as SubNo,
+            t10.Field_007 as SubCode,
+            t10.Field_008 as DocDate,
+            t10.Field_009 as OpCode,
+            t10.Field_010 as VendorCode,
+            v.Field_006 as VendorName,
+            t10.Field_017 as Note,
+            t10.Field_028 as Description,
+            t10.Field_029 as DescText,
+            t10.Field_036 as RegDate
+        FROM STR_TBL_010 t10
+        LEFT JOIN ACT_TBL_007 v ON v.Field_005 = t10.Field_010
+        WHERE t10.Field_004 = '${fiscalYear}' 
+          AND t10.Field_009 = '57' 
+          AND (t10.Field_005 = '${doc57No}' OR t10.Field_001 = '${doc57No}')
+    `;
+    const doc57Rows = await executeSayanQuery(doc57Sql);
+    if (!doc57Rows || doc57Rows.length === 0) {
+        throw new Error(`پیش‌فاکتور شماره ${doc57No} در سال مالی ${fiscalYear} سایان یافت نشد.`);
+    }
+    const doc57 = doc57Rows[0];
+
+    // 2. Fetch 57 Items
+    const items57Sql = `
+        SELECT 
+            t11.Field_001 as ItemRowId,
+            t11.Field_002 as RowSeq,
+            t11.Field_005 as ItemCode,
+            COALESCE(g03.Field_002, s04.Field_002, t22.Field_002, t02.Field_002, 'کالای شماره ' + CAST(t11.Field_005 as varchar)) as ItemName,
+            t11.Field_006 as Quantity,
+            u.Field_002 as UnitName,
+            t11.Field_009 as Fee,
+            t11.Field_010 as TotalPrice,
+            t11.Field_017 as ItemNote,
+            t11.Field_018 as MabnaRowId,
+            t11.Field_008 as SecondaryMabna
+        FROM STR_TBL_011 t11
+        LEFT JOIN GNR_TBL_003 g03 ON RTRIM(LTRIM(g03.Field_003)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN GNR_TBL_002 u ON RTRIM(LTRIM(u.Field_006)) = RTRIM(LTRIM(t11.Field_036))
+        WHERE t11.Field_003 = '${fiscalYear}' 
+          AND t11.Field_004 = '${doc57.DocNo}' 
+          AND t11.Field_012 = 3
+        ORDER BY t11.Field_001 ASC
+    `;
+    const items57 = await executeSayanQuery(items57Sql);
+
+    // 3. Find linked 53 doc (from MabnaRowId or SubCode)
+    let doc53 = null;
+    let items53 = [];
+
+    const mabnaIds = items57.map(i => i.MabnaRowId || i.SecondaryMabna).filter(Boolean);
+    if (mabnaIds.length > 0 || doc57.SubCode) {
+        let find53Sql = `
+            SELECT TOP 1
+                t10.Field_001 as Doc53Id,
+                t10.Field_004 as FiscalYear,
+                t10.Field_005 as DocNo,
+                t10.Field_006 as SubNo,
+                t10.Field_007 as SubCode,
+                t10.Field_008 as DocDate,
+                t10.Field_010 as PersonCode,
+                t10.Field_017 as Note,
+                t10.Field_028 as Description,
+                t10.Field_029 as DescText,
+                t10.Field_036 as RegDate
+            FROM STR_TBL_010 t10
+            WHERE t10.Field_004 = '${fiscalYear}' AND t10.Field_009 = '53'
+              AND (
+                  EXISTS (
+                      SELECT 1 FROM STR_TBL_011 i53 
+                      WHERE i53.Field_003 = t10.Field_004 
+                        AND i53.Field_004 = t10.Field_005 
+                        AND i53.Field_012 = 3
+                        AND i53.Field_001 IN (${mabnaIds.map(id => `'${id}'`).join(',') || "''"})
+                  )
+                  OR (
+                      '${doc57.SubCode || ''}' <> '' AND t10.Field_007 = '${doc57.SubCode}'
+                  )
+              )
+        `;
+        const doc53Rows = await executeSayanQuery(find53Sql);
+        if (doc53Rows && doc53Rows.length > 0) {
+            doc53 = doc53Rows[0];
+            items53 = await getPurchaseRequestItems(doc53.DocNo, doc53.FiscalYear);
+        }
+    }
+
+    return {
+        doc57,
+        items57,
+        doc53,
+        items53
+    };
+};
+
 // Backward-compatible export alias
 export const initAutomationCron = initAutomationScheduler;
 

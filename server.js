@@ -1819,6 +1819,17 @@ app.get('/api/sayan/cheque-receipts/persons', async (req, res) => {
     }
 });
 
+// 2b. Fetch Sayan Cashboxes / Funds list (GNR_TBL_005)
+app.get('/api/sayan/cheque-receipts/cashboxes', async (req, res) => {
+    try {
+        const cashboxes = await sayanChequeService.getSayanCashboxes();
+        res.json({ success: true, cashboxes });
+    } catch (err) {
+        console.error("Error fetching Sayan cashboxes:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // 3. Get Cheque Receipts history (combines live Sayan docs + local drafts)
 app.get(['/api/sayan/cheque-receipts', '/api/sayan/cheque-receipts/history'], async (req, res) => {
     try {
@@ -1855,10 +1866,11 @@ app.all(['/api/sayan/cheque-receipts/accounting-approve', '/api/sayan/cheque-rec
         const currentUser = req.body?.currentUser || req.user || { id: req.body?.reviewerId, name: req.body?.reviewerName || 'کارشناس حسابداری' };
         const note = req.body?.note || req.body?.accountingNote || '';
         const updatePayload = req.body?.updatePayload || (req.body?.cheques ? req.body : null);
+        const approveForCEO = req.body?.approveForCEO !== false; // if false, save as draft without forwarding to CEO
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
-        const approved = await sayanChequeService.approveAccountingReceipt(receiptId, currentUser, note, updatePayload);
+        const approved = await sayanChequeService.approveAccountingReceipt(receiptId, currentUser, note, updatePayload, approveForCEO);
         res.json({ success: true, receipt: approved });
     } catch (err) {
         console.error("Error in accounting approval of cheque receipt:", err);
@@ -1876,11 +1888,35 @@ app.all(['/api/sayan/cheque-receipts/approve', '/api/sayan/cheque-receipts/:id/c
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
+        
+        // Stage 1: Apply CEO approval (this sets status to APPROVED locally)
         const approved = await sayanChequeService.approveCEOReceipt(receiptId, currentUser, note);
 
         let sayanResult = null;
         if (registerImmediately) {
-            sayanResult = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
+            try {
+                sayanResult = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
+            } catch (sayanErr) {
+                console.error("Sayan registration failed during CEO approval, reverting status to PENDING_CEO:", sayanErr);
+                
+                // Revert status to PENDING_CEO and store the exact Sayan error in memory state so the user can see it
+                const db = getDb();
+                const record = db.sayan_cheque_receipts?.find(r => r.id === receiptId);
+                if (record) {
+                    record.status = 'PENDING_CEO';
+                    record.sayanError = sayanErr.message;
+                    if (!record.ceoApproval) record.ceoApproval = {};
+                    record.ceoApproval.failedAt = new Date().toISOString();
+                    record.ceoApproval.error = sayanErr.message;
+                    saveDb();
+                }
+                
+                return res.status(500).json({ 
+                    success: false, 
+                    error: `تایید مدیرعامل ثبت شد ولی ارسال به سایان با خطا مواجه گردید: ${sayanErr.message}. رسید در وضعیت «منتظر تایید مدیرعامل» باقی ماند تا قابل اصلاح، بازگشت یا تلاش مجدد باشد.`,
+                    sayanError: sayanErr.message 
+                });
+            }
         }
 
         res.json({ success: true, receipt: approved, sayanResult, sayanDocNo: sayanResult?.docNo, sayanArchiveCode: sayanResult?.archiveCode, docNo: sayanResult?.docNo, archiveCode: sayanResult?.archiveCode });

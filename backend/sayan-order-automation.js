@@ -308,8 +308,6 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
             WHERE i.Field_003 = t10.Field_004 
               AND i.Field_004 = t10.Field_005 
               AND i.Field_012 = 3
-              AND (i.Field_018 IS NULL OR i.Field_018 = '')
-              AND (i.Field_008 IS NULL OR i.Field_008 = '')
         ) items
         OUTER APPLY (
             SELECT TOP 1 
@@ -435,8 +433,6 @@ export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
         WHERE t11.Field_003 = '${fiscalYear}' 
           AND t11.Field_004 = '${docNo}' 
           AND t11.Field_012 = 3
-          AND (t11.Field_018 IS NULL OR t11.Field_018 = '')
-          AND (t11.Field_008 IS NULL OR t11.Field_008 = '')
         ORDER BY t11.Field_001 ASC
     `;
     return await executeSayanQuery(sql);
@@ -602,7 +598,7 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         ${paramsInsertSql}
         
         N'IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) ' +
-        N'VALUES (${doc53Id}, @FiscalYear, ${doc53.DocNo}, 3, N''53'', GETDATE(), 0, GETDATE(), ${items.length}, 0, 0); ' +
+        N'VALUES (${doc53Id}, @FiscalYear, ${doc53.DocNo}, 3, N''53'', GETDATE(), @New57Id, GETDATE(), ${items.length}, 0, 0); ' +
         
         ${endAction}
     );

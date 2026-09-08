@@ -2,7 +2,7 @@ import React from 'react';
 import {
     FileText, X, CheckCircle2, AlertCircle, Clock, ShieldCheck,
     CreditCard, Building2, User, Hash, Layers, Eye, Download, Printer,
-    ArrowRight, Check, Sparkles, CornerUpLeft, Edit3
+    ArrowRight, Check, Sparkles, CornerUpLeft, Edit3, Trash2
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { UserRole } from '../../types';
@@ -15,6 +15,7 @@ interface Props {
     onOpenAccountingReview: (receipt: any) => void;
     onApproveByCeo: (receiptId: string) => void;
     onReject: (receiptId: string) => void;
+    onDelete?: (receiptId: string) => void;
     actionLoading: string | null;
 }
 
@@ -45,6 +46,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
     onOpenAccountingReview,
     onApproveByCeo,
     onReject,
+    onDelete,
     actionLoading
 }) => {
     const isFinancialOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || currentUser.roles?.includes('financial') || currentUser.roles?.includes('admin');
@@ -183,6 +185,21 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
 
                 {/* Body Content */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                    {receipt.sayanError && (
+                        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs font-bold space-y-1.5 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                                <span className="font-black text-sm">خطای آخرین تلاش ثبت در سایان:</span>
+                            </div>
+                            <p className="font-mono bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-xl border border-rose-100 dark:border-rose-900 leading-relaxed text-[11px] select-all">
+                                {receipt.sayanError}
+                            </p>
+                            <span className="text-[10px] text-slate-400 block mt-1 font-sans">
+                                می‌توانید اطلاعات رسید را ویرایش کنید، رسید را جهت اصلاح به حسابداری عودت دهید یا پس از رفع مشکل مجدداً تایید و ثبت نمایید.
+                            </span>
+                        </div>
+                    )}
+
                     {/* Header Info Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
                         <div>
@@ -225,6 +242,17 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                             <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
                                 <span className="text-slate-400">کد تفصیلی شخص در سایان:</span>
                                 <span className="font-mono font-bold text-blue-600">{toPersianDigits(receipt.personCode || '-')}</span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+                                <span className="text-slate-400">صندوق خزانه‌داری سایان:</span>
+                                <span className="font-bold text-purple-600">
+                                    {receipt.cashboxCode === '11001' ? 'صندوق دفتر (۱۱۰۰۱)' : 
+                                     receipt.cashboxCode === '11002' ? 'صندوق سکه و کارت هدیه (۱۱۰۰۲)' :
+                                     receipt.cashboxCode === '11003' ? 'صندوق آقای مقدم (۱۱۰۰۳)' :
+                                     receipt.cashboxCode === '11004' ? 'صندوق ارزی (۱۱۰۰۴)' :
+                                     receipt.cashboxCode === '11005' ? 'صندوق چک های برگشتی (۱۱۰۰۵)' :
+                                     receipt.cashboxCode ? `صندوق ${toPersianDigits(receipt.cashboxCode)}` : 'صندوق دفتر (۱۱۰۰۱)'}
+                                </span>
                             </div>
                             <div className="flex justify-between py-1">
                                 <span className="text-slate-400">تاریخ دریافت:</span>
@@ -331,6 +359,19 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                             بستن
                         </button>
 
+                        {receipt.status !== 'REGISTERED_IN_SAYAN' && isFinancialOrAdmin && onDelete && (
+                            <button
+                                type="button"
+                                onClick={() => onDelete(receipt.id)}
+                                disabled={actionLoading === receipt.id}
+                                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 text-rose-600 dark:text-rose-400 font-bold text-xs border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 hover:text-rose-700 transition-colors"
+                                title="حذف کامل این رسید چک"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                <span>حذف کامل رسید</span>
+                            </button>
+                        )}
+
                         {receipt.archiveCode && (
                             <button
                                 type="button"
@@ -365,6 +406,18 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                     <span>ویرایش و تایید حسابداری</span>
                                 </button>
                             </>
+                        )}
+
+                        {/* Edit button for Accounting/Admin on pending/failed receipts */}
+                        {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && isFinancialOrAdmin && (
+                            <button
+                                type="button"
+                                onClick={() => onOpenAccountingReview(receipt)}
+                                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+                            >
+                                <Edit3 className="w-4 h-4" />
+                                <span>ویرایش اطلاعات رسید</span>
+                            </button>
                         )}
 
                         {/* Step 2: CEO Approves and registers in Sayan DB */}

@@ -39,6 +39,30 @@ export const AccountingReviewModal: React.FC<Props> = ({
     const [editPoshtNomreh, setEditPoshtNomreh] = useState(String(receipt.poshtNomreh || ''));
     const [editDescription, setEditDescription] = useState(receipt.description || '');
     const [accountingNote, setAccountingNote] = useState(receipt.accountingReview?.note || '');
+    const [editCashboxCode, setEditCashboxCode] = useState(receipt.cashboxCode || '11001');
+    const [cashboxes, setCashboxes] = useState<Array<{ code: string; title: string }>>([
+        { code: '11001', title: 'صندوق دفتر' },
+        { code: '11002', title: 'صندوق سکه و کارت هدیه' },
+        { code: '11003', title: 'صندوق آقای مقدم' },
+        { code: '11004', title: 'صندوق ارزی' },
+        { code: '11005', title: 'صندوق چک های برگشتی' }
+    ]);
+
+    useEffect(() => {
+        const fetchBox = async () => {
+            try {
+                const res = await fetch('/api/sayan/cheque-receipts/cashboxes');
+                const data = await res.json();
+                if (data.success && Array.isArray(data.cashboxes) && data.cashboxes.length > 0) {
+                    setCashboxes(data.cashboxes);
+                }
+            } catch (err) {
+                // silent
+            }
+        };
+        fetchBox();
+    }, []);
+
     const [editCheques, setEditCheques] = useState<ChequeItemInput[]>(() => {
         if (receipt.cheques && receipt.cheques.length > 0) {
             return receipt.cheques.map((c: any, idx: number) => ({
@@ -101,6 +125,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
             personCode: finalPersonCode,
             personName: finalPersonName,
             poshtNomreh: editPoshtNomreh,
+            cashboxCode: editCashboxCode,
             description: editDescription,
             totalAmount: editTotalAmount,
             cheques: editCheques.map((ch, idx) => ({
@@ -151,7 +176,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                 {/* Body Form */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                     {/* Person & PoshtNomreh */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
                         <div className="relative">
                             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                                 طرف حساب (انتخاب از سایان) *
@@ -169,7 +194,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                     editPerson || receipt.personCode
                                         ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 font-bold'
                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:border-amber-500'
-                                }`}
+                                    }`}
                                 placeholder="جستجوی نام یا کد شخص در سایان..."
                             />
                             {editPerson ? (
@@ -210,6 +235,23 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                     ))}
                                 </div>
                             )}
+                        </div>
+
+                        <div>
+                            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                صندوق خزانه‌داری *
+                            </label>
+                            <select
+                                value={editCashboxCode}
+                                onChange={(e) => setEditCashboxCode(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-500 cursor-pointer text-right"
+                            >
+                                {cashboxes.map(box => (
+                                    <option key={box.code} value={box.code}>
+                                        {box.title} (کد: {toPersianDigits(box.code)})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div>

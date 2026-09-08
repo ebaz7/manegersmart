@@ -124,6 +124,28 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [attachments, setAttachments] = useState<Array<{ fileName: string; fileData: string; fileType: string }>>([]);
     const [previewFile, setPreviewFile] = useState<{ fileName: string; fileData: string; fileType: string } | null>(null);
 
+    // Cashbox states
+    const [cashboxCode, setCashboxCode] = useState('11001');
+    const [cashboxesList, setCashboxesList] = useState<Array<{ code: string; title: string }>>([
+        { code: '11001', title: 'صندوق دفتر' },
+        { code: '11002', title: 'صندوق سکه و کارت هدیه' },
+        { code: '11003', title: 'صندوق آقای مقدم' },
+        { code: '11004', title: 'صندوق ارزی' },
+        { code: '11005', title: 'صندوق چک های برگشتی' }
+    ]);
+
+    const fetchCashboxes = async () => {
+        try {
+            const res = await fetch('/api/sayan/cheque-receipts/cashboxes');
+            const data = await res.json();
+            if (data.success && Array.isArray(data.cashboxes) && data.cashboxes.length > 0) {
+                setCashboxesList(data.cashboxes);
+            }
+        } catch (err) {
+            console.error('Failed to fetch cashboxes', err);
+        }
+    };
+
     // Cheque Rows
     const [chequeRows, setChequeRows] = useState<ChequeItemInput[]>([
         {
@@ -185,6 +207,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     useEffect(() => {
         fetchReceipts();
         fetchMetaNumbers();
+        fetchCashboxes();
         const interval = setInterval(() => {
             fetchReceipts(true);
         }, 30000); // 30s gentle poll
@@ -357,6 +380,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 poshtNomreh: poshtNomreh.trim() || '1',
                 personCode: selectedPerson ? selectedPerson.personCode : '101',
                 personName: selectedPerson ? selectedPerson.fullName : personQuery.trim(),
+                cashboxCode,
                 totalAmount: sumChequesAmount,
                 description: description.trim() || `رسید دریافت چک - ${selectedPerson?.fullName || personQuery}`,
                 cheques: chequeRows.map((r, idx) => ({
@@ -386,6 +410,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 setPersonQuery('');
                 setSelectedPerson(null);
                 setPoshtNomreh('');
+                setCashboxCode('11001');
                 setTargetTotalAmount('');
                 setDescription('');
                 setAttachments([]);
@@ -499,6 +524,34 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             }
         } catch (err: any) {
             setErrorMessage(err.message || 'خطا در عودت');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    // Full Draft / Receipt Delete
+    const handleDeleteReceipt = async (receiptId: string) => {
+        const proceed = window.confirm('آیا از حذف کامل این رسید دریافت چک اطمینان دارید؟ این عملیات غیرقابل بازگشت است.');
+        if (!proceed) return;
+
+        setActionLoading(receiptId);
+        try {
+            const res = await fetch('/api/sayan/cheque-receipts/delete-draft', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ receiptId })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                setSuccessMessage('رسید دریافت چک با موفقیت حذف گردید.');
+                setSelectedDetailReceipt(null);
+                fetchReceipts(true);
+            } else {
+                setErrorMessage(data.error || 'خطا در حذف رسید');
+            }
+        } catch (err: any) {
+            setErrorMessage(err.message || 'خطا در برقراری ارتباط جهت حذف');
         } finally {
             setActionLoading(null);
         }
@@ -635,6 +688,56 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             {/* Sub-tab 1: NEW CHEQUE RECEIPT FORM */}
             {activeSubTab === 'NEW_RECEIPT' && (
                 <form onSubmit={handleSubmitReceipt} className="space-y-5">
+                    {/* Sayan Operation & Cashbox Selector Dashboard Card */}
+                    <div className="bg-gradient-to-l from-slate-50 to-emerald-50/20 dark:from-slate-900/60 dark:to-slate-900/10 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-4">
+                        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                            
+                            {/* Step Indicators */}
+                            <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                                <div className="flex items-center gap-1.5 bg-emerald-100/80 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl font-bold text-emerald-800 dark:text-emerald-300">
+                                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px]">۱۱</span>
+                                    <span>مرحله ۱: عملیات دریافت</span>
+                                </div>
+                                
+                                <span className="text-slate-400 font-bold">←</span>
+                                
+                                <div className="flex items-center gap-1.5 bg-blue-100/80 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-3 py-1.5 rounded-xl font-bold text-blue-800 dark:text-blue-300">
+                                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-[10px]">۱۲</span>
+                                    <span>مرحله ۲: عامل دریافت چک</span>
+                                </div>
+
+                                <span className="text-slate-400 font-bold">←</span>
+
+                                <div className="flex items-center gap-1.5 bg-purple-100/80 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-3 py-1.5 rounded-xl font-bold text-purple-800 dark:text-purple-300">
+                                    <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center font-black text-[10px]">۳</span>
+                                    <span>مرحله ۳: صندوق دریافت چک *</span>
+                                </div>
+                            </div>
+
+                            {/* Actual Dropdown Selection for Cashbox */}
+                            <div className="min-w-[240px] relative">
+                                <label className="block text-[11px] font-black text-purple-700 dark:text-purple-300 mb-1 flex items-center gap-1">
+                                    <span>صندوق دریافت (خزانه‌داری سایان) *</span>
+                                </label>
+                                <div className="relative font-sans">
+                                    <select
+                                        value={cashboxCode}
+                                        onChange={(e) => setCashboxCode(e.target.value)}
+                                        className="w-full bg-white dark:bg-slate-900 border-2 border-purple-200 dark:border-purple-900 rounded-xl px-3 py-2.5 text-xs font-black text-slate-800 dark:text-slate-100 outline-none focus:border-purple-500 transition-colors cursor-pointer appearance-none pr-8 text-right"
+                                    >
+                                        {cashboxesList.map(box => (
+                                            <option key={box.code} value={box.code}>
+                                                {box.title} (کد: {toPersianDigits(box.code)})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="w-4 h-4 text-purple-500 absolute left-2.5 top-3.5 pointer-events-none" />
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
                     {/* Top General Information Card */}
                     <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -1096,64 +1199,120 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {pendingCeoList.map(rec => (
-                                    <div key={rec.id} className="p-4 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 space-y-3 hover:shadow-md transition-shadow">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
-                                                    <span>{rec.personName}</span>
-                                                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                                                        تایید حسابداری شده
-                                                    </span>
+                                {pendingCeoList.map(rec => {
+                                    const hasError = !!rec.sayanError;
+                                    return (
+                                        <div 
+                                            key={rec.id} 
+                                            className={`p-4 rounded-2xl border transition-all space-y-3 hover:shadow-md ${
+                                                hasError 
+                                                    ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-300 dark:border-rose-800' 
+                                                    : 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-800/60'
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between">
+                                                <div>
+                                                    <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                                                        <span>{rec.personName}</span>
+                                                        <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                                                            hasError 
+                                                                ? 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-300' 
+                                                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                                        }`}>
+                                                            {hasError ? 'خطای ثبت سایان' : 'تایید حسابداری شده'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                                                        پشت‌نمره: {toPersianDigits(rec.poshtNomreh || '-')} | رسید: #{toPersianDigits(rec.receiptNo || rec.id)}
+                                                    </div>
                                                 </div>
-                                                <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
-                                                    پشت‌نمره: {toPersianDigits(rec.poshtNomreh || '-')} | رسید: #{toPersianDigits(rec.receiptNo || rec.id)}
-                                                </div>
+                                                <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
+                                                    {toPersianDigits(Number(rec.totalAmount || 0).toLocaleString('fa-IR'))} ریال
+                                                </span>
                                             </div>
-                                            <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
-                                                {toPersianDigits(Number(rec.totalAmount || 0).toLocaleString('fa-IR'))} ریال
-                                            </span>
-                                        </div>
 
-                                        {rec.accountingReview?.note && (
-                                            <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-100/60 dark:bg-amber-900/40 p-2 rounded-xl">
-                                                <b>تاییدیه حسابداری:</b> {rec.accountingReview.note}
-                                            </div>
-                                        )}
-
-                                        <div className="flex items-center justify-between pt-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => setSelectedDetailReceipt(rec)}
-                                                className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1"
-                                            >
-                                                <Eye className="w-3.5 h-3.5" />
-                                                <span>مشاهده و جزئیات چک‌ها</span>
-                                            </button>
-
-                                            {isCeoOrAdmin && (
-                                                <div className="flex items-center gap-1.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleReject(rec.id)}
-                                                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold hover:bg-rose-100"
-                                                    >
-                                                        عدم تایید
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleApproveByCeo(rec.id)}
-                                                        disabled={actionLoading === rec.id}
-                                                        className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-md shadow-emerald-500/20"
-                                                    >
-                                                        <ShieldCheck className="w-3.5 h-3.5" />
-                                                        <span>{actionLoading === rec.id ? 'در حال ثبت...' : 'تایید مدیرعامل و ثبت سایان'}</span>
-                                                    </button>
+                                            {hasError && (
+                                                <div className="text-[11px] text-rose-800 dark:text-rose-300 bg-rose-100/50 dark:bg-rose-900/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/50 space-y-1">
+                                                    <div className="font-bold flex items-center gap-1">
+                                                        <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                                                        <span>خطای بازگشتی از پایگاه‌داده ERP سایان:</span>
+                                                    </div>
+                                                    <p className="font-mono leading-relaxed break-all text-right select-all">{rec.sayanError}</p>
                                                 </div>
                                             )}
+
+                                            {rec.accountingReview?.note && (
+                                                <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-100/60 dark:bg-amber-900/40 p-2 rounded-xl">
+                                                    <b>تاییدیه حسابداری:</b> {rec.accountingReview.note}
+                                                </div>
+                                            )}
+
+                                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedDetailReceipt(rec)}
+                                                    className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    <span>مشاهده چک‌ها</span>
+                                                </button>
+
+                                                <div className="flex items-center gap-1.5">
+                                                    {/* Delete Draft Option if failed or pending */}
+                                                    {isFinancialOrAdmin && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteReceipt(rec.id)}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 text-xs font-bold"
+                                                            title="حذف کامل این رسید پیش‌نویس"
+                                                        >
+                                                            حذف
+                                                        </button>
+                                                    )}
+
+                                                    {/* Edit option for financial/admin to fix the fields */}
+                                                    {isFinancialOrAdmin && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setReviewingReceipt(rec)}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-amber-100 text-amber-800 hover:bg-amber-200 text-xs font-bold"
+                                                            title="اصلاح مشخصات یا مبالغ چک جهت رفع خطا"
+                                                        >
+                                                            اصلاح و ویرایش
+                                                        </button>
+                                                    )}
+
+                                                    {isCeoOrAdmin && (
+                                                        <>
+                                                            {!hasError && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleReject(rec.id)}
+                                                                    className="px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold hover:bg-rose-100"
+                                                                >
+                                                                    عدم تایید
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleApproveByCeo(rec.id)}
+                                                                disabled={actionLoading === rec.id}
+                                                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-md shadow-emerald-500/20"
+                                                            >
+                                                                <ShieldCheck className="w-3.5 h-3.5" />
+                                                                <span>
+                                                                    {actionLoading === rec.id 
+                                                                        ? 'در حال ارسال...' 
+                                                                        : hasError ? 'تلاش مجدد ثبت سایان' : 'تایید و ثبت سایان'}
+                                                                </span>
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -1362,6 +1521,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     }}
                     onApproveByCeo={handleApproveByCeo}
                     onReject={handleReject}
+                    onDelete={handleDeleteReceipt}
                     actionLoading={actionLoading}
                 />
             )}

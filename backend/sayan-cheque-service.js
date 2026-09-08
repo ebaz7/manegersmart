@@ -249,6 +249,41 @@ export const searchSayanPersons = async (query = '', limit = 40) => {
 };
 
 /**
+ * Load list of cashboxes (صندوق ها) from GNR_TBL_005
+ */
+export const getSayanCashboxes = async () => {
+    try {
+        const sql = `
+            SELECT 
+                Field_003 as CashboxCode,
+                Field_006 as CashboxName
+            FROM GNR_TBL_005
+            WHERE Field_003 IS NOT NULL 
+              AND Field_003 != '1' 
+              AND Field_003 != ''
+            ORDER BY CAST(Field_003 as bigint) ASC
+        `;
+        const rows = await executeSayanQuery(sql);
+        if (rows && rows.length > 0) {
+            return rows.map(r => ({
+                code: (r.CashboxCode || '').trim(),
+                title: (r.CashboxName || '').trim()
+            }));
+        }
+    } catch (err) {
+        console.error('Error fetching cashboxes from Sayan / GNR_TBL_005:', err);
+    }
+    // Return standard fallback cashboxes
+    return [
+        { code: '11001', title: 'صندوق دفتر' },
+        { code: '11002', title: 'صندوق سکه و کارت هدیه' },
+        { code: '11003', title: 'صندوق آقای مقدم' },
+        { code: '11004', title: 'صندوق ارزی' },
+        { code: '11005', title: 'صندوق چک های برگشتی' }
+    ];
+};
+
+/**
  * Fetch Cheque Receipts history:
  * Combines Sayan live registered documents (OpCode 11) with local system drafts & approval requests.
  */
@@ -454,6 +489,7 @@ export const saveChequeReceiptDraft = async (receiptData, currentUser) => {
         docDate: receiptData.docDate || new Date().toISOString(),
         personCode: String(receiptData.personCode || '').trim(),
         personName: String(receiptData.personName || '').trim(),
+        cashboxCode: String(receiptData.cashboxCode || '11001').trim(),
         totalAmount,
         description: String(receiptData.description || '').trim(),
         cheques: cleanCheques,
@@ -500,7 +536,7 @@ export const saveChequeReceiptDraft = async (receiptData, currentUser) => {
  * Stage 1 Approval: Accounting Staff Verification & Optional In-flight Edit
  * Moves status from PENDING_ACCOUNTING to PENDING_CEO
  */
-export const approveAccountingReceipt = async (receiptId, currentUser, note = '', updatePayload = null) => {
+export const approveAccountingReceipt = async (receiptId, currentUser, note = '', updatePayload = null, approveForCEO = true) => {
     const db = getDb();
     if (!db.sayan_cheque_receipts) db.sayan_cheque_receipts = [];
 
@@ -513,6 +549,7 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
     if (updatePayload) {
         if (updatePayload.personCode) record.personCode = String(updatePayload.personCode).trim();
         if (updatePayload.personName) record.personName = String(updatePayload.personName).trim();
+        if (updatePayload.cashboxCode) record.cashboxCode = String(updatePayload.cashboxCode).trim();
         if (updatePayload.description !== undefined) record.description = String(updatePayload.description).trim();
         if (updatePayload.poshtNomreh) record.poshtNomreh = String(updatePayload.poshtNomreh).trim();
         if (updatePayload.docDate) record.docDate = updatePayload.docDate;
@@ -536,7 +573,14 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
         }
     }
 
-    record.status = 'PENDING_CEO';
+    if (approveForCEO) {
+        record.status = 'PENDING_CEO';
+    } else {
+        if (record.status !== 'PENDING_CEO') {
+            record.status = 'PENDING_ACCOUNTING';
+        }
+    }
+
     record.accountingReview = {
         id: currentUser?.id || 'ACCOUNTANT',
         name: currentUser?.fullName || currentUser?.name || 'کارمند حسابداری',
@@ -828,9 +872,9 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
                 Field_022, Field_023, Field_024, Field_025
             ) VALUES (
                 ${thisRowId}, ${fiscalYear}, ${archiveCode}, '12', ${chAmount},
-                ${thisChequeId}, N'${rowNote}', NULL, '${personCode}', '11001',
+                ${thisChequeId}, N'${rowNote}', NULL, '${personCode}', '${record.cashboxCode || '11001'}',
                 NULL, NULL, NULL, NULL, NULL,
-                NULL, NULL, NULL, N'صندوق_*: 11001', NULL,
+                NULL, NULL, NULL, N'صندوق_*: ${record.cashboxCode || '11001'}', NULL,
                 NULL, '11', '1', ${rowSeq}
             );
         `);
@@ -840,7 +884,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
             INSERT INTO BUR_TBL_006 (
                 Field_001, Field_003, Field_004, Field_005, Field_006, Field_007
             ) VALUES (
-                ${thisB6Id}, ${fiscalYear}, ${archiveCode}, ${thisRowId}, 15, '11001'
+                ${thisB6Id}, ${fiscalYear}, ${archiveCode}, ${thisRowId}, 15, '${record.cashboxCode || '11001'}'
             );
         `);
     }
@@ -873,6 +917,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
 
     // 5. Update local record upon successful registration
     record.status = 'REGISTERED_IN_SAYAN';
+    record.sayanError = null;
     record.sayanHeaderId = String(nextHeaderId);
     record.archiveCode = String(archiveCode);
     record.docNo = String(docNo);

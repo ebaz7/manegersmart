@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PaymentOrder, OrderStatus, SystemSettings, User, ExitPermit, ExitPermitStatus, WarehouseTransaction, UserRole, SystemAnnouncement } from '../types';
 import { formatCurrency, getShamsiDateFromIso } from '../constants';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard } from 'lucide-react';
 import { getRolePermissions } from '../services/authService';
 import { getExitPermits, getWarehouseTransactions, getNotes, getPurchaseRequests, getTaskGroups, getTasks, updateTask } from '../services/storageService';
 import { isInFinancialYear } from '../utils/dateUtils';
@@ -131,6 +131,37 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   const [warehouseOverviewData, setWarehouseOverviewData] = useState<any | null>(null);
   const [isRefreshingWarehouse, setIsRefreshingWarehouse] = useState(false);
   const [warehouseIsMock, setWarehouseIsMock] = useState(false);
+
+  // Cheque Receipts pending counts
+  const [pendingChequeCounts, setPendingChequeCounts] = useState<{ pendingAccounting: number; pendingCeo: number; total: number }>({
+      pendingAccounting: 0,
+      pendingCeo: 0,
+      total: 0
+  });
+
+  const fetchPendingCheques = async () => {
+      try {
+          const res = await fetch('/api/sayan/cheque-receipts/pending-counts');
+          if (res.ok) {
+              const data = await res.json();
+              if (data.success) {
+                  setPendingChequeCounts({
+                      pendingAccounting: data.pendingAccounting || 0,
+                      pendingCeo: data.pendingCeo || 0,
+                      total: data.total || 0
+                  });
+              }
+          }
+      } catch (err) {
+          // ignore silent
+      }
+  };
+
+  useEffect(() => {
+      fetchPendingCheques();
+      const timer = setInterval(fetchPendingCheques, 60000);
+      return () => clearInterval(timer);
+  }, []);
 
   const fetchWarehouseAlert = async (isManual = false) => {
       if (isManual) setIsRefreshingWarehouse(true);
@@ -681,7 +712,19 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       }).length;
   }
 
-  const showActionSection = pendingPaymentCount > 0 || pendingExitCount > 0 || pendingBijakCount > 0 || pendingPurchaseCount > 0 || pendingSecretariatCount > 0;
+  // 6. Cheque Receipts Pending Count (Accounting Review & CEO Approval)
+  const isFinancialOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || (currentUser as any).roles?.includes('financial') || (currentUser as any).roles?.includes('admin');
+  const isCeoOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === 'MANAGER' || (currentUser as any).roles?.includes('ceo') || (currentUser as any).roles?.includes('admin');
+  
+  let pendingChequeCount = 0;
+  if (isFinancialOrAdmin && pendingChequeCounts.pendingAccounting > 0) {
+      pendingChequeCount += pendingChequeCounts.pendingAccounting;
+  }
+  if (isCeoOrAdmin && pendingChequeCounts.pendingCeo > 0) {
+      pendingChequeCount += pendingChequeCounts.pendingCeo;
+  }
+
+  const showActionSection = pendingPaymentCount > 0 || pendingExitCount > 0 || pendingBijakCount > 0 || pendingPurchaseCount > 0 || pendingSecretariatCount > 0 || pendingChequeCount > 0;
 
   // ... (Existing Charts logic) ...
   const completedOrders = orders.filter(o => o.status === OrderStatus.APPROVED_CEO || o.status === OrderStatus.REVOKED);
@@ -1318,6 +1361,38 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                                 </div>
                                 <h3 className="text-xl font-black mb-1">کارتابل نامه‌ها</h3>
                                 <p className="text-amber-50 text-xs opacity-85">نامه‌های اداری منتظر امضا/اقدام</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {pendingChequeCount > 0 && (isFinancialOrAdmin || isCeoOrAdmin) && (
+                        <div 
+                            onClick={() => {
+                                if (onNavigate) {
+                                    onNavigate('sayan');
+                                } else {
+                                    window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'sayan_registrations' }));
+                                }
+                                setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent('SAYAN_SUB_TAB_CHANGE', { detail: 'CHEQUE_RECEIPTS' }));
+                                }, 150);
+                            }} 
+                            className="bg-gradient-to-br from-[#059669] to-[#047857] rounded-2xl p-6 text-white shadow-lg shadow-emerald-500/10 cursor-pointer transform hover:scale-[1.03] hover:-translate-y-1 transition-all relative overflow-hidden group"
+                        >
+                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><CreditCard size={100}/></div>
+                            <div className="relative z-10">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl"><CreditCard size={24} className="text-white"/></div>
+                                    <span className="bg-yellow-400 text-yellow-900 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse">{pendingChequeCount} مورد</span>
+                                </div>
+                                <h3 className="text-xl font-black mb-1">
+                                    {isCeoOrAdmin && pendingChequeCounts.pendingCeo > 0 ? 'تایید مدیرعامل رسید چک' : 'بررسی حسابداری رسید چک'}
+                                </h3>
+                                <p className="text-emerald-50 text-xs opacity-85">
+                                    {isCeoOrAdmin && pendingChequeCounts.pendingCeo > 0 
+                                        ? `${pendingChequeCounts.pendingCeo} رسید چک تایید حسابداری شده و منتظر تایید نهایی مدیرعامل است`
+                                        : `${pendingChequeCounts.pendingAccounting} رسید چک منتظر بررسی و تایید حسابداری است`}
+                                </p>
                             </div>
                         </div>
                     )}

@@ -103,6 +103,18 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
     // Main module sub-navigation: Tab 1 = Purchase Pre-Invoices (53 -> 57), Tab 2 = Cheque Receipts (Bursary 11), Tab 3 = Other future Sayan registrations
     const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
 
+    useEffect(() => {
+        const handleSubTabEvent = (e: any) => {
+            if (e.detail === 'CHEQUE_RECEIPTS' || e.detail === 'CHEQUE' || e.detail === 'RECEIPTS') {
+                setMainSubTab('CHEQUE_RECEIPTS');
+            } else if (e.detail === 'PURCHASE_PREINVOICES') {
+                setMainSubTab('PURCHASE_PREINVOICES');
+            }
+        };
+        window.addEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
+        return () => window.removeEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
+    }, []);
+
     // State for Purchase Pre-Invoices automation
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<'4' | '3'>('4');
     const [loading, setLoading] = useState(false);

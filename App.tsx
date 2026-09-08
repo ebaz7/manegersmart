@@ -1301,8 +1301,8 @@ function App() {
   useEffect(() => { 
       if (currentUser) { 
           loadData(false); 
-          // Android app has much higher responsiveness (4s) compared to web (8s)
-          const intervalDuration = isNative ? 4000 : 8000;
+          // Stable background polling interval (15s native / 30s web)
+          const intervalDuration = isNative ? 15000 : 30000;
           const intervalId = setInterval(() => loadData(true), intervalDuration); 
           
           // Heartbeat for Last Seen (Every 1 minute)

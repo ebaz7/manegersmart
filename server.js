@@ -1941,6 +1941,40 @@ app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
     }
 });
 
+// 9. Inspect Real Sayan Document Details (BUR_TBL_008, 009, 012, 016)
+app.get('/api/sayan/cheque-receipts/real-document/:archiveCode', async (req, res) => {
+    try {
+        const archiveCode = req.params.archiveCode;
+        const fiscalYear = req.query.fiscalYear || '4';
+        const docDetails = await sayanChequeService.getSayanRealDocumentDetails(archiveCode, fiscalYear);
+        res.json(docDetails);
+    } catch (err) {
+        console.error("Error fetching real Sayan document details:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 10. Get Cartable / Pending Counts for Cheque Receipts
+app.get('/api/sayan/cheque-receipts/pending-counts', (req, res) => {
+    try {
+        const db = getDb();
+        const list = db.sayan_cheque_receipts || [];
+        const pendingAccounting = list.filter(r => r.status === 'PENDING_ACCOUNTING' || r.status === 'PENDING_APPROVAL').length;
+        const pendingCEO = list.filter(r => r.status === 'PENDING_CEO').length;
+        const approved = list.filter(r => r.status === 'APPROVED').length;
+        res.json({
+            success: true,
+            pendingAccounting,
+            pendingCEO,
+            approved,
+            totalPending: pendingAccounting + pendingCEO
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
 app.get('/api/sayan/warehouse-inventory', async (req, res) => {
     try {
         const db = getDb();

@@ -1,6 +1,7 @@
 import { executeSayanQuery } from './sayan-order-automation.js';
 import { getDb, saveDb } from './db-manager.js';
 import crypto from 'crypto';
+import * as jalaali from 'jalaali-js';
 
 /**
  * Common Iranian Banks list for auto-complete and standardisation
@@ -9,8 +10,60 @@ export const COMMON_IRANIAN_BANKS = [
     'ملی', 'ملت', 'صادرات', 'تجارت', 'سپه', 'سامان', 'پاسارگاد', 
     'پارسیان', 'کشاورزی', 'مسکن', 'رفاه', 'آینده', 'شهر', 'سینا', 
     'گردشگری', 'کارآفرین', 'اقتصاد نوین', 'صنعت و معدن', 'توسعه تعاون', 
-    'دی', 'سرمایه', 'خاورمیانه', 'پست بانک', 'مهر ایران', 'رسالت'
+    'دی', 'سرمایه', 'خاورمیانه', 'پست بانک', 'مهر ایران', 'رسالت',
+    'بانک ملی ایران', 'بانک ملت', 'بانک صادرات ایران', 'بانک تجارت',
+    'بانک سپه', 'بانک سامان', 'بانک پاسارگاد', 'بانک پارسیان',
+    'بانک کشاورزی', 'بانک مسکن', 'بانک رفاه کارگران', 'بانک آینده',
+    'بانک شهر', 'بانک سینا', 'بانک گردشگری', 'بانک کارآفرین',
+    'بانک اقتصاد نوین', 'بانک صنعت و معدن', 'بانک توسعه تعاون',
+    'بانک دی', 'بانک سرمایه', 'بانک خاورمیانه', 'پست بانک ایران',
+    'بانک قرض‌الحسنه مهر ایران', 'بانک قرض‌الحسنه رسالت', 'بانک ایران زمین',
+    'موسسه اعتباری ملل', 'موسسه اعتباری نور', 'موسسه اعتباری توسعه'
 ];
+
+/**
+ * Convert Persian/Shamsi Date (or ISO) to SQL Server Gregorian Date (YYYY-MM-DD)
+ */
+export const parseToGregorianSqlDate = (dateStr) => {
+    if (!dateStr) return new Date().toISOString().slice(0, 10);
+    const cleanStr = String(dateStr).trim().replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+    const parts = cleanStr.split(/[\/\-]/).map(Number);
+    if (parts.length === 3 && parts[0] >= 1300 && parts[0] <= 1500) {
+        const [jy, jm, jd] = parts;
+        const g = jalaali.toGregorian(jy, jm, jd);
+        const mm = String(g.gm).padStart(2, '0');
+        const dd = String(g.gd).padStart(2, '0');
+        return `${g.gy}-${mm}-${dd}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(cleanStr)) {
+        return cleanStr.slice(0, 10);
+    }
+    return new Date().toISOString().slice(0, 10);
+};
+
+/**
+ * Convert Date (Gregorian or Shamsi) to standardized Shamsi string (YYYY/MM/DD)
+ */
+export const formatToShamsiDate = (dateVal) => {
+    if (!dateVal) return '';
+    try {
+        const cleanStr = String(dateVal).trim().replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+        const parts = cleanStr.split(/[\/\-]/).map(Number);
+        if (parts.length === 3 && parts[0] >= 1300 && parts[0] <= 1500) {
+            const mm = String(parts[1]).padStart(2, '0');
+            const dd = String(parts[2]).padStart(2, '0');
+            return `${parts[0]}/${mm}/${dd}`;
+        }
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return String(dateVal);
+        const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+        const mm = String(j.jm).padStart(2, '0');
+        const dd = String(j.jd).padStart(2, '0');
+        return `${j.jy}/${mm}/${dd}`;
+    } catch {
+        return String(dateVal);
+    }
+};
 
 export const getNextAppReceiptNumber = (fiscalYear = '4') => {
     const db = getDb();
@@ -678,7 +731,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         const chAmount = Number(ch.amount) || 0;
         const chBank = String(ch.bankName || '').replace(/'/g, "''");
         const chInNameOf = String(ch.inNameOf || record.personName || '').replace(/'/g, "''");
-        const chDueDate = ch.dueDate ? ch.dueDate.slice(0, 10) : nowSqlDate.slice(0, 10);
+        const chDueDate = parseToGregorianSqlDate(ch.dueDate);
         const rowNote = rowSeq === 1 ? `رد/${poshtNomreh}` : '';
 
         createdChequesMeta.push({
@@ -783,3 +836,115 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         record
     };
 };
+
+/**
+ * Fetch Full Real Document directly from Sayan ERP (BUR_TBL_008, BUR_TBL_009, BUR_TBL_012, BUR_TBL_016)
+ * Enables users and managers to inspect the exact live database records and explanation texts.
+ */
+export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4') => {
+    try {
+        const fy = String(fiscalYear || '4');
+        const arch = String(archiveCode).trim();
+        
+        // 1. Header (BUR_TBL_008)
+        const headerSql = `
+            SELECT TOP 1
+                h.Field_001 as HeaderId,
+                h.Field_004 as FiscalYear,
+                h.Field_005 as ArchiveCode,
+                h.Field_006 as DocNo,
+                h.Field_008 as DocDate,
+                h.Field_009 as OpCode,
+                h.Field_010 as PersonCode,
+                h.Field_020 as Guid,
+                h.Field_025 as TotalAmount,
+                h.Field_028 as Description,
+                h.Field_030 as CreatedDate,
+                g.Field_006 as FirstName,
+                g.Field_007 as LastName,
+                g.Field_009 as NationalId,
+                g.Field_015 as Mobile
+            FROM BUR_TBL_008 h
+            LEFT JOIN GNR_TBL_001 g ON RTRIM(LTRIM(g.Field_003)) = RTRIM(LTRIM(h.Field_010))
+            WHERE h.Field_004 = '${fy}' AND (h.Field_005 = '${arch}' OR h.Field_006 = '${arch}')
+        `;
+        const headers = await executeSayanQuery(headerSql);
+        if (headers.length === 0) {
+            return { 
+                success: false, 
+                message: `سند دریافت چک با کد بایگانی/شماره سند ${arch} در سال مالی ${fy} در دیتابیس سایان یافت نشد.` 
+            };
+        }
+        const header = headers[0];
+        const actualArchive = header.ArchiveCode;
+        const fullName = `${header.FirstName || ''} ${header.LastName || ''}`.trim() || `کد ${header.PersonCode}`;
+
+        // 2. Rows (BUR_TBL_009)
+        const rowsSql = `
+            SELECT 
+                r.Field_001 as RowId,
+                r.Field_003 as FiscalYear,
+                r.Field_004 as ArchiveCode,
+                r.Field_005 as RowType,
+                r.Field_006 as RowAmount,
+                r.Field_007 as ChequeId,
+                r.Field_008 as RowNote,
+                r.Field_009 as PersonCode,
+                r.Field_010 as FundCode,
+                r.Field_019 as FundTitle,
+                r.Field_025 as RowSeq
+            FROM BUR_TBL_009 r
+            WHERE r.Field_003 = '${fy}' AND r.Field_004 = '${actualArchive}'
+            ORDER BY CAST(r.Field_025 as int) ASC, CAST(r.Field_001 as bigint) ASC
+        `;
+        const rows = await executeSayanQuery(rowsSql);
+
+        // 3. Cheques (BUR_TBL_012)
+        const chequeIds = rows.map(r => r.ChequeId).filter(Boolean);
+        let cheques = [];
+        if (chequeIds.length > 0) {
+            const chequesSql = `
+                SELECT 
+                    c.Field_001 as ChequeId,
+                    c.Field_004 as DocSub,
+                    c.Field_005 as ChequeNumber,
+                    c.Field_006 as DueDate,
+                    c.Field_008 as ChequeStatus,
+                    c.Field_009 as BankName,
+                    c.Field_011 as InNameOf,
+                    c.Field_013 as Amount,
+                    c.Field_016 as PoshtNomreh
+                FROM BUR_TBL_012 c
+                WHERE c.Field_001 IN (${chequeIds.map(id => `'${id}'`).join(',')})
+            `;
+            cheques = await executeSayanQuery(chequesSql);
+        }
+
+        // 4. Dimension links (BUR_TBL_016)
+        const dimSql = `
+            SELECT Field_001 as DimId, Field_005 as DimType, Field_006 as DimValue
+            FROM BUR_TBL_016
+            WHERE Field_003 = '${fy}' AND Field_004 = '${actualArchive}'
+        `;
+        const dims = await executeSayanQuery(dimSql);
+
+        return {
+            success: true,
+            header: {
+                ...header,
+                fullName,
+                shamsiDocDate: formatToShamsiDate(header.DocDate)
+            },
+            rows,
+            cheques: cheques.map(c => ({
+                ...c,
+                shamsiDueDate: formatToShamsiDate(c.DueDate)
+            })),
+            dimensions: dims
+        };
+    } catch (err) {
+        console.error('Error fetching Sayan real document details:', err);
+        return { success: false, error: err.message };
+    }
+};
+

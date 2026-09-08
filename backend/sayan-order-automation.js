@@ -180,7 +180,8 @@ export const resolveVendorForNote = (note, vendorMap) => {
 };
 
 /**
- * Fetch all Purchase Requests (Opcode 53) in Fiscal Year 4 with Pre-Invoice (Opcode 57) detection
+ * Fetch all Purchase Requests (Opcode 53) in a Fiscal Year with Pre-Invoice (Opcode 57) detection
+ * Accurately tracks linking between 53 and 57 via item references (STR_TBL_011.Field_018)
  */
 export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
     const vendorMap = await getHistoricalVendorMap();
@@ -197,28 +198,45 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
             t10.Field_017 as Note,
             t10.Field_029 as DescText,
             t10.Field_036 as RegDate,
-            (SELECT COUNT(*) FROM STR_TBL_011 i WHERE i.Field_003 = t10.Field_004 AND i.Field_004 = t10.Field_005 AND i.Field_012 = 3) as ItemsCount,
-            (SELECT SUM(Field_006) FROM STR_TBL_011 i WHERE i.Field_003 = t10.Field_004 AND i.Field_004 = t10.Field_005 AND i.Field_012 = 3) as TotalQty,
-            t57.Field_005 as PreInvoiceDocNo,
-            t57.Field_001 as PreInvoiceDocId,
-            t57.Field_008 as PreInvoiceDate,
-            t57.Field_010 as PreInvoiceVendorCode,
+            items.ItemsCount,
+            items.TotalQty,
+            t57.PreInvoiceDocNo,
+            t57.PreInvoiceDocId,
+            t57.PreInvoiceDate,
+            t57.PreInvoiceVendorCode,
             p.Field_006 as PreInvoiceVendorName
         FROM STR_TBL_010 t10
         OUTER APPLY (
-            SELECT TOP 1 d.Field_001, d.Field_005, d.Field_008, d.Field_010
-            FROM STR_TBL_010 d
-            WHERE d.Field_009 = '57' AND d.Field_004 = t10.Field_004
-              AND (
-                  (t10.Field_007 IS NOT NULL AND t10.Field_007 <> '' AND d.Field_007 = t10.Field_007)
-                  OR EXISTS (
-                      SELECT 1 FROM STR_TBL_029 l
-                      WHERE l.Field_003 = t10.Field_001 AND l.Field_007 = '53' AND l.Field_001 = d.Field_001
-                  )
-              )
+            SELECT 
+                COUNT(DISTINCT i.Field_001) as ItemsCount,
+                SUM(i.Field_006) as TotalQty
+            FROM STR_TBL_011 i
+            WHERE i.Field_003 = t10.Field_004 
+              AND i.Field_004 = t10.Field_005 
+              AND i.Field_012 = 3
+        ) items
+        OUTER APPLY (
+            SELECT TOP 1 
+                d.Field_001 as PreInvoiceDocId,
+                d.Field_005 as PreInvoiceDocNo,
+                d.Field_008 as PreInvoiceDate,
+                d.Field_010 as PreInvoiceVendorCode
+            FROM STR_TBL_011 i53
+            INNER JOIN STR_TBL_011 i57 
+                ON i57.Field_003 = t10.Field_004
+               AND i57.Field_012 = 3
+               AND i57.Field_018 = i53.Field_001
+            INNER JOIN STR_TBL_010 d 
+                ON d.Field_004 = i57.Field_003 
+               AND d.Field_005 = i57.Field_004 
+               AND d.Field_018 = i57.Field_012 
+               AND d.Field_009 = '57'
+            WHERE i53.Field_003 = t10.Field_004 
+              AND i53.Field_004 = t10.Field_005 
+              AND i53.Field_012 = 3
             ORDER BY CAST(d.Field_005 AS INT) DESC
         ) t57
-        LEFT JOIN ACT_TBL_007 p ON t57.Field_010 = p.Field_005
+        LEFT JOIN ACT_TBL_007 p ON t57.PreInvoiceVendorCode = p.Field_005
         WHERE t10.Field_009 = '53' AND t10.Field_004 = '${fiscalYear}'
         ORDER BY CAST(t10.Field_005 AS INT) DESC
     `;
@@ -337,16 +355,20 @@ export const convert53To57 = async (doc53Id, options = {}) => {
 
     // 2. Verify that it is not already converted
     const verifyNotConverted = `
-        SELECT COUNT(*) as ExistsCount
-        FROM STR_TBL_010 t57
-        WHERE t57.Field_009 = '57' AND t57.Field_004 = '${doc53.FiscalYear}'
-          AND (
-              ('${doc53.SubCode || ''}' <> '' AND t57.Field_007 = '${doc53.SubCode}')
-              OR EXISTS (
-                  SELECT 1 FROM STR_TBL_029 l
-                  WHERE l.Field_003 = '${doc53Id}' AND l.Field_007 = '53' AND l.Field_001 = t57.Field_001
-              )
-          )
+        SELECT COUNT(DISTINCT i57.Field_001) as ExistsCount
+        FROM STR_TBL_011 i53
+        INNER JOIN STR_TBL_011 i57 
+            ON i57.Field_003 = i53.Field_003 
+           AND i57.Field_012 = 3 
+           AND i57.Field_018 = i53.Field_001
+        INNER JOIN STR_TBL_010 t57 
+            ON t57.Field_004 = i57.Field_003 
+           AND t57.Field_005 = i57.Field_004 
+           AND t57.Field_018 = i57.Field_012 
+           AND t57.Field_009 = '57'
+        WHERE i53.Field_003 = '${doc53.FiscalYear}' 
+          AND i53.Field_004 = '${doc53.DocNo}' 
+          AND i53.Field_012 = 3
     `;
     const convertedRows = await executeSayanQuery(verifyNotConverted);
     if (convertedRows[0]?.ExistsCount > 0) {
@@ -380,12 +402,13 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     const desc = `تامین کننده: ${targetVendorCode} | درخواست کننده: ${doc53.PersonCode53 || '1105'} | کد فرعی: ${subCode} | توضیحات: ${note} | نوع: خودکار سیستم`.replace(/'/g, "''");
 
     let itemsInsertSql = '';
+    let rowIndex = 1;
     for (const item of items) {
         const itemCode = (item.ItemCode || '').replace(/'/g, "''");
         const qty = Number(item.Qty) || 1;
         const secQty = Number(item.SecondaryQty) || qty;
-        const tracking = (item.TrackingCode || item.ItemRowId || '').toString().replace(/'/g, "''");
-        const composite = `${fiscalYear}-3-${doc53.DocNo}-${tracking}`.replace(/'/g, "''");
+        const itemRowId = (item.ItemRowId || '').toString().replace(/'/g, "''");
+        const composite = `${fiscalYear}-3-${doc53.DocNo}-${itemRowId}`.replace(/'/g, "''");
         const unitId = (item.UnitId || '11').replace(/'/g, "''");
         const whCode = (item.WarehouseCode || '30310').replace(/'/g, "''");
 
@@ -395,9 +418,10 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'Field_010, Field_011, Field_012, Field_013, Field_018, Field_020, Field_024, ' +
         N'Field_025, Field_031, Field_034, Field_035, Field_036, Field_037) ' +
         N'VALUES (' +
-        N'@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''${itemCode}'', ${qty}, ${secQty}, N''${tracking}'', 0, ' +
-        N'N''${composite}'', N'''', 3, N''${targetVendorCode}'', N''${tracking}'', 0, 1, ' +
-        N'0, N''تعداد کارتن: 0 | تخفیف: 0 | فی ریالی: 1'', N''1'', 0, N''${unitId}'', N''${whCode}''); ' + `;
+        N'@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''${itemCode}'', ${qty}, ${secQty}, N''${itemRowId}'', 0, ' +
+        N'N''${composite}'', N'''', 3, N''${targetVendorCode}'', N''${itemRowId}'', 0, 1, ' +
+        N'0, N''تعداد کارتن: 0 | تخفیف: 0 | ارزش افزوده: 0'', N''${rowIndex}'', 0, N''${unitId}'', N''${whCode}''); ' + `;
+        rowIndex++;
     }
 
     const endAction = isDryRun 
@@ -480,7 +504,8 @@ export const runAutomationCycle = async (options = {}) => {
     const user = options.user || 'اتوماسیون دوره‌ای';
 
     const startTime = new Date();
-    const pendingList = await getPendingPurchaseRequests(config.fiscalYear);
+    const fiscalYear = options.fiscalYear || config.fiscalYear || '4';
+    const pendingList = await getPendingPurchaseRequests(fiscalYear);
     const readyList = pendingList.filter(p => p.isReady);
 
     const summary = {

@@ -103,6 +103,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
     const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
 
     // State for Purchase Pre-Invoices automation
+    const [selectedFiscalYear, setSelectedFiscalYear] = useState<'4' | '3'>('4');
     const [loading, setLoading] = useState(false);
     const [itemsLoading, setItemsLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -139,7 +140,8 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
         setTimeout(() => setToastMessage(null), 5000);
     };
 
-    const fetchStatusAndData = async () => {
+    const fetchStatusAndData = async (targetFy?: '4' | '3') => {
+        const fy = targetFy || selectedFiscalYear;
         setLoading(true);
         try {
             // Status & config
@@ -159,14 +161,14 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
             }
 
             // Pending list (در جریان - strictly requests without pre-invoices)
-            const pendingRes = await fetch('/api/sayan/order-automation/pending');
+            const pendingRes = await fetch(`/api/sayan/order-automation/pending?fiscalYear=${fy}`);
             const pendingData = await pendingRes.json();
             if (pendingData.success) {
                 setPendingList(pendingData.items || []);
             }
 
             // Archived list (بایگانی - requests that already have pre-invoice 57 issued)
-            const archivedRes = await fetch('/api/sayan/order-automation/archived');
+            const archivedRes = await fetch(`/api/sayan/order-automation/archived?fiscalYear=${fy}`);
             const archivedData = await archivedRes.json();
             if (archivedData.success) {
                 setArchivedList(archivedData.items || []);
@@ -274,6 +276,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     dryRun,
+                    fiscalYear: selectedFiscalYear,
                     triggeredBy: currentUser?.fullName || currentUser?.username || 'کاربر سیستم'
                 })
             });
@@ -490,6 +493,44 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
 
                             {/* Action Buttons */}
                             <div className="flex items-center gap-2 flex-wrap">
+                                {/* Fiscal Year Selector */}
+                                <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-bold">
+                                    <span className="text-slate-400 dark:text-slate-500 px-1.5 flex items-center gap-1 text-[11px]">
+                                        <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                                        <span className="hidden sm:inline">سال مالی سایان:</span>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedFiscalYear('4');
+                                            fetchStatusAndData('4');
+                                        }}
+                                        className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
+                                            selectedFiscalYear === '4'
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                                        }`}
+                                        title="سال مالی ۱۴۰۵ (سال ۴ در دیتابیس سایان)"
+                                    >
+                                        ۱۴۰۵ (سال ۴)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedFiscalYear('3');
+                                            fetchStatusAndData('3');
+                                        }}
+                                        className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
+                                            selectedFiscalYear === '3'
+                                                ? 'bg-blue-600 text-white shadow-xs'
+                                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                                        }`}
+                                        title="سال مالی ۱۴۰۴ (سال ۳ در دیتابیس سایان)"
+                                    >
+                                        ۱۴۰۴ (سال ۳)
+                                    </button>
+                                </div>
+
                                 <button
                                     onClick={() => setShowConfigPanel(!showConfigPanel)}
                                     className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
@@ -519,7 +560,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                                 </button>
 
                                 <button
-                                    onClick={fetchStatusAndData}
+                                    onClick={() => fetchStatusAndData()}
                                     disabled={loading}
                                     className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-slate-900 transition-colors shadow-sm"
                                     title="بروزرسانی داده‌ها از سایان"

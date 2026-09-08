@@ -1745,19 +1745,22 @@ app.post('/api/sayan/order-automation/convert-single', async (req, res) => {
 });
 
 // 6. Run full batch cycle
-app.post('/api/sayan/order-automation/run-batch', async (req, res) => {
+const handleBatchRun = async (req, res) => {
     try {
-        const { isDryRun, user } = req.body || {};
+        const { isDryRun, dryRun, user, triggeredBy, fiscalYear } = req.body || {};
         const summary = await sayanOrderAuto.runAutomationCycle({
-            isDryRun,
-            user: user || 'اجرای دستی گروهی'
+            isDryRun: isDryRun ?? dryRun,
+            user: user || triggeredBy || 'اجرای دستی گروهی',
+            fiscalYear
         });
         res.json({ success: true, summary });
     } catch (err) {
         console.error("Order automation batch run error:", err);
         res.status(500).json({ success: false, error: err.message });
     }
-});
+};
+app.post('/api/sayan/order-automation/run-batch', handleBatchRun);
+app.post('/api/sayan/order-automation/run-now', handleBatchRun);
 
 // 7. Get audit logs
 app.get('/api/sayan/order-automation/logs', (req, res) => {

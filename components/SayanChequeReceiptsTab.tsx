@@ -115,12 +115,14 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [personSearchResults, setPersonSearchResults] = useState<SayanPerson[]>([]);
     const [searchingPersons, setSearchingPersons] = useState(false);
     const [personDropdownOpen, setPersonDropdownOpen] = useState(false);
+    const personContainerRef = useRef<HTMLDivElement>(null);
 
     const [poshtNomreh, setPoshtNomreh] = useState('');
     const [targetTotalAmount, setTargetTotalAmount] = useState<number | ''>('');
     const [docDateShamsi, setDocDateShamsi] = useState(getTodayShamsi());
     const [description, setDescription] = useState('');
     const [attachments, setAttachments] = useState<Array<{ fileName: string; fileData: string; fileType: string }>>([]);
+    const [previewFile, setPreviewFile] = useState<{ fileName: string; fileData: string; fileType: string } | null>(null);
 
     // Cheque Rows
     const [chequeRows, setChequeRows] = useState<ChequeItemInput[]>([
@@ -153,6 +155,18 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [selectedDetailReceipt, setSelectedDetailReceipt] = useState<ChequeReceiptRecord | null>(null);
 
     // Fetch Receipts
+    const fetchMetaNumbers = async () => {
+        try {
+            const res = await fetch(`/api/sayan/cheque-receipts/meta?fiscalYear=${fiscalYear}`);
+            const data = await res.json();
+            if (data.success && data.nextPoshtNomreh) {
+                setPoshtNomreh(String(data.nextPoshtNomreh));
+            }
+        } catch (err) {
+            console.error('Failed to fetch next posht nomreh', err);
+        }
+    };
+
     const fetchReceipts = async (silent = false) => {
         if (!silent) setLoadingReceipts(true);
         try {
@@ -170,33 +184,50 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     useEffect(() => {
         fetchReceipts();
-        const interval = setInterval(() => fetchReceipts(true), 30000); // 30s gentle poll
+        fetchMetaNumbers();
+        const interval = setInterval(() => {
+            fetchReceipts(true);
+        }, 30000); // 30s gentle poll
         return () => clearInterval(interval);
     }, [fiscalYear]);
 
     // Person Search
+    const fetchPersons = async (q: string) => {
+        setSearchingPersons(true);
+        try {
+            const res = await fetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(q)}&fiscalYear=${fiscalYear}`);
+            const data = await res.json();
+            if (data.success && Array.isArray(data.persons)) {
+                setPersonSearchResults(data.persons);
+                setPersonDropdownOpen(true);
+            }
+        } catch (err) {
+            console.error('Person search error', err);
+        } finally {
+            setSearchingPersons(false);
+        }
+    };
+
     useEffect(() => {
-        if (!personQuery || personQuery.length < 2) {
+        if (!personQuery || personQuery.trim().length === 0) {
             setPersonSearchResults([]);
             return;
         }
-        const timer = setTimeout(async () => {
-            setSearchingPersons(true);
-            try {
-                const res = await fetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(personQuery)}&fiscalYear=${fiscalYear}`);
-                const data = await res.json();
-                if (data.success && Array.isArray(data.persons)) {
-                    setPersonSearchResults(data.persons);
-                    setPersonDropdownOpen(true);
-                }
-            } catch (err) {
-                console.error('Person search error', err);
-            } finally {
-                setSearchingPersons(false);
-            }
-        }, 250);
+        const timer = setTimeout(() => {
+            fetchPersons(personQuery.trim());
+        }, 200);
         return () => clearTimeout(timer);
     }, [personQuery, fiscalYear]);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (personContainerRef.current && !personContainerRef.current.contains(e.target as Node)) {
+                setPersonDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Sum of cheque rows
     const sumChequesAmount = useMemo(() => {
@@ -300,8 +331,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         setErrorMessage(null);
         setSuccessMessage(null);
 
-        if (!selectedPerson && !personQuery.trim()) {
-            setErrorMessage('لطفاً طرف حساب (شخص پرداخت‌کننده) را مشخص نمایید.');
+        if (!selectedPerson) {
+            setErrorMessage('انتخاب طرف حساب از بین اشخاص معتبر سیستم سایان اجباری است. لطفاً نام یا کد شخص را جستجو کرده و از لیست پیشنهادها انتخاب کنید.');
+            document.getElementById('input-person-name')?.focus();
             return;
         }
 
@@ -619,9 +651,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
                             {/* 1. Person Search Autocomplete */}
-                            <div className="relative">
+                            <div ref={personContainerRef} className="relative">
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                    شخص دریافت‌کننده / طرف حساب *
+                                    طرف حساب (انتخاب اجباری از سایان) *
                                 </label>
                                 <div className="relative">
                                     <input
@@ -635,55 +667,86 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                             }
                                         }}
                                         onFocus={() => {
-                                            if (personSearchResults.length > 0) setPersonDropdownOpen(true);
+                                            if (personSearchResults.length > 0) {
+                                                setPersonDropdownOpen(true);
+                                            } else if (personQuery.trim().length > 0) {
+                                                fetchPersons(personQuery.trim());
+                                            } else {
+                                                fetchPersons('');
+                                            }
                                         }}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
                                                 e.preventDefault();
-                                                handleEnterNext(0, 'person');
+                                                if (!selectedPerson && personSearchResults.length > 0) {
+                                                    const first = personSearchResults[0];
+                                                    setSelectedPerson(first);
+                                                    setPersonQuery(first.fullName);
+                                                    setPersonDropdownOpen(false);
+                                                    setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || first.fullName })));
+                                                    document.getElementById('input-posht-nomreh')?.focus();
+                                                } else {
+                                                    handleEnterNext(0, 'person');
+                                                }
                                             }
                                         }}
-                                        placeholder="نام طرف حساب (جستجو در سایان)"
-                                        className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                                        placeholder="نام یا کد تفصیلی (جستجو در سایان)..."
+                                        className={`w-full border rounded-xl px-3 py-2.5 text-xs outline-none transition-colors ${
+                                            selectedPerson
+                                                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-900 dark:text-emerald-100 font-bold'
+                                                : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900'
+                                        }`}
                                     />
                                     {searchingPersons && (
-                                        <RefreshCw className="w-3.5 h-3.5 animate-spin absolute left-3 top-3 text-slate-400" />
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin absolute left-3 top-3 text-emerald-500" />
                                     )}
                                 </div>
 
-                                {selectedPerson && (
-                                    <div className="mt-1 flex items-center justify-between text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-lg">
+                                {selectedPerson ? (
+                                    <div className="mt-1 flex items-center justify-between text-[10px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
                                         <span>طرف حساب معتبر سایان</span>
                                         <span className="font-mono">کد تفصیلی: {toPersianDigits(selectedPerson.personCode)}</span>
+                                    </div>
+                                ) : (
+                                    <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+                                        * انتخاب از میان طرف‌های حساب سایان الزامی است
                                     </div>
                                 )}
 
                                 {/* Person Dropdown */}
-                                {personDropdownOpen && personSearchResults.length > 0 && (
-                                    <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-40 max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
-                                        {personSearchResults.map(p => (
-                                            <button
-                                                key={p.personCode}
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedPerson(p);
-                                                    setPersonQuery(p.fullName);
-                                                    setPersonDropdownOpen(false);
-                                                    // Autofill InNameOf in cheque rows if empty
-                                                    setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || p.fullName })));
-                                                    document.getElementById('input-posht-nomreh')?.focus();
-                                                }}
-                                                className="w-full text-right p-2.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between"
-                                            >
-                                                <div>
-                                                    <div className="font-bold text-slate-800 dark:text-slate-200">{p.fullName}</div>
-                                                    {p.nationalId && <div className="text-[10px] text-slate-400 font-mono">کدملی: {p.nationalId}</div>}
+                                {personDropdownOpen && (
+                                    <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-40 max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
+                                        {personSearchResults.length > 0 ? (
+                                            personSearchResults.map(p => (
+                                                <button
+                                                    key={p.personCode}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedPerson(p);
+                                                        setPersonQuery(p.fullName);
+                                                        setPersonDropdownOpen(false);
+                                                        // Autofill InNameOf in cheque rows if empty
+                                                        setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || p.fullName })));
+                                                        document.getElementById('input-posht-nomreh')?.focus();
+                                                    }}
+                                                    className="w-full text-right p-2.5 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between group"
+                                                >
+                                                    <div>
+                                                        <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-400">{p.fullName}</div>
+                                                        {p.nationalId && <div className="text-[10px] text-slate-400 font-mono">کدملی: {p.nationalId}</div>}
+                                                    </div>
+                                                    <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 border border-blue-200">
+                                                        کد: {toPersianDigits(p.personCode)}
+                                                    </span>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            !searchingPersons && (
+                                                <div className="p-3 text-center text-xs text-slate-400">
+                                                    هیچ حسابی در سایان با این عنوان یافت نشد
                                                 </div>
-                                                <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 border border-blue-200">
-                                                    کد: {toPersianDigits(p.personCode)}
-                                                </span>
-                                            </button>
-                                        ))}
+                                            )
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -788,18 +851,45 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     </label>
                                 </div>
                                 {attachments.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                    <div className="flex flex-wrap gap-2 mt-2">
                                         {attachments.map((att, aIdx) => (
-                                            <span key={aIdx} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[10px] border border-purple-200">
-                                                <FileText className="w-3 h-3" />
-                                                <span className="truncate max-w-[120px]">{att.fileName}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAttachments(prev => prev.filter((_, i) => i !== aIdx))}
-                                                    className="hover:text-rose-600"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
+                                            <span key={aIdx} className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold border border-indigo-100 dark:border-indigo-900/50">
+                                                <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                                <span className="truncate max-w-[140px]">{att.fileName}</span>
+                                                
+                                                <div className="flex items-center gap-1 mr-1.5 border-r border-indigo-200 dark:border-indigo-800 pr-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewFile(att)}
+                                                        className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 transition-colors"
+                                                        title="پیش‌نمایش"
+                                                    >
+                                                        <Eye className="w-3 h-3" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const link = document.createElement('a');
+                                                            link.href = att.fileData;
+                                                            link.download = att.fileName;
+                                                            document.body.appendChild(link);
+                                                            link.click();
+                                                            document.body.removeChild(link);
+                                                        }}
+                                                        className="p-0.5 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 transition-colors"
+                                                        title="دانلود فایل"
+                                                    >
+                                                        <Download className="w-3 h-3" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== aIdx))}
+                                                        className="p-0.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 transition-colors"
+                                                        title="حذف"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
                                             </span>
                                         ))}
                                     </div>
@@ -1274,6 +1364,78 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     onReject={handleReject}
                     actionLoading={actionLoading}
                 />
+            )}
+
+            {/* Local Attachment Preview Modal */}
+            {previewFile && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[85vh]">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
+                            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-indigo-500" />
+                                <span>پیش‌نمایش فایل: {previewFile.fileName}</span>
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setPreviewFile(null)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        
+                        {/* Content */}
+                        <div className="p-6 flex-1 overflow-y-auto flex items-center justify-center bg-slate-50 dark:bg-slate-950/40">
+                            {previewFile.fileType.startsWith('image/') ? (
+                                <img
+                                    src={previewFile.fileData}
+                                    alt={previewFile.fileName}
+                                    className="max-w-full max-h-[55vh] object-contain rounded-xl shadow-md border border-slate-200 dark:border-slate-800"
+                                />
+                            ) : previewFile.fileType === 'application/pdf' ? (
+                                <iframe
+                                    src={previewFile.fileData}
+                                    title={previewFile.fileName}
+                                    className="w-full h-[55vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
+                                />
+                            ) : (
+                                <div className="text-center py-12 space-y-4">
+                                    <FileText className="w-16 h-16 text-indigo-400 mx-auto animate-pulse" />
+                                    <p className="text-slate-600 dark:text-slate-400 text-xs">
+                                        امکان پیش‌نمایش مستقیم این نوع فایل وجود ندارد. لطفاً آن را دانلود کنید.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 bg-slate-50 dark:bg-slate-900/60 rounded-b-3xl">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.href = previewFile.fileData;
+                                    link.download = previewFile.fileName;
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                }}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5"
+                            >
+                                <Download className="w-4 h-4" />
+                                <span>دانلود این فایل</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPreviewFile(null)}
+                                className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                            >
+                                بستن
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -1809,8 +1809,8 @@ app.get('/api/sayan/cheque-receipts/meta', async (req, res) => {
 // 2. Search Sayan Tafsili / Persons by query
 app.get('/api/sayan/cheque-receipts/persons', async (req, res) => {
     try {
-        const query = req.query.q || req.query.search || '';
-        const limit = parseInt(req.query.limit, 10) || 30;
+        const query = req.query.query || req.query.q || req.query.search || '';
+        const limit = parseInt(req.query.limit, 10) || 40;
         const persons = await sayanChequeService.searchSayanPersons(query, limit);
         res.json({ success: true, persons });
     } catch (err) {
@@ -1820,27 +1820,28 @@ app.get('/api/sayan/cheque-receipts/persons', async (req, res) => {
 });
 
 // 3. Get Cheque Receipts history (combines live Sayan docs + local drafts)
-app.get('/api/sayan/cheque-receipts/history', async (req, res) => {
+app.get(['/api/sayan/cheque-receipts', '/api/sayan/cheque-receipts/history'], async (req, res) => {
     try {
         const fiscalYear = req.query.fiscalYear || '4';
         const search = req.query.search || '';
         const history = await sayanChequeService.getChequeReceiptsHistory(fiscalYear, search);
-        res.json({ success: true, history, count: history.length });
+        res.json({ success: true, history, data: history, count: history.length });
     } catch (err) {
         console.error("Error fetching cheque receipts history:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 4. Save or update Cheque Receipt Draft
-app.post('/api/sayan/cheque-receipts/draft', async (req, res) => {
+// 4. Save or create Cheque Receipt Draft
+app.post(['/api/sayan/cheque-receipts', '/api/sayan/cheque-receipts/draft'], async (req, res) => {
     try {
-        const { receipt, currentUser } = req.body || {};
+        const receipt = req.body.receipt || req.body;
+        const currentUser = req.body.currentUser || req.user || { name: receipt.createdByName || 'کاربر سیستم' };
         if (!receipt) {
             return res.status(400).json({ success: false, error: 'اطلاعات رسید چک ارسال نشده است.' });
         }
         const saved = await sayanChequeService.saveChequeReceiptDraft(receipt, currentUser);
-        res.json({ success: true, receipt: saved });
+        res.json({ success: true, receipt: saved, receiptNo: saved.receiptNo, id: saved.id });
     } catch (err) {
         console.error("Error saving cheque receipt draft:", err);
         res.status(500).json({ success: false, error: err.message });
@@ -1848,9 +1849,12 @@ app.post('/api/sayan/cheque-receipts/draft', async (req, res) => {
 });
 
 // 5. Stage 1: Accounting Staff Review, In-flight Edit & Approval
-app.post('/api/sayan/cheque-receipts/accounting-approve', async (req, res) => {
+app.all(['/api/sayan/cheque-receipts/accounting-approve', '/api/sayan/cheque-receipts/:id/accounting-review', '/api/sayan/cheque-receipts/:id/accounting-approve'], async (req, res) => {
     try {
-        const { receiptId, currentUser, note, updatePayload } = req.body || {};
+        const receiptId = req.params.id || req.body?.receiptId;
+        const currentUser = req.body?.currentUser || req.user || { id: req.body?.reviewerId, name: req.body?.reviewerName || 'کارشناس حسابداری' };
+        const note = req.body?.note || req.body?.accountingNote || '';
+        const updatePayload = req.body?.updatePayload || (req.body?.cheques ? req.body : null);
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
@@ -1862,10 +1866,13 @@ app.post('/api/sayan/cheque-receipts/accounting-approve', async (req, res) => {
     }
 });
 
-// 6. Stage 2: CEO / Admin Approval
-app.post('/api/sayan/cheque-receipts/approve', async (req, res) => {
+// 6. Stage 2: CEO / Admin Approval & Direct Sayan Registration
+app.all(['/api/sayan/cheque-receipts/approve', '/api/sayan/cheque-receipts/:id/ceo-approve', '/api/sayan/cheque-receipts/:id/approve'], async (req, res) => {
     try {
-        const { receiptId, currentUser, note, registerImmediately } = req.body || {};
+        const receiptId = req.params.id || req.body?.receiptId;
+        const currentUser = req.body?.currentUser || req.user || { id: req.body?.approverId, name: req.body?.approverName || 'مدیرعامل' };
+        const note = req.body?.note || '';
+        const registerImmediately = req.body?.registerImmediately !== false; // default true on ceo-approve
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
@@ -1876,7 +1883,7 @@ app.post('/api/sayan/cheque-receipts/approve', async (req, res) => {
             sayanResult = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
         }
 
-        res.json({ success: true, receipt: approved, sayanResult });
+        res.json({ success: true, receipt: approved, sayanResult, sayanDocNo: sayanResult?.docNo, sayanArchiveCode: sayanResult?.archiveCode, docNo: sayanResult?.docNo, archiveCode: sayanResult?.archiveCode });
     } catch (err) {
         console.error("Error approving cheque receipt:", err);
         res.status(500).json({ success: false, error: err.message });
@@ -1884,9 +1891,12 @@ app.post('/api/sayan/cheque-receipts/approve', async (req, res) => {
 });
 
 // 7. Reject / Return Cheque Receipt for Revision
-app.post('/api/sayan/cheque-receipts/reject', async (req, res) => {
+app.all(['/api/sayan/cheque-receipts/reject', '/api/sayan/cheque-receipts/:id/reject'], async (req, res) => {
     try {
-        const { receiptId, currentUser, reason, returnTo } = req.body || {};
+        const receiptId = req.params.id || req.body?.receiptId;
+        const currentUser = req.body?.currentUser || req.user || { name: req.body?.rejectedBy || 'کاربر' };
+        const reason = req.body?.reason || req.body?.rejectReason || 'جهت بازبینی و اصلاح به حسابداری عودت داده شد.';
+        const returnTo = req.body?.returnTo || 'ACCOUNTING';
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }

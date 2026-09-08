@@ -269,6 +269,7 @@ const Settings: React.FC<SettingsProps> = ({
     currentTrackingNumber: 1000,
     currentExitPermitNumber: 1000,
     currentChequeReceiptNumber: 1000,
+    currentPoshtNomreh: 1,
     chequeArchiveCutoffDate: "",
     companyNames: [],
     companies: [],
@@ -2611,7 +2612,7 @@ const Settings: React.FC<SettingsProps> = ({
                       (جدول پایین آن بخش) دریافت می‌کند. لطفاً برای تنظیم شماره‌های شروع سال مالی فعال، به آن تب مراجعه فرمایید.
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
                       <label className="text-sm font-bold text-gray-700 block mb-1">
                         شروع شماره دستور پرداخت
@@ -2656,6 +2657,22 @@ const Settings: React.FC<SettingsProps> = ({
                           setSettings({
                             ...settings,
                             currentChequeReceiptNumber: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-gray-700 block mb-1">
+                        شروع شماره پشت‌نمره رسید (چک)
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full border rounded-lg p-2 dir-ltr text-left"
+                        value={settings.currentPoshtNomreh || 1}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            currentPoshtNomreh: Number(e.target.value),
                           })
                         }
                       />

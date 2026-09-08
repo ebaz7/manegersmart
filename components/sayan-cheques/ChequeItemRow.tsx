@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CreditCard, Trash2, Calendar, Building2, User, ChevronDown, Check, Plus, Hash } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
+// @ts-ignore
+import DatePicker from "react-multi-date-picker";
+// @ts-ignore
+import persian from "react-date-object/calendars/persian";
+// @ts-ignore
+import persian_fa from "react-date-object/locales/persian_fa";
 
 export interface ChequeItemInput {
     id: string;
@@ -113,6 +119,34 @@ export const ChequeItemRow: React.FC<Props> = ({
     useEffect(() => {
         setShamsiInput(toShamsiStr(item.dueDate));
     }, [item.dueDate]);
+
+    const handleShamsiDateTyping = (val: string) => {
+        let clean = val.replace(/[^0-9/]/g, '');
+        if (clean.length > 10) {
+            clean = clean.slice(0, 10);
+        }
+        const digits = clean.replace(/\//g, '');
+        let formatted = digits;
+        if (digits.length > 4) {
+            formatted = digits.slice(0, 4) + '/' + digits.slice(4);
+        }
+        if (digits.length > 6) {
+            formatted = digits.slice(0, 4) + '/' + digits.slice(4, 6) + '/' + digits.slice(6);
+        }
+        setShamsiInput(formatted);
+        const parts = formatted.split('/');
+        if (parts.length === 3) {
+            const jy = parseInt(parts[0], 10);
+            const jm = parseInt(parts[1], 10);
+            const jd = parseInt(parts[2], 10);
+            if (jy >= 1300 && jy <= 1500 && jm >= 1 && jm <= 12 && jd >= 1 && jd <= 31) {
+                const g = jalaali.toGregorian(jy, jm, jd);
+                const gm = String(g.gm).padStart(2, '0');
+                const gd = String(g.gd).padStart(2, '0');
+                onChange(index, 'dueDate', `${g.gy}-${gm}-${gd}`);
+            }
+        }
+    };
 
     // Filtered banks based on input
     const filteredBanks = COMMON_IRANIAN_BANKS.filter(b =>
@@ -256,19 +290,12 @@ export const ChequeItemRow: React.FC<Props> = ({
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                         تاریخ سررسید (شمسی) *
                     </label>
-                    <div className="relative">
+                    <div className="relative flex items-center">
                         <input
                             id={`cheque-${index}-dueDate`}
                             type="text"
                             value={shamsiInput}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setShamsiInput(val);
-                                const greg = fromShamsiStr(val);
-                                if (greg) {
-                                    onChange(index, 'dueDate', greg);
-                                }
-                            }}
+                            onChange={(e) => handleShamsiDateTyping(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                     e.preventDefault();
@@ -276,11 +303,34 @@ export const ChequeItemRow: React.FC<Props> = ({
                                 }
                             }}
                             placeholder="۱۴۰۵/۰۶/۱۸"
-                            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2 text-xs font-mono font-bold outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                         />
-                        <span className="absolute left-2.5 top-2.5 text-[10px] text-slate-400 pointer-events-none">
-                            شمسی
-                        </span>
+                        <div className="absolute left-2 top-1.5 z-10">
+                            <DatePicker
+                                calendar={persian}
+                                locale={persian_fa}
+                                value={item.dueDate ? new Date(item.dueDate) : undefined}
+                                onChange={(date: any) => {
+                                    const val = date?.format?.('YYYY/MM/DD');
+                                    if (val) {
+                                        setShamsiInput(val);
+                                        const greg = fromShamsiStr(val);
+                                        if (greg) onChange(index, 'dueDate', greg);
+                                    }
+                                }}
+                                render={(value: any, openCalendar: any) => (
+                                    <button
+                                        type="button"
+                                        onClick={openCalendar}
+                                        className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors"
+                                        title="انتخاب از تقویم"
+                                    >
+                                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                                    </button>
+                                )}
+                                calendarPosition="bottom-right"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -295,7 +345,10 @@ export const ChequeItemRow: React.FC<Props> = ({
                             id={`cheque-${index}-bankName`}
                             type="text"
                             value={item.bankName}
-                            onFocus={() => setBankDropdownOpen(true)}
+                            onFocus={(e) => {
+                                e.currentTarget.select();
+                                setBankDropdownOpen(true);
+                            }}
                             onChange={(e) => {
                                 onChange(index, 'bankName', e.target.value);
                                 setBankDropdownOpen(true);
@@ -307,7 +360,11 @@ export const ChequeItemRow: React.FC<Props> = ({
                         />
                         <button
                             type="button"
-                            onClick={() => setBankDropdownOpen(!bankDropdownOpen)}
+                            onClick={() => {
+                                setBankDropdownOpen(!bankDropdownOpen);
+                                bankInputRef.current?.focus();
+                                bankInputRef.current?.select();
+                            }}
                             className="absolute left-2 top-2.5 text-slate-400 hover:text-slate-600"
                         >
                             <ChevronDown className="w-3.5 h-3.5" />

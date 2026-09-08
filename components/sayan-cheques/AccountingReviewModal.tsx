@@ -68,13 +68,13 @@ export const AccountingReviewModal: React.FC<Props> = ({
 
     // Search persons for accounting editing
     useEffect(() => {
-        if (!editPersonQuery || editPersonQuery.length < 2) {
+        if (!editPersonQuery || editPersonQuery.trim().length === 0) {
             setEditPersonResults([]);
             return;
         }
         const timer = setTimeout(async () => {
             try {
-                const res = await fetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(editPersonQuery)}&fiscalYear=${fiscalYear}`);
+                const res = await fetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(editPersonQuery.trim())}&fiscalYear=${fiscalYear}`);
                 const data = await res.json();
                 if (data.success && Array.isArray(data.persons)) {
                     setEditPersonResults(data.persons);
@@ -82,16 +82,24 @@ export const AccountingReviewModal: React.FC<Props> = ({
             } catch (err) {
                 // silent
             }
-        }, 250);
+        }, 200);
         return () => clearTimeout(timer);
     }, [editPersonQuery, fiscalYear]);
 
     const editTotalAmount = editCheques.reduce((sum, ch) => sum + (Number(ch.amount) || 0), 0);
 
     const handleSave = (isApproveForCEO: boolean) => {
+        const finalPersonCode = editPerson ? editPerson.personCode : receipt.personCode;
+        const finalPersonName = editPerson ? editPerson.fullName : receipt.personName;
+
+        if (!finalPersonCode) {
+            alert('انتخاب طرف حساب معتبر از سیستم سایان الزامی است.');
+            return;
+        }
+
         const payload = {
-            personCode: editPerson ? editPerson.personCode : receipt.personCode,
-            personName: editPerson ? editPerson.fullName : editPersonQuery || receipt.personName,
+            personCode: finalPersonCode,
+            personName: finalPersonName,
             poshtNomreh: editPoshtNomreh,
             description: editDescription,
             totalAmount: editTotalAmount,
@@ -100,7 +108,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                 amount: Number(ch.amount) || 0,
                 dueDate: ch.dueDate,
                 bankName: ch.bankName,
-                inNameOf: ch.inNameOf || (editPerson ? editPerson.fullName : receipt.personName),
+                inNameOf: ch.inNameOf || finalPersonName,
                 poshtNomreh: editPoshtNomreh,
                 rowSeq: idx + 1,
                 description: ch.description
@@ -146,7 +154,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
                         <div className="relative">
                             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                طرف حساب (شخص دریافتنی) *
+                                طرف حساب (انتخاب از سایان) *
                             </label>
                             <input
                                 type="text"
@@ -157,16 +165,29 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                         setEditPerson(null);
                                     }
                                 }}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs outline-none focus:border-amber-500"
-                                placeholder="جستجو و انتخاب شخص..."
+                                className={`w-full border rounded-xl px-3 py-2 text-xs outline-none transition-colors ${
+                                    editPerson || receipt.personCode
+                                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 font-bold'
+                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 focus:border-amber-500'
+                                }`}
+                                placeholder="جستجوی نام یا کد شخص در سایان..."
                             />
-                            {editPerson && (
-                                <div className="text-[10px] text-emerald-600 mt-1 font-bold">
-                                    کد طرف حساب: {toPersianDigits(editPerson.personCode)}
+                            {editPerson ? (
+                                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-bold flex items-center justify-between">
+                                    <span>طرف حساب معتبر سایان</span>
+                                    <span>کد: {toPersianDigits(editPerson.personCode)}</span>
+                                </div>
+                            ) : receipt.personCode ? (
+                                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
+                                    کد فعلی: {toPersianDigits(receipt.personCode)}
+                                </div>
+                            ) : (
+                                <div className="text-[10px] text-amber-600 mt-1">
+                                    * انتخاب طرف حساب از سایان الزامی است
                                 </div>
                             )}
                             {editPersonResults.length > 0 && !editPerson && (
-                                <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 max-h-40 overflow-y-auto">
+                                <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
                                     {editPersonResults.map(p => (
                                         <button
                                             key={p.personCode}
@@ -176,10 +197,15 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                 setEditPersonQuery(p.fullName);
                                                 setEditPersonResults([]);
                                             }}
-                                            className="w-full text-right px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 flex justify-between"
+                                            className="w-full text-right px-3 py-2 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 flex justify-between items-center transition-colors"
                                         >
-                                            <span>{p.fullName}</span>
-                                            <span className="text-slate-400 font-mono">کد: {p.personCode}</span>
+                                            <div>
+                                                <div className="font-bold text-slate-800 dark:text-slate-200">{p.fullName}</div>
+                                                {p.nationalId && <div className="text-[10px] text-slate-400">کدملی: {p.nationalId}</div>}
+                                            </div>
+                                            <span className="text-blue-600 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded text-[11px] font-mono border border-blue-200">
+                                                کد: {toPersianDigits(p.personCode)}
+                                            </span>
                                         </button>
                                     ))}
                                 </div>

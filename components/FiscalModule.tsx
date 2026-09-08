@@ -75,8 +75,8 @@ export const FiscalYearManager: React.FC<{
     // Config editing state
     const [editingYearId, setEditingYearId] = useState<string | null>(null);
     
-    // Local state for the config grid [companyName] -> { pay, exit, bijak, cheque }
-    const [companyConfig, setCompanyConfig] = useState<Record<string, { pay: string, exit: string, bijak: string, cheque: string }>>({});
+    // Local state for the config grid [companyName] -> { pay, exit, bijak, cheque, posht }
+    const [companyConfig, setCompanyConfig] = useState<Record<string, { pay: string, exit: string, bijak: string, cheque: string, posht: string }>>({});
 
     useEffect(() => {
         const initializeConfig = (currentSettings: SystemSettings) => {
@@ -141,13 +141,14 @@ export const FiscalYearManager: React.FC<{
         if (!year) return;
         setEditingYearId(yearId);
         
-        const configMap: Record<string, { pay: string, exit: string, bijak: string, cheque: string }> = {};
+        const configMap: Record<string, { pay: string, exit: string, bijak: string, cheque: string, posht: string }> = {};
         const companies = getActiveCompaniesList(currentSettings, year);
         
         // GLOBAL DEFAULTS (Current System State)
         const defaultPay = currentSettings.currentTrackingNumber ? currentSettings.currentTrackingNumber + 1 : 1000;
         const defaultExit = currentSettings.currentExitPermitNumber ? currentSettings.currentExitPermitNumber + 1 : 1000;
         const defaultCheque = currentSettings.currentChequeReceiptNumber ? parseInt(String(currentSettings.currentChequeReceiptNumber)) || 1000 : 1000;
+        const defaultPosht = currentSettings.currentPoshtNomreh ? parseInt(String(currentSettings.currentPoshtNomreh)) || 1 : 1;
 
         companies.forEach(c => {
             const seq = (year.companySequences?.[c.name] || {}) as CompanySequenceConfig;
@@ -159,7 +160,8 @@ export const FiscalYearManager: React.FC<{
                 pay: seq.startTrackingNumber ? String(seq.startTrackingNumber) : String(defaultPay),
                 exit: seq.startExitPermitNumber ? String(seq.startExitPermitNumber) : String(defaultExit),
                 bijak: seq.startBijakNumber ? String(seq.startBijakNumber) : String(defaultBijak),
-                cheque: seq.startChequeReceiptNumber ? String(seq.startChequeReceiptNumber) : String(defaultCheque)
+                cheque: seq.startChequeReceiptNumber ? String(seq.startChequeReceiptNumber) : String(defaultCheque),
+                posht: seq.startPoshtNomreh ? String(seq.startPoshtNomreh) : String(defaultPosht)
             };
         });
         setCompanyConfig(configMap);
@@ -209,12 +211,13 @@ export const FiscalYearManager: React.FC<{
         const sequences: Record<string, CompanySequenceConfig> = {};
         
         Object.entries(companyConfig).forEach(([compName, vals]) => {
-            const values = vals as { pay: string, exit: string, bijak: string, cheque: string };
+            const values = vals as { pay: string, exit: string, bijak: string, cheque: string, posht: string };
             sequences[compName] = {
                 startTrackingNumber: parseInt(values.pay) || 1001,
                 startExitPermitNumber: parseInt(values.exit) || 1001,
                 startBijakNumber: parseInt(values.bijak) || 1001,
                 startChequeReceiptNumber: parseInt(values.cheque) || 1001,
+                startPoshtNomreh: parseInt(values.posht) || 1,
             };
         });
 
@@ -309,11 +312,12 @@ export const FiscalYearManager: React.FC<{
                                     <th className="p-3 border-b w-32">شروع خروج</th>
                                     <th className="p-3 border-b w-32">شروع بیجک</th>
                                     <th className="p-3 border-b w-32">شروع رسید دریافت</th>
+                                    <th className="p-3 border-b w-32">شروع پشت‌نمره</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
                                 {getActiveCompaniesList(settings, editingYear).map(c => {
-                                    const conf = companyConfig[c.name] || { pay: '1', exit: '1', bijak: '1', cheque: '1' };
+                                    const conf = companyConfig[c.name] || { pay: '1', exit: '1', bijak: '1', cheque: '1', posht: '1' };
                                     return (
                                         <tr key={c.id} className="hover:bg-indigo-50/30">
                                             <td className="p-3 font-bold">{c.name}</td>
@@ -347,6 +351,14 @@ export const FiscalYearManager: React.FC<{
                                                     className="w-full border rounded p-1 text-center dir-ltr focus:border-indigo-500 outline-none"
                                                     value={conf.cheque}
                                                     onChange={e => setCompanyConfig({...companyConfig, [c.name]: { ...conf, cheque: e.target.value }})}
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="number" 
+                                                    className="w-full border rounded p-1 text-center dir-ltr focus:border-indigo-500 outline-none"
+                                                    value={conf.posht || '1'}
+                                                    onChange={e => setCompanyConfig({...companyConfig, [c.name]: { ...conf, posht: e.target.value }})}
                                                 />
                                             </td>
                                         </tr>

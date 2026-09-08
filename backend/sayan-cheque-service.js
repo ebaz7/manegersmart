@@ -132,6 +132,47 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
             nextPoshtNomreh = (Number(allPosht[0]?.MaxPosht) || 700) + 1;
         }
 
+        // Integrate configured startPoshtNomreh and local drafts to prevent overlap
+        try {
+            const db = getDb();
+            const settings = db?.settings || {};
+            const activeYear = (settings.fiscalYears || []).find(y => y.id === settings.activeFiscalYearId);
+            
+            let configStart = 1;
+            if (settings.currentPoshtNomreh) {
+                configStart = parseInt(String(settings.currentPoshtNomreh)) || 1;
+            }
+
+            if (activeYear && activeYear.companySequences) {
+                for (const key of Object.keys(activeYear.companySequences)) {
+                    const seq = activeYear.companySequences[key];
+                    if (seq && seq.startPoshtNomreh) {
+                        const val = parseInt(String(seq.startPoshtNomreh));
+                        if (!isNaN(val) && val > configStart) {
+                            configStart = val;
+                        }
+                    }
+                }
+            }
+
+            const localReceipts = db?.sayan_cheque_receipts || [];
+            const maxLocalPosht = localReceipts
+                .filter(r => String(r.fiscalYear) === String(fy))
+                .reduce((max, r) => {
+                    const num = parseInt(r.poshtNomreh);
+                    return !isNaN(num) && num > max ? num : max;
+                }, 0);
+
+            if (configStart > nextPoshtNomreh) {
+                nextPoshtNomreh = configStart;
+            }
+            if (maxLocalPosht >= nextPoshtNomreh) {
+                nextPoshtNomreh = maxLocalPosht + 1;
+            }
+        } catch (dbErr) {
+            console.error('Error matching local DB and configs for nextPoshtNomreh:', dbErr);
+        }
+
         return {
             success: true,
             fiscalYear: fy,
@@ -157,10 +198,16 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
 
 /**
  * Search Sayan Tafsili / Persons by Name or Code from GNR_TBL_001
+ * Supports Persian/Arabic character normalization and search by code, name, nationalId or mobile.
  */
-export const searchSayanPersons = async (query = '', limit = 30) => {
+export const searchSayanPersons = async (query = '', limit = 40) => {
     try {
-        const cleanQ = (query || '').trim().replace(/'/g, "''");
+        const rawQ = (query || '').trim();
+        const cleanQ = rawQ.replace(/'/g, "''");
+        // Create Persian/Arabic Yeh & Kaf variants for resilient search
+        const qPersian = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک');
+        const qArabic = cleanQ.replace(/\u06CC/g, 'ي').replace(/\u06A9/g, 'ك');
+
         let sql = `
             SELECT TOP ${limit}
                 Field_003 as PersonCode,
@@ -173,9 +220,17 @@ export const searchSayanPersons = async (query = '', limit = 30) => {
         if (cleanQ) {
             sql += ` AND (
                 Field_003 LIKE '%${cleanQ}%' OR 
+                Field_009 LIKE '%${cleanQ}%' OR
+                Field_015 LIKE '%${cleanQ}%' OR
                 Field_006 LIKE N'%${cleanQ}%' OR 
                 Field_007 LIKE N'%${cleanQ}%' OR
-                CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')) LIKE N'%${cleanQ}%'
+                Field_006 LIKE N'%${qPersian}%' OR 
+                Field_007 LIKE N'%${qPersian}%' OR
+                Field_006 LIKE N'%${qArabic}%' OR 
+                Field_007 LIKE N'%${qArabic}%' OR
+                CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')) LIKE N'%${cleanQ}%' OR
+                CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')) LIKE N'%${qPersian}%' OR
+                CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')) LIKE N'%${qArabic}%'
             )`;
         }
         sql += ` ORDER BY CAST(Field_003 as bigint) DESC`;
@@ -402,7 +457,10 @@ export const saveChequeReceiptDraft = async (receiptData, currentUser) => {
         totalAmount,
         description: String(receiptData.description || '').trim(),
         cheques: cleanCheques,
-        attachments: receiptData.attachments || [], // PDF or Image references for preview
+        attachments: (receiptData.attachments || []).map(att => ({
+            fileName: att.fileName,
+            fileType: att.fileType
+        })), // Store only filenames/metadata, no heavy fileData base64 in the database
         createdBy: isEdit && receiptData.createdBy ? receiptData.createdBy : (currentUser ? { id: currentUser.id, name: currentUser.fullName || currentUser.name, role: currentUser.role } : null),
         createdAt: isEdit && receiptData.createdAt ? receiptData.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),

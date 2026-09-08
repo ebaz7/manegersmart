@@ -201,6 +201,7 @@ export interface CompanySequenceConfig {
     startExitPermitNumber?: number;
     startBijakNumber?: number;
     startChequeReceiptNumber?: number;
+    startPoshtNomreh?: number;
 }
 
 export interface FiscalYear {
@@ -301,6 +302,7 @@ export interface SystemSettings {
   currentTrackingNumber: number;
   currentExitPermitNumber: number;
   currentChequeReceiptNumber?: number; // شماره جاری رسید دریافت چک عمومی
+  currentPoshtNomreh?: number; // شروع شماره پشت‌نمره چک سراسری
   chequeArchiveCutoffDate?: string; // تاریخ قطع نمایش چک‌های اقدام شده قدیمی
   companyNames: string[];
   companies?: Company[];

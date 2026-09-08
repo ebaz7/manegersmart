@@ -204,7 +204,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
             t57.PreInvoiceDocId,
             t57.PreInvoiceDate,
             t57.PreInvoiceVendorCode,
-            p.Field_006 as PreInvoiceVendorName
+            t57Vendor.VendorName as PreInvoiceVendorName
         FROM STR_TBL_010 t10
         OUTER APPLY (
             SELECT 
@@ -221,22 +221,41 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
                 d.Field_005 as PreInvoiceDocNo,
                 d.Field_008 as PreInvoiceDate,
                 d.Field_010 as PreInvoiceVendorCode
-            FROM STR_TBL_011 i53
-            INNER JOIN STR_TBL_011 i57 
-                ON i57.Field_003 = t10.Field_004
-               AND i57.Field_012 = 3
-               AND i57.Field_018 = i53.Field_001
-            INNER JOIN STR_TBL_010 d 
-                ON d.Field_004 = i57.Field_003 
-               AND d.Field_005 = i57.Field_004 
-               AND d.Field_018 = i57.Field_012 
-               AND d.Field_009 = '57'
-            WHERE i53.Field_003 = t10.Field_004 
-              AND i53.Field_004 = t10.Field_005 
-              AND i53.Field_012 = 3
+            FROM (
+                -- Source 1: Direct item line link (fast index seek via i53 -> i57 -> d1)
+                SELECT d1.Field_001, d1.Field_005, d1.Field_008, d1.Field_010 
+                FROM STR_TBL_011 i53 
+                INNER JOIN STR_TBL_011 i57 
+                    ON i57.Field_003 = t10.Field_004 
+                   AND i57.Field_012 = 3 
+                   AND i57.Field_018 = i53.Field_001 
+                INNER JOIN STR_TBL_010 d1 
+                    ON d1.Field_004 = i57.Field_003 
+                   AND d1.Field_005 = i57.Field_004 
+                   AND d1.Field_018 = i57.Field_012 
+                   AND d1.Field_009 = '57' 
+                WHERE i53.Field_003 = t10.Field_004 
+                  AND i53.Field_004 = t10.Field_005 
+                  AND i53.Field_012 = 3 
+
+                UNION ALL 
+
+                -- Source 2: Direct SubCode match (when SubCode is present)
+                SELECT d2.Field_001, d2.Field_005, d2.Field_008, d2.Field_010 
+                FROM STR_TBL_010 d2 
+                WHERE t10.Field_007 IS NOT NULL 
+                  AND t10.Field_007 <> '' 
+                  AND d2.Field_004 = t10.Field_004 
+                  AND d2.Field_009 = '57' 
+                  AND d2.Field_007 = t10.Field_007
+            ) d
             ORDER BY CAST(d.Field_005 AS INT) DESC
         ) t57
-        LEFT JOIN ACT_TBL_007 p ON t57.PreInvoiceVendorCode = p.Field_005
+        OUTER APPLY (
+            SELECT TOP 1 p.Field_006 as VendorName 
+            FROM ACT_TBL_007 p 
+            WHERE p.Field_005 = t57.PreInvoiceVendorCode
+        ) t57Vendor
         WHERE t10.Field_009 = '53' AND t10.Field_004 = '${fiscalYear}'
         ORDER BY CAST(t10.Field_005 AS INT) DESC
     `;
@@ -355,20 +374,27 @@ export const convert53To57 = async (doc53Id, options = {}) => {
 
     // 2. Verify that it is not already converted
     const verifyNotConverted = `
-        SELECT COUNT(DISTINCT i57.Field_001) as ExistsCount
-        FROM STR_TBL_011 i53
-        INNER JOIN STR_TBL_011 i57 
-            ON i57.Field_003 = i53.Field_003 
-           AND i57.Field_012 = 3 
-           AND i57.Field_018 = i53.Field_001
-        INNER JOIN STR_TBL_010 t57 
-            ON t57.Field_004 = i57.Field_003 
-           AND t57.Field_005 = i57.Field_004 
-           AND t57.Field_018 = i57.Field_012 
-           AND t57.Field_009 = '57'
-        WHERE i53.Field_003 = '${doc53.FiscalYear}' 
-          AND i53.Field_004 = '${doc53.DocNo}' 
-          AND i53.Field_012 = 3
+        SELECT COUNT(*) as ExistsCount
+        FROM STR_TBL_010 t57
+        WHERE t57.Field_004 = '${doc53.FiscalYear}'
+          AND t57.Field_009 = '57'
+          AND (
+              EXISTS (
+                  SELECT 1 FROM STR_TBL_011 i53
+                  INNER JOIN STR_TBL_011 i57 
+                      ON i57.Field_003 = '${doc53.FiscalYear}' 
+                     AND i57.Field_012 = 3 
+                     AND (i57.Field_018 = i53.Field_001 OR i57.Field_008 = i53.Field_001)
+                  WHERE i53.Field_003 = '${doc53.FiscalYear}' 
+                    AND i53.Field_004 = '${doc53.DocNo}' 
+                    AND i53.Field_012 = 3
+                    AND i57.Field_004 = t57.Field_005
+              )
+              OR (
+                  '${doc53.SubCode || ''}' <> '' 
+                  AND t57.Field_007 = '${doc53.SubCode}'
+              )
+          )
     `;
     const convertedRows = await executeSayanQuery(verifyNotConverted);
     if (convertedRows[0]?.ExistsCount > 0) {

@@ -522,11 +522,24 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         throw new Error(`درخواست خرید شماره ${doc53.DocNo} فاقد ردیف کالا در انبار است.`);
     }
 
-    // 5. Construct Atomic SQL Transaction
+    // 5. Fetch 53 Parameters from STR_TBL_013 for authentic metadata preservation
+    const paramsSql = `
+        SELECT Field_005 as ParamId, Field_006 as ParamVal 
+        FROM STR_TBL_013 
+        WHERE Field_003 = '${doc53.FiscalYear}' AND Field_004 = '${doc53.DocNo}' AND Field_007 = 3
+    `;
+    const doc53Params = await executeSayanQuery(paramsSql);
+    const paramMap = {};
+    for (const p of (doc53Params || [])) {
+        paramMap[p.ParamId] = p.ParamVal;
+    }
+
+    const requesterCode = (paramMap['186'] || paramMap['191'] || doc53.PersonCode53 || '1105').toString().replace(/'/g, "''");
+    const subCode = (paramMap['167'] || doc53.SubCode || '').toString().replace(/'/g, "''");
+    const note = (paramMap['168'] || doc53.Note || '').toString().replace(/'/g, "''");
     const fiscalYear = doc53.FiscalYear;
-    const subCode = doc53.SubCode || '4750';
-    const note = (doc53.Note || '').replace(/'/g, "''");
-    const desc = `تامین کننده: ${targetVendorCode} | درخواست کننده: ${doc53.PersonCode53 || '1105'} | کد فرعی: ${subCode} | توضیحات: ${note} | نوع: خودکار سیستم`.replace(/'/g, "''");
+    const totalAmount = items.reduce((sum, it) => sum + (Number(it.Qty) || 1), 0);
+    const desc = `تامین کننده: ${targetVendorCode} | درخواست کننده: ${requesterCode} | کد فرعی: ${subCode} | توضیحات: ${note} | نوع: غیر رسمی`.replace(/'/g, "''");
 
     let itemsInsertSql = '';
     let rowIndex = 1;
@@ -551,6 +564,15 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         rowIndex++;
     }
 
+    // Dynamic Sayan ERP header parameters (STR_TBL_013)
+    let paramsInsertSql = `
+        N'IN' + N'SERT INTO STR_TBL_013 (Field_003, Field_004, Field_005, Field_006, Field_007) VALUES ' +
+        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''190'', N''${targetVendorCode}'', 3), ' +
+        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''191'', N''${requesterCode}'', 3), ' +
+        ${subCode ? `N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''192'', N''${subCode}'', 3), ' +` : ''}
+        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''193'', N''${note}'', 3), ' +
+        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''366'', N''غیر رسمی'', 3); ' + `;
+
     const endAction = isDryRun 
         ? `N'SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo; ' + N'ROLL' + N'BACK TRAN;'`
         : `N'SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo; ' + N'COM' + N'MIT TRAN;'`;
@@ -573,10 +595,11 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'VALUES (' +
         N'@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), CAST(@NextSubNo AS NVARCHAR(20)), N''${subCode}'', GETDATE(), N''57'', N''${targetVendorCode}'', ' +
         N'0, 0, N''${note}'', 3, 0, N''0cd6777f-b6d7-4e42-9bec-e6400b85d409'', 0, ' +
-        N'0, 0, 5719, N''${desc}'', GETDATE(), 5719); ' +
+        N'0, 0, ${totalAmount}, N''${desc}'', GETDATE(), ${totalAmount}); ' +
         N'SET @New57Id = SCOPE_IDENTITY(); ' +
         
         ${itemsInsertSql}
+        ${paramsInsertSql}
         
         N'IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) ' +
         N'VALUES (${doc53Id}, @FiscalYear, ${doc53.DocNo}, 3, N''53'', GETDATE(), 0, GETDATE(), ${items.length}, 0, 0); ' +

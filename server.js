@@ -1727,20 +1727,20 @@ app.post('/api/sayan/order-automation/config', (req, res) => {
 // 5. Convert single 53 request to 57 pre-invoice
 app.post('/api/sayan/order-automation/convert-single', async (req, res) => {
     try {
-        const { doc53Id, vendorCode, vendorName, isDryRun, user } = req.body || {};
+        const { doc53Id, vendorCode, vendorName, isDryRun, dryRun, user, requestedBy } = req.body || {};
         if (!doc53Id) {
-            return res.status(400).json({ success: false, error: 'شناسه درخواست خرید (doc53Id) الزامی است.' });
+            return res.json({ success: false, error: 'شناسه درخواست خرید (doc53Id) الزامی است.' });
         }
         const result = await sayanOrderAuto.convert53To57(doc53Id, {
             vendorCode,
             vendorName,
-            isDryRun: Boolean(isDryRun),
-            user: user || 'کاربر سیستم'
+            isDryRun: Boolean(isDryRun ?? dryRun),
+            user: user || requestedBy || 'کاربر سیستم'
         });
         res.json(result);
     } catch (err) {
         console.error("Order automation single convert error:", err);
-        res.status(500).json({ success: false, error: err.message });
+        res.json({ success: false, error: err.message });
     }
 });
 
@@ -1756,7 +1756,7 @@ const handleBatchRun = async (req, res) => {
         res.json({ success: true, summary });
     } catch (err) {
         console.error("Order automation batch run error:", err);
-        res.status(500).json({ success: false, error: err.message });
+        res.json({ success: false, error: err.message });
     }
 };
 app.post('/api/sayan/order-automation/run-batch', handleBatchRun);

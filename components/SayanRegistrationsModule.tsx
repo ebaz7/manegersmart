@@ -221,6 +221,15 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
         );
     }, [archivedList, searchQuery]);
 
+    const parseSafeJson = async (res: Response) => {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            return await res.json();
+        }
+        const text = await res.text();
+        return { success: false, error: text.slice(0, 150) || `خطای سرور با کد ${res.status}` };
+    };
+
     const handleToggleAutomation = async () => {
         if (!config) return;
         const newEnabled = !config.enabled;
@@ -231,12 +240,12 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled: newEnabled })
             });
-            const data = await res.json();
+            const data = await parseSafeJson(res);
             if (data.success) {
                 setConfig(data.config);
                 showToast(newEnabled ? 'اتوماسیون ساعتی با موفقیت فعال شد.' : 'اتوماسیون ساعتی غیرفعال شد.', 'success');
             } else {
-                showToast(data.message || 'خطا در تغییر وضعیت اتوماسیون', 'error');
+                showToast(data.error || data.message || 'خطا در تغییر وضعیت اتوماسیون', 'error');
             }
         } catch (err: any) {
             showToast('خطای شبکه: ' + err.message, 'error');
@@ -253,13 +262,13 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(configForm)
             });
-            const data = await res.json();
+            const data = await parseSafeJson(res);
             if (data.success) {
                 setConfig(data.config);
                 setShowConfigPanel(false);
                 showToast('تنظیمات اتوماسیون با موفقیت ذخیره شد.', 'success');
             } else {
-                showToast(data.message || 'خطا در ذخیره تنظیمات', 'error');
+                showToast(data.error || data.message || 'خطا در ذخیره تنظیمات', 'error');
             }
         } catch (err: any) {
             showToast('خطای شبکه: ' + err.message, 'error');
@@ -280,7 +289,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                     triggeredBy: currentUser?.fullName || currentUser?.username || 'کاربر سیستم'
                 })
             });
-            const data = await res.json();
+            const data = await parseSafeJson(res);
             if (data.success) {
                 const summary = data.summary;
                 showToast(
@@ -289,7 +298,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                 );
                 await fetchStatusAndData();
             } else {
-                showToast(data.message || 'خطا در اجرای فرآیند', 'error');
+                showToast(data.error || data.message || 'خطا در اجرای فرآیند', 'error');
             }
         } catch (err: any) {
             showToast('خطای شبکه: ' + err.message, 'error');
@@ -314,10 +323,11 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                     vendorCode,
                     vendorName,
                     dryRun,
+                    isDryRun: dryRun,
                     requestedBy: currentUser?.fullName || currentUser?.username || 'کاربر سیستم'
                 })
             });
-            const data = await res.json();
+            const data = await parseSafeJson(res);
             if (data.success) {
                 if (dryRun) {
                     showToast(`[شبیه‌سازی] پیش‌فاکتور برای سند ${doc.docNo} با موفقیت اعتبارسنجی شد.`, 'info');
@@ -327,7 +337,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
                     await fetchStatusAndData();
                 }
             } else {
-                showToast(data.message || 'خطا در صدور پیش‌فاکتور در سایان', 'error');
+                showToast(data.error || data.message || 'خطا در صدور پیش‌فاکتور در سایان', 'error');
             }
         } catch (err: any) {
             showToast('خطای سرور سایان: ' + err.message, 'error');
@@ -341,11 +351,11 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
         setItemsLoading(true);
         try {
             const res = await fetch(`/api/sayan/order-automation/items/${doc.docNo}?fiscalYear=${doc.fiscalYear}`);
-            const data = await res.json();
+            const data = await parseSafeJson(res);
             if (data.success) {
                 setDocItems(data.items || []);
             } else {
-                showToast(data.message || 'خطا در دریافت اقلام سند', 'error');
+                showToast(data.error || data.message || 'خطا در دریافت اقلام سند', 'error');
             }
         } catch (err: any) {
             showToast('خطا در ارتباط با سایان: ' + err.message, 'error');

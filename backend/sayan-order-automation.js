@@ -97,6 +97,70 @@ export const executeSayanQuery = async (queryStr) => {
 };
 
 /**
+ * Persian text normalization for accurate vendor matching
+ */
+export const normalizePersianText = (str) => {
+    if (!str) return '';
+    return str
+        .replace(/[\u064B-\u065F\u0670]/g, '') // Arabic diacritics
+        .replace(/\u064A/g, '\u06CC')          // Arabic Yeh -> Persian Yeh
+        .replace(/\u0649/g, '\u06CC')          // Alef Maksura -> Persian Yeh
+        .replace(/\u0643/g, '\u06A9')          // Arabic Kaf -> Persian Keheh
+        .replace(/\u0629/g, '\u0647')          // Teh Marbuta -> Heh
+        .replace(/\u200C/g, ' ')               // ZWNJ -> space
+        .replace(/[\(\)\[\]\{\}\-\_\,\:\;\"\'\،\؛]/g, ' ') // punctuation -> space
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+export const cleanVendorKeywords = (text) => {
+    let s = normalizePersianText(text);
+    s = s.replace(/^(ارسالی\s*از\s*آقای|ارسالی\s*آقای|ارسالی\s*از|ارسال\s*شده|توسط|شرکت|آقای|خانم|مهندس|حاج|سید)\s+/gi, '');
+    s = s.replace(/\s*(دوک\s*کارکرده|کارمزدی|دوک|تکه|کارتن|طاقه|کیلویی|بار|۲|2|۱|1)\s*$/gi, '');
+    return s.trim();
+};
+
+/**
+ * Cache and load persons from ACT_TBL_007
+ */
+let cachedPersons = null;
+let lastPersonsFetch = 0;
+
+export const getAllPersonsList = async (forceRefresh = false) => {
+    const now = Date.now();
+    if (!forceRefresh && cachedPersons && (now - lastPersonsFetch < 10 * 60 * 1000)) {
+        return cachedPersons;
+    }
+    try {
+        const sql = `
+            SELECT 
+                RTRIM(LTRIM(Field_005)) as PersonCode, 
+                RTRIM(LTRIM(Field_006)) as PersonName 
+            FROM ACT_TBL_007 
+            WHERE Field_005 IS NOT NULL 
+              AND Field_006 IS NOT NULL 
+              AND LEN(Field_006) > 1
+        `;
+        const rows = await executeSayanQuery(sql);
+        cachedPersons = rows.map(r => {
+            const clean = cleanVendorKeywords(r.PersonName);
+            return {
+                personCode: r.PersonCode,
+                personName: r.PersonName,
+                normName: normalizePersianText(r.PersonName),
+                cleanName: clean,
+                words: clean.split(' ').filter(w => w.length >= 2)
+            };
+        });
+        lastPersonsFetch = now;
+        return cachedPersons;
+    } catch (err) {
+        console.error('[Sayan Automation] Error loading ACT_TBL_007 persons:', err);
+        return cachedPersons || [];
+    }
+};
+
+/**
  * Load dictionary of historical note -> vendor mappings
  */
 let cachedVendorMap = null;
@@ -124,12 +188,13 @@ export const getHistoricalVendorMap = async (forceRefresh = false) => {
         const rows = await executeSayanQuery(sql);
         const map = new Map();
         for (const r of rows) {
-            const cleanNote = (r.Note || '').trim();
-            if (cleanNote && !map.has(cleanNote)) {
+            const cleanNote = cleanVendorKeywords(r.Note || '');
+            if (cleanNote && cleanNote.length >= 3 && !map.has(cleanNote)) {
                 map.set(cleanNote, {
                     personCode: r.PersonCode,
                     personName: r.PersonName,
-                    matchCount: r.MatchCount
+                    matchCount: r.MatchCount,
+                    words: cleanNote.split(' ').filter(w => w.length >= 2)
                 });
             }
         }
@@ -143,36 +208,64 @@ export const getHistoricalVendorMap = async (forceRefresh = false) => {
 };
 
 /**
- * Clean and match vendor from note text
+ * Clean and match vendor from note text with multi-tier precision matching
  */
-export const resolveVendorForNote = (note, vendorMap) => {
+export const resolveVendorForNote = (note, vendorMap, allPersons = []) => {
     if (!note || !note.trim()) {
         return { personCode: null, personName: null, confidence: 0, reason: 'بدون توضیحات' };
     }
 
-    const rawNote = note.trim();
-
-    // 1. Direct match
-    if (vendorMap.has(rawNote)) {
-        const v = vendorMap.get(rawNote);
-        return { personCode: v.personCode, personName: v.personName, confidence: 100, reason: 'تطابق مستقیم با تاریخچه' };
+    const cleanNote = cleanVendorKeywords(note);
+    if (!cleanNote) {
+        return { personCode: null, personName: null, confidence: 0, reason: 'توضیحات فاقد نام معتبر' };
     }
 
-    // 2. Clean common prefixes/suffixes
-    const cleaned = rawNote
-        .replace(/^(ارسالی\s*از\s*آقای|ارسالی\s*آقای|ارسالی\s*از|شرکت|آقای)\s+/gi, '')
-        .replace(/\s*\((دوک\s*کارکرده|کارمزدی|دوک|تکه|کارتن|۲|2)\)\s*$/gi, '')
-        .trim();
+    const noteWords = cleanNote.split(' ').filter(w => w.length >= 2);
 
-    if (cleaned && vendorMap.has(cleaned)) {
-        const v = vendorMap.get(cleaned);
-        return { personCode: v.personCode, personName: v.personName, confidence: 90, reason: `تطابق پس از حذف پیشوند/پسوند (${cleaned})` };
+    // 1. Direct match in historical map
+    if (vendorMap && vendorMap.has(cleanNote)) {
+        const v = vendorMap.get(cleanNote);
+        return { personCode: v.personCode, personName: v.personName, confidence: 100, reason: 'تطابق مستقیم با سوابق تاریخی' };
     }
 
-    // 3. Partial substring search in known vendor names
-    for (const [vNote, vData] of vendorMap.entries()) {
-        if (vNote.includes(cleaned) || cleaned.includes(vNote)) {
-            return { personCode: vData.personCode, personName: vData.personName, confidence: 75, reason: `تطابق تشابه عبارت با (${vNote})` };
+    // 2. Token / word-level match in historical map
+    if (vendorMap && noteWords.length >= 2) {
+        for (const [k, v] of vendorMap.entries()) {
+            if (k.length < 3) continue;
+            const cleanK = cleanVendorKeywords(k);
+            const kWords = cleanK.split(' ').filter(w => w.length >= 2);
+            if (noteWords.every(w => cleanK.includes(w)) || (kWords.length >= 2 && kWords.every(w => cleanNote.includes(w)))) {
+                return { personCode: v.personCode, personName: v.personName, confidence: 95, reason: `تطابق کلمات با سوابق (${k})` };
+            }
+        }
+    }
+
+    // 3. Exact match against all persons in Sayan (ACT_TBL_007)
+    if (Array.isArray(allPersons) && allPersons.length > 0) {
+        for (const p of allPersons) {
+            if (p.cleanName === cleanNote) {
+                return { personCode: p.personCode, personName: p.personName, confidence: 98, reason: `تطابق دقیق نام شخص در سیستم (${p.personName})` };
+            }
+        }
+
+        // 4. Token / word match against persons in Sayan (e.g. note "جعفر شعبانی" matches "شعبانی جعفر (دوک)")
+        if (noteWords.length >= 2) {
+            for (const p of allPersons) {
+                if (noteWords.every(w => p.cleanName.includes(w))) {
+                    return { personCode: p.personCode, personName: p.personName, confidence: 95, reason: `تطابق کامل کلمات با تامین‌کننده در سیستم (${p.personName})` };
+                }
+            }
+        }
+    }
+
+    // 5. Substring match in historical map (safe length check >= 4 chars)
+    if (vendorMap && cleanNote.length >= 4) {
+        for (const [k, v] of vendorMap.entries()) {
+            if (k.length < 4) continue;
+            const cleanK = cleanVendorKeywords(k);
+            if (cleanK.length >= 4 && (cleanNote.includes(cleanK) || cleanK.includes(cleanNote))) {
+                return { personCode: v.personCode, personName: v.personName, confidence: 80, reason: `تطابق تشابه عبارت با سوابق (${k})` };
+            }
         }
     }
 
@@ -185,6 +278,7 @@ export const resolveVendorForNote = (note, vendorMap) => {
  */
 export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
     const vendorMap = await getHistoricalVendorMap();
+    const allPersons = await getAllPersonsList();
 
     const sql = `
         SELECT 
@@ -214,6 +308,8 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
             WHERE i.Field_003 = t10.Field_004 
               AND i.Field_004 = t10.Field_005 
               AND i.Field_012 = 3
+              AND (i.Field_018 IS NULL OR i.Field_018 = '')
+              AND (i.Field_008 IS NULL OR i.Field_008 = '')
         ) items
         OUTER APPLY (
             SELECT TOP 1 
@@ -228,7 +324,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
                 INNER JOIN STR_TBL_011 i57 
                     ON i57.Field_003 = t10.Field_004 
                    AND i57.Field_012 = 3 
-                   AND i57.Field_018 = i53.Field_001 
+                   AND (i57.Field_018 = i53.Field_001 OR i57.Field_008 = i53.Field_001)
                 INNER JOIN STR_TBL_010 d1 
                     ON d1.Field_004 = i57.Field_003 
                    AND d1.Field_005 = i57.Field_004 
@@ -263,7 +359,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4') => {
     const rows = await executeSayanQuery(sql);
 
     return rows.map(r => {
-        const vendor = resolveVendorForNote(r.Note, vendorMap);
+        const vendor = resolveVendorForNote(r.Note, vendorMap, allPersons);
         const hasPreInvoice = Boolean(r.PreInvoiceDocNo);
         return {
             doc53Id: r.Doc53Id,
@@ -336,7 +432,11 @@ export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
         LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
         LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
         LEFT JOIN GNR_TBL_002 u ON RTRIM(LTRIM(u.Field_006)) = RTRIM(LTRIM(t11.Field_036))
-        WHERE t11.Field_003 = '${fiscalYear}' AND t11.Field_004 = '${docNo}' AND t11.Field_012 = 3
+        WHERE t11.Field_003 = '${fiscalYear}' 
+          AND t11.Field_004 = '${docNo}' 
+          AND t11.Field_012 = 3
+          AND (t11.Field_018 IS NULL OR t11.Field_018 = '')
+          AND (t11.Field_008 IS NULL OR t11.Field_008 = '')
         ORDER BY t11.Field_001 ASC
     `;
     return await executeSayanQuery(sql);
@@ -407,7 +507,8 @@ export const convert53To57 = async (doc53Id, options = {}) => {
 
     if (!targetVendorCode) {
         const vendorMap = await getHistoricalVendorMap();
-        const detected = resolveVendorForNote(doc53.Note, vendorMap);
+        const allPersons = await getAllPersonsList();
+        const detected = resolveVendorForNote(doc53.Note, vendorMap, allPersons);
         if (detected.confidence < 70 || !detected.personCode) {
             throw new Error(`نام تامین‌کننده از توضیحات "${doc53.Note || 'بدون متن'}" با اطمینان کافی تشخیص داده نشد. لطفاً کد یا نام تامین‌کننده را به صورت دستی انتخاب کنید.`);
         }
@@ -456,11 +557,12 @@ export const convert53To57 = async (doc53Id, options = {}) => {
 
     const fullSql = `
     EXEC(
+        N'SET XACT_ABORT ON; ' +
         N'BE' + N'GIN TRAN; ' +
         N'DECLARE @FiscalYear NVARCHAR(10) = ''${fiscalYear}''; ' +
         N'DECLARE @NextDocNo BIGINT; ' +
         N'DECLARE @NextSubNo BIGINT; ' +
-        N'SELECT @NextDocNo = ISNULL(MAX(CAST(Field_005 AS BIGINT)), 0) + 1 FROM STR_TBL_010 WHERE Field_004 = @FiscalYear AND Field_009 = ''57''; ' +
+        N'SELECT @NextDocNo = ISNULL(MAX(CAST(Field_005 AS BIGINT)), 0) + 1 FROM STR_TBL_010 WHERE Field_004 = @FiscalYear AND Field_018 = 3; ' +
         N'SELECT @NextSubNo = ISNULL(MAX(CAST(Field_006 AS BIGINT)), 0) + 1 FROM STR_TBL_010 WHERE Field_004 = @FiscalYear AND Field_009 = ''57''; ' +
         N'DECLARE @New57Id BIGINT; ' +
         

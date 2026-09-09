@@ -102,13 +102,28 @@ interface Props {
 
 export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, settings }) => {
     // Main module sub-navigation: Tab 1 = Purchase Pre-Invoices (53 -> 57), Tab 2 = Cheque Receipts (Bursary 11), Tab 3 = Other future Sayan registrations
-    const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
-
     const perms = useMemo(() => {
         return getRolePermissions(currentUser?.role, settings || null, currentUser);
     }, [currentUser, settings]);
 
     const canSayanRegisterCheque = currentUser?.role === UserRole.ADMIN || perms.canSayanRegisterCheque === true;
+    const canAccessSayanRegistrations = currentUser?.role === UserRole.ADMIN || perms.canAccessSayanRegistrations === true;
+
+    const initialTab = useMemo(() => {
+        if (currentUser?.role === UserRole.ADMIN || perms.canAccessSayanRegistrations === true) {
+            return 'PURCHASE_PREINVOICES';
+        }
+        if (perms.canSayanRegisterCheque === true) {
+            return 'CHEQUE_RECEIPTS';
+        }
+        return 'FUTURE_DOCS';
+    }, [currentUser, perms]);
+
+    const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>(initialTab);
+
+    useEffect(() => {
+        setMainSubTab(initialTab);
+    }, [initialTab]);
 
     useEffect(() => {
         const handleSubTabEvent = (e: any) => {
@@ -117,12 +132,14 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                     setMainSubTab('CHEQUE_RECEIPTS');
                 }
             } else if (e.detail === 'PURCHASE_PREINVOICES') {
-                setMainSubTab('PURCHASE_PREINVOICES');
+                if (canAccessSayanRegistrations) {
+                    setMainSubTab('PURCHASE_PREINVOICES');
+                }
             }
         };
         window.addEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
         return () => window.removeEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
-    }, [canSayanRegisterCheque]);
+    }, [canSayanRegisterCheque, canAccessSayanRegistrations]);
 
     // State for Purchase Pre-Invoices automation
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<'4' | '3'>('4');
@@ -551,18 +568,20 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
 
                 {/* Sub-Module Switcher */}
                 <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl gap-1 border border-slate-200 dark:border-slate-700/60 self-start md:self-auto">
-                    <button
-                        type="button"
-                        onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                            mainSubTab === 'PURCHASE_PREINVOICES'
-                                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                    >
-                        <Sparkles className="w-4 h-4 text-amber-500" />
-                        <span>ثبت پیش‌فاکتورهای درخواست خرید</span>
-                    </button>
+                    {canAccessSayanRegistrations && (
+                        <button
+                            type="button"
+                            onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
+                            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                                mainSubTab === 'PURCHASE_PREINVOICES'
+                                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <Sparkles className="w-4 h-4 text-amber-500" />
+                            <span>ثبت پیش‌فاکتورهای درخواست خرید</span>
+                        </button>
+                    )}
                     {canSayanRegisterCheque && (
                         <button
                             type="button"
@@ -612,20 +631,22 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                         </p>
                     </div>
                     <div className="pt-2">
-                        <button
-                            type="button"
-                            onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
-                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-2 transition-all shadow-sm"
-                        >
-                            <ArrowRight className="w-4 h-4" />
-                            <span>بازگشت به ثبت پیش‌فاکتورهای درخواست خرید</span>
-                        </button>
+                        {canAccessSayanRegistrations && (
+                            <button
+                                type="button"
+                                onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
+                                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-2 transition-all shadow-sm"
+                            >
+                                <ArrowRight className="w-4 h-4" />
+                                <span>بازگشت به ثبت پیش‌فاکتورهای درخواست خرید</span>
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
 
             {/* TAB 1: Main Purchase Request to Pre-Invoice Feature */}
-            {mainSubTab === 'PURCHASE_PREINVOICES' && (
+            {mainSubTab === 'PURCHASE_PREINVOICES' && canAccessSayanRegistrations && (
                 <div className="space-y-4">
                     {/* Automation Status & Control Header Bar */}
                     <div className="bg-slate-50 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5">

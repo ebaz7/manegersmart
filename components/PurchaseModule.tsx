@@ -1776,6 +1776,126 @@ const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () =
     );
 };
 
+const ViewProformaDetailsModal = ({ proforma, onClose, setPreviewFile }: { proforma: PurchaseProforma, onClose: () => void, setPreviewFile: (file: { url: string; fileName: string } | null) => void }) => {
+    return createPortal(
+        <div className="fixed inset-0 z-[100000008] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <div className="bg-white dark:bg-gray-900 rounded-[2rem] w-full max-w-3xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col max-h-[90vh]">
+                <div className="p-5 border-b dark:border-gray-800 flex justify-between items-center bg-indigo-900 text-white">
+                    <div className="flex items-center gap-3">
+                        <FileText size={24} className="text-indigo-200" />
+                        <div>
+                            <h2 className="text-sm font-black">جزئیات و سند پیش‌فاکتور (استعلام)</h2>
+                            <p className="text-[10px] opacity-85 font-bold">{proforma.vendorName}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 no-scrollbar text-right" dir="rtl">
+                    {/* Basic Vendor Info & Terms */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-indigo-50/50 dark:bg-indigo-950/20 p-4 rounded-2xl border border-indigo-100/50 dark:border-indigo-900/30">
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold">تأمین‌کننده:</span> <span className="font-black text-gray-900 dark:text-gray-100">{proforma.vendorName}</span></div>
+                            <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold">شماره تماس:</span> <span className="font-mono text-gray-800 dark:text-gray-200" dir="ltr">{proforma.vendorPhone || 'ثبت نشده'}</span></div>
+                            <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold">شماره پیش‌فاکتور:</span> <span className="font-mono text-indigo-700 dark:text-indigo-400 font-bold">{proforma.number || 'بدون شماره'}</span></div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold">تاریخ ثبت:</span> <span className="font-bold text-gray-800 dark:text-gray-200">{formatDate(proforma.date)}</span></div>
+                            <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold">مدت زمان تحویل:</span> <span className="font-bold text-orange-600 dark:text-orange-400">{proforma.deliveryTime || 'مشخص نشده'}</span></div>
+                            <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold">شرایط پرداخت:</span> <span className="font-bold text-gray-800 dark:text-gray-200">{proforma.paymentConditions || 'مشخص نشده'}</span></div>
+                        </div>
+                    </div>
+
+                    {/* Proforma Items */}
+                    {proforma.items && proforma.items.length > 0 && (
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-1.5"><Package size={14} className="text-indigo-500" /> لیست اقلام استعلام‌شده</h3>
+                            <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-800 text-gray-500 font-bold">
+                                            <th className="p-2.5 text-center w-12">ردیف</th>
+                                            <th className="p-2.5 text-right">شرح کالا / قطعه</th>
+                                            <th className="p-2.5 text-center w-24">تعداد / مقدار</th>
+                                            <th className="p-2.5 text-left w-32">قیمت واحد (ریال)</th>
+                                            <th className="p-2.5 text-left w-36">قیمت کل (ریال)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                                        {proforma.items.map((item, idx) => (
+                                            <tr key={item.id || idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40">
+                                                <td className="p-2.5 text-center font-mono text-gray-400">{idx + 1}</td>
+                                                <td className="p-2.5 font-bold text-gray-800 dark:text-gray-200">{item.description}</td>
+                                                <td className="p-2.5 text-center font-bold text-gray-700 dark:text-gray-300">{item.quantity} {item.unit}</td>
+                                                <td className="p-2.5 text-left font-mono text-gray-600 dark:text-gray-400">{formatCurrency(item.unitPrice)}</td>
+                                                <td className="p-2.5 text-left font-mono font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(item.totalPrice)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Financial Summary */}
+                    <div className="border-t dark:border-gray-800 pt-4 flex flex-col items-end space-y-2">
+                        {proforma.taxAmount !== undefined && proforma.taxAmount > 0 && (
+                            <div className="flex justify-between w-64 text-xs text-gray-500"><span className="font-bold">مالیات و عوارض:</span> <span className="font-mono">{formatCurrency(proforma.taxAmount)} ریال</span></div>
+                        )}
+                        {proforma.discountAmount !== undefined && proforma.discountAmount > 0 && (
+                            <div className="flex justify-between w-64 text-xs text-red-500"><span className="font-bold">تخفیف پیش‌فاکتور:</span> <span className="font-mono">({formatCurrency(proforma.discountAmount)}) ریال</span></div>
+                        )}
+                        <div className="flex justify-between w-64 text-sm font-black border-t dark:border-gray-800 pt-2 text-indigo-700 dark:text-indigo-400">
+                            <span>مبلغ نهایی:</span>
+                            <span className="font-mono">{formatCurrency(proforma.totalAmount)} ریال</span>
+                        </div>
+                    </div>
+
+                    {/* Attachments Section */}
+                    <div className="border-t dark:border-gray-800 pt-5 space-y-3">
+                        <h3 className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-1.5"><Paperclip size={14} className="text-indigo-500" /> فایل‌های پیوست پیش‌فاکتور</h3>
+                        {proforma.attachments && proforma.attachments.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {proforma.attachments.map((att: any, attIdx: number) => (
+                                    <div key={att.id || attIdx} className="flex items-center justify-between p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Paperclip size={16} className="text-indigo-500 flex-shrink-0" />
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate" title={att.fileName || att.name}>{att.fileName || att.name || 'سند ضمیمه'}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPreviewFile({ url: att.url, fileName: att.fileName || att.name || `پیش‌فاکتور_${proforma.vendorName}` });
+                                            }}
+                                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black flex items-center gap-1 shadow-sm transition-all"
+                                        >
+                                            <Eye size={12} />
+                                            <span>مشاهده سند</span>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-6 border border-dashed border-gray-200 dark:border-gray-800 rounded-2xl text-center text-gray-400 dark:text-gray-500 text-xs italic">
+                                فایل اسکن‌شده یا پی‌دی‌اف برای این پیش‌فاکتور ضمیمه نشده است.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-4 border-t dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 flex justify-end">
+                    <button onClick={onClose} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-black text-xs rounded-xl transition-all">
+                        بستن پنجره
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
 const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, parts }: { request: PurchaseRequest, onClose: () => void, currentUser: User, onSuccess: () => void, settings?: SystemSettings, parts: PartMasterData[] }) => {
     const [actionLoading, setActionLoading] = useState(false);
     const [pdfLoading, setPdfLoading] = useState(false);
@@ -1797,6 +1917,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     const [printType, setPrintType] = useState<'REQUEST' | 'PROFORMA' | 'RECEIPT' | 'BARCODE'>('REQUEST');
     const [definingItem, setDefiningItem] = useState<any>(null);
     const [viewingPartDataSheet, setViewingPartDataSheet] = useState<PartMasterData | null>(null);
+    const [viewingProformaDetails, setViewingProformaDetails] = useState<PurchaseProforma | null>(null);
     const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string } | null>(null);
     const [isPrintDropdownOpen, setIsPrintDropdownOpen] = useState(false);
     const [isShareDropdownOpen, setIsShareDropdownOpen] = useState(false);
@@ -2325,6 +2446,25 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                 <div className="flex justify-between items-center border-t border-gray-100 pt-3">
                                                     <span className="text-sm font-black text-indigo-700">{formatCurrency(p.totalAmount)} <span className="text-[9px]">ریال</span></span>
                                                     <div className="flex gap-1">
+                                                        <button 
+                                                            onClick={() => setViewingProformaDetails(p)}
+                                                            className="p-2 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50" 
+                                                            title="مشاهده جزئیات و سند پیش‌فاکتور"
+                                                        >
+                                                            <Eye size={14}/>
+                                                        </button>
+                                                        {((isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING)) && hasPurchasePerm('canManageProformas')) && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setPrefilledProformaData(p);
+                                                                    setShowProformaModal(true);
+                                                                }}
+                                                                className="p-2 border border-amber-200 text-amber-600 rounded-lg hover:bg-amber-50" 
+                                                                title="ویرایش پیش‌فاکتور"
+                                                            >
+                                                                <Edit size={14}/>
+                                                            </button>
+                                                        )}
                                                         <button 
                                                             onClick={() => {
                                                                 setPrintingProforma(p);
@@ -3026,6 +3166,14 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     />
                 )}
 
+                {viewingProformaDetails && (
+                    <ViewProformaDetailsModal 
+                        proforma={viewingProformaDetails} 
+                        onClose={() => setViewingProformaDetails(null)} 
+                        setPreviewFile={setPreviewFile}
+                    />
+                )}
+
                 {previewFile && (
                     <FileViewerModal 
                         isOpen={!!previewFile} 
@@ -3043,8 +3191,11 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, initialVendorData, parts }: any) => {
     const [vendor, setVendor] = useState(initialVendorData?.vendorName || '');
     const [phone, setPhone] = useState(initialVendorData?.vendorPhone || '');
-    const [num, setNum] = useState('');
+    const [num, setNum] = useState(initialVendorData?.number || '');
     const [items, setItems] = useState(() => {
+        if (initialVendorData?.items && Array.isArray(initialVendorData.items)) {
+            return initialVendorData.items;
+        }
         if (initialVendorData) {
             return [{
                 id: generateUUID(),
@@ -3057,8 +3208,8 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
         }
         return [{ id: generateUUID(), description: request.itemName, quantity: request.quantity, unit: request.unit, unitPrice: 0, totalPrice: 0 }];
     });
-    const [tax, setTax] = useState(0);
-    const [discount, setDiscount] = useState(0);
+    const [tax, setTax] = useState(initialVendorData?.taxAmount || 0);
+    const [discount, setDiscount] = useState(initialVendorData?.discountAmount || 0);
     const [attachments, setAttachments] = useState<PurchaseAttachment[]>(initialVendorData?.attachments || []);
     const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const [previewAttachmentFile, setPreviewAttachmentFile] = useState<{ url: string; fileName: string } | null>(null);
@@ -3068,7 +3219,12 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
         if (initialVendorData) {
             if (initialVendorData.vendorName) setVendor(initialVendorData.vendorName);
             if (initialVendorData.vendorPhone) setPhone(initialVendorData.vendorPhone);
-            if (initialVendorData.unitPrice !== undefined) {
+            if (initialVendorData.number) setNum(initialVendorData.number);
+            if (initialVendorData.taxAmount !== undefined) setTax(initialVendorData.taxAmount);
+            if (initialVendorData.discountAmount !== undefined) setDiscount(initialVendorData.discountAmount);
+            if (initialVendorData.items && Array.isArray(initialVendorData.items)) {
+                setItems(initialVendorData.items);
+            } else if (initialVendorData.unitPrice !== undefined) {
                 setItems(prev => prev.map((it, idx) => idx === 0 ? {
                     ...it,
                     description: initialVendorData.description || it.description,
@@ -3132,19 +3288,25 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
 
     const handleAdd = () => {
         const newP: PurchaseProforma = {
-            id: generateUUID(),
+            id: initialVendorData?.id || generateUUID(),
             vendorName: vendor,
             vendorPhone: phone,
             number: num,
-            date: new Date().toISOString().split('T')[0],
+            date: initialVendorData?.date || new Date().toISOString().split('T')[0],
             items: items,
             totalAmount: finalTotal,
             taxAmount: tax,
             discountAmount: discount,
             attachments: attachments,
-            registeredBy: currentUser.fullName
+            registeredBy: initialVendorData?.registeredBy || currentUser.fullName,
+            isChosen: initialVendorData?.isChosen || false
         };
-        onSuccess([...request.proformas, newP]);
+        if (initialVendorData?.id && request.proformas.some((p: any) => p.id === initialVendorData.id)) {
+            const updated = request.proformas.map((p: any) => p.id === initialVendorData.id ? newP : p);
+            onSuccess(updated);
+        } else {
+            onSuccess([...request.proformas, newP]);
+        }
     };
 
     return createPortal(
@@ -3152,7 +3314,9 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
             <div className="bg-white rounded-[2rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
                 <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
                     <div>
-                        <h3 className="font-black text-xl text-gray-800">ثبت پیش‌فاکتور حرفه‌ای</h3>
+                        <h3 className="font-black text-xl text-gray-800">
+                            {initialVendorData?.id ? 'ویرایش پیش‌فاکتور حرفه‌ای' : 'ثبت پیش‌فاکتور حرفه‌ای'}
+                        </h3>
                         <p className="text-xs text-gray-500 font-bold mt-0.5">درخواست شماره: {request.requestNumber} - کالا: {request.itemName}</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full cursor-pointer"><XCircle/></button>
@@ -3296,7 +3460,9 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
                     </div>
                 </div>
                 <div className="p-6 bg-gray-50 flex gap-3">
-                    <button onClick={handleAdd} className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 active:scale-95 transition-all cursor-pointer">تایید و ثبت نهایی پیش‌فاکتور</button>
+                    <button onClick={handleAdd} className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 active:scale-95 transition-all cursor-pointer">
+                        {initialVendorData?.id ? 'ذخیره تغییرات پیش‌فاکتور' : 'تایید و ثبت نهایی پیش‌فاکتور'}
+                    </button>
                     <button onClick={onClose} className="px-8 bg-white border border-gray-300 text-gray-600 font-bold rounded-2xl hover:bg-gray-100 transition-all cursor-pointer">انصراف</button>
                 </div>
 

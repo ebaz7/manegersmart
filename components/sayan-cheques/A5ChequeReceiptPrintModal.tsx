@@ -117,12 +117,71 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto animate-fade-in">
-            {/* Print CSS specific to A5 Landscape - Strictly Theme-Agnostic */}
+            {/* Print & Screen CSS specific to A5 Landscape - Strictly Theme-Agnostic */}
             <style>{`
                 @page {
                     size: A5 landscape;
                     margin: 4mm 6mm;
                 }
+                
+                /* Guarantee that the print area looks identical on screen in all themes (light/dark/etc.) */
+                #a5-cheque-receipt-print-area {
+                    background-color: #ffffff !important;
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    border: 2px solid #000000 !important;
+                    border-radius: 12px !important;
+                    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+                }
+                #a5-cheque-receipt-print-area * {
+                    color: #000000 !important;
+                    border-color: #000000 !important;
+                    text-shadow: none !important;
+                    box-shadow: none !important;
+                }
+                #a5-cheque-receipt-print-area input {
+                    background-color: #ffffff !important;
+                    color: #000000 !important;
+                    border-color: #000000 !important;
+                }
+                #a5-cheque-receipt-print-area table {
+                    border: 2px solid #000000 !important;
+                    border-collapse: collapse !important;
+                    background-color: #ffffff !important;
+                }
+                #a5-cheque-receipt-print-area th {
+                    background-color: #f1f5f9 !important; /* slate-100 */
+                    background: #f1f5f9 !important;
+                    color: #000000 !important;
+                    font-weight: 900 !important;
+                    border: 1.5px solid #000000 !important;
+                }
+                #a5-cheque-receipt-print-area td {
+                    background-color: #ffffff !important;
+                    color: #000000 !important;
+                    border: 1px solid #000000 !important;
+                }
+                #a5-cheque-receipt-print-area .signature-box {
+                    background-color: #ffffff !important;
+                    background: #ffffff !important;
+                    border: 1.5px solid #000000 !important;
+                    color: #000000 !important;
+                }
+                #a5-cheque-receipt-print-area .bg-slate-50 {
+                    background-color: #f8fafc !important; /* slate-50 */
+                    background: #f8fafc !important;
+                    border: 1.5px solid #000000 !important;
+                }
+                #a5-cheque-receipt-print-area .border-slate-900,
+                #a5-cheque-receipt-print-area .border-b-2 {
+                    border-color: #000000 !important;
+                }
+                #a5-cheque-receipt-print-area .text-slate-600,
+                #a5-cheque-receipt-print-area .text-slate-500,
+                #a5-cheque-receipt-print-area .text-slate-700 {
+                    color: #1e293b !important; /* slate-800 - dark enough for high contrast */
+                }
+
                 @media print {
                     html, body {
                         background-color: #ffffff !important;
@@ -158,28 +217,6 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         z-index: 999999 !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
-                    }
-                    #a5-cheque-receipt-print-area table,
-                    #a5-cheque-receipt-print-area th,
-                    #a5-cheque-receipt-print-area td,
-                    #a5-cheque-receipt-print-area div,
-                    #a5-cheque-receipt-print-area span,
-                    #a5-cheque-receipt-print-area p,
-                    #a5-cheque-receipt-print-area h1,
-                    #a5-cheque-receipt-print-area h2,
-                    #a5-cheque-receipt-print-area h3 {
-                        color: #000000 !important;
-                    }
-                    #a5-cheque-receipt-print-area .print-bg-header {
-                        background-color: #f8fafc !important;
-                    }
-                    #a5-cheque-receipt-print-area .print-border-black {
-                        border-color: #000000 !important;
-                    }
-                    #a5-cheque-receipt-print-area .signature-box {
-                        background-color: #ffffff !important;
-                        background: #ffffff !important;
-                        border: 1.5px solid #000000 !important;
                     }
                     .no-print {
                         display: none !important;

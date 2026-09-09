@@ -41,6 +41,44 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+
+  const resolvedUrl = resolveImageUrl(fileUrl);
+
+  // Convert Base64 data URL to Object URL if needed to prevent iframe reload loop
+  useEffect(() => {
+    if (!isOpen || !resolvedUrl) {
+      setPreviewUrl('');
+      return;
+    }
+
+    if (resolvedUrl.startsWith('data:')) {
+      try {
+        const arr = resolvedUrl.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        if (mimeMatch) {
+          const mime = mimeMatch[1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const blob = new Blob([u8arr], { type: mime });
+          const blobUrl = URL.createObjectURL(blob);
+          setPreviewUrl(blobUrl);
+
+          return () => {
+            URL.revokeObjectURL(blobUrl);
+          };
+        }
+      } catch (e) {
+        console.error("Error converting Base64 to Blob URL in FileViewerModal:", e);
+      }
+    }
+
+    setPreviewUrl(resolvedUrl);
+  }, [isOpen, resolvedUrl]);
 
   // Reset zoom & rotation when file changes
   useEffect(() => {
@@ -95,13 +133,12 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
   };
 
   const detectedType = getDetectedType();
-  const resolvedUrl = resolveImageUrl(fileUrl);
 
   const handleDownload = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setIsDownloading(true);
     try {
-      await downloadAndOpenFile(resolvedUrl, fileName || 'download');
+      await downloadAndOpenFile(previewUrl || resolvedUrl, fileName || 'download');
     } finally {
       setIsDownloading(false);
     }
@@ -122,7 +159,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
               </style>
             </head>
             <body>
-              <img src="${resolvedUrl}" onload="window.print();window.close();" />
+              <img src="${previewUrl || resolvedUrl}" onload="window.print();window.close();" />
             </body>
           </html>
         `);
@@ -130,13 +167,13 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
       }
     } else {
       // For PDF or other files, open in new tab for printing
-      window.open(resolvedUrl, '_blank');
+      window.open(previewUrl || resolvedUrl, '_blank');
     }
   };
 
   const modalElement = (
     <div 
-      className="fixed inset-0 z-[9999] flex flex-col bg-slate-950/90 backdrop-blur-md animate-fade-in select-none"
+      className="fixed inset-0 z-[100000020] flex flex-col bg-slate-950/90 backdrop-blur-md animate-fade-in select-none"
       onClick={onClose}
     >
       {/* Top Header Bar */}
@@ -207,7 +244,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
 
           {/* Open In New Tab */}
           <a
-            href={resolvedUrl}
+            href={previewUrl || resolvedUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="p-2 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-colors hidden sm:flex items-center gap-1 text-xs"
@@ -236,7 +273,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
               openSendToChat({
                 attachment: {
                   fileName: fileName || 'فایل ارسالی',
-                  url: resolvedUrl
+                  url: previewUrl || resolvedUrl
                 },
                 defaultMessage: `فایل ارسالی: ${fileName || 'پیوست'}`,
                 title: 'ارسال فایل به گفتگو'
@@ -282,7 +319,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
             onClick={onClose}
           >
             <img 
-              src={resolvedUrl} 
+              src={previewUrl || resolvedUrl} 
               alt={fileName}
               style={{
                 transform: `scale(${zoom}) rotate(${rotation}deg)`,
@@ -299,9 +336,24 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
             className="w-full h-full max-w-6xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-700/50"
             onClick={e => e.stopPropagation()}
           >
+            {/* Helpful instructions in case PDF inline rendering fails on the user's browser/device */}
+            <div className="bg-amber-50 dark:bg-amber-950/20 border-b border-amber-100 dark:border-amber-900/30 px-4 py-2.5 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300 font-medium shrink-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base">💡</span>
+                <span>در صورتی که فایل PDF در زیر نمایش داده نمی‌شود، می‌توانید از دکمه «تب جدید» یا «دانلود» در بالای صفحه استفاده کنید.</span>
+              </div>
+              <a 
+                href={previewUrl || resolvedUrl} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[10px] transition-colors"
+              >
+                باز کردن مستقیم
+              </a>
+            </div>
             <iframe 
-              src={`${resolvedUrl}#toolbar=1&navpanes=1`} 
-              className="w-full flex-1 border-0 rounded-2xl"
+              src={`${previewUrl || resolvedUrl}#toolbar=1&navpanes=1`} 
+              className="w-full flex-1 border-0"
               title={fileName}
             />
           </div>
@@ -319,7 +371,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
               <h4 className="text-white font-bold text-base line-clamp-1" dir="ltr">{fileName}</h4>
               <p className="text-xs text-slate-400 mt-1">پخش فایل صوتی پیوست</p>
             </div>
-            <audio controls src={resolvedUrl} className="w-full" autoPlay />
+            <audio controls src={previewUrl || resolvedUrl} className="w-full" autoPlay />
           </div>
         )}
 
@@ -328,7 +380,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
             className="max-w-4xl max-h-[85vh] w-full rounded-2xl overflow-hidden shadow-2xl bg-black"
             onClick={e => e.stopPropagation()}
           >
-            <video controls src={resolvedUrl} className="w-full h-full max-h-[85vh] object-contain" autoPlay />
+            <video controls src={previewUrl || resolvedUrl} className="w-full h-full max-h-[85vh] object-contain" autoPlay />
           </div>
         )}
 

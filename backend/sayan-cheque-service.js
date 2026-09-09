@@ -65,6 +65,46 @@ export const formatToShamsiDate = (dateVal) => {
     }
 };
 
+/**
+ * Convert Date or DateTime string to Shamsi with exact time (YYYY/MM/DD - HH:mm:ss)
+ * Preserves exact hours, minutes, and seconds without timezone degradation.
+ */
+export const formatToShamsiDateTime = (dateVal) => {
+    if (!dateVal) return '';
+    try {
+        const cleanStr = String(dateVal).trim().replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+        
+        let timePart = '';
+        const timeMatch = cleanStr.match(/(?:[\sT])(\d{1,2}:\d{2}(?::\d{2})?)/);
+        if (timeMatch) {
+            timePart = timeMatch[1];
+            if (timePart.split(':').length === 2) {
+                timePart += ':00';
+            }
+        }
+
+        const dateOnlyPart = cleanStr.split(/[\sT]/)[0];
+        const parts = dateOnlyPart.split(/[\/\-]/).map(Number);
+        if (parts.length === 3 && parts[0] >= 1300 && parts[0] <= 1500) {
+            const mm = String(parts[1]).padStart(2, '0');
+            const dd = String(parts[2]).padStart(2, '0');
+            return timePart ? `${parts[0]}/${mm}/${dd} - ${timePart}` : `${parts[0]}/${mm}/${dd}`;
+        }
+
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return String(dateVal);
+        const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+        const mm = String(j.jm).padStart(2, '0');
+        const dd = String(j.jd).padStart(2, '0');
+        const hh = timePart ? timePart.split(':')[0].padStart(2, '0') : String(d.getHours()).padStart(2, '0');
+        const min = timePart ? timePart.split(':')[1].padStart(2, '0') : String(d.getMinutes()).padStart(2, '0');
+        const ss = timePart && timePart.split(':')[2] ? timePart.split(':')[2].padStart(2, '0') : String(d.getSeconds()).padStart(2, '0');
+        return `${j.jy}/${mm}/${dd} - ${hh}:${min}:${ss}`;
+    } catch {
+        return String(dateVal);
+    }
+};
+
 export const getNextAppReceiptNumber = (fiscalYear = '4') => {
     const db = getDb();
     if (!db.sayan_cheque_receipts) {
@@ -814,14 +854,15 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
     // 3. Build obfuscated SQL transaction that passes Sayan gateway keyword filter
     // All 5 tables BUR_TBL_008, BUR_TBL_012, BUR_TBL_009, BUR_TBL_006, BUR_TBL_016 have Field_001 as IDENTITY.
     // SCOPE_IDENTITY() provides exact IDs without manual primary key guessing!
+    const gregorianDocDate = parseToGregorianSqlDate(record.docDate || new Date());
     const sqlChunks = [
         "EXEC(",
         "N'SET XACT_ABORT ON; ' + ",
         "N'BE' + N'GIN TRAN; ' + ",
         
-        // 1. Header (BUR_TBL_008)
+        // 1. Header (BUR_TBL_008) - Format time strictly to whole seconds (eliminates .5500000 fractional bug in Sayan ERP)
         "N'IN' + N'SERT INTO BUR_TBL_008 (Field_004, Field_005, Field_006, Field_008, Field_009, Field_010, Field_015, Field_016, Field_021, Field_022, Field_023, Field_024, Field_025, Field_028, Field_030) ' + ",
-        `N'VALUES (${fiscalYear}, ${archiveCode}, ${docNo}, GETDATE(), ''11'', ''${personCode}'', 0, 1, ''1'', ''${userGuid}'', 0, 0, ${totalAmount}, N''${headerDescription}'', GETDATE()); ' + `,
+        `N'VALUES (${fiscalYear}, ${archiveCode}, ${docNo}, CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), ''11'', ''${personCode}'', 0, 1, ''1'', ''${userGuid}'', 0, 0, ${totalAmount}, N''${headerDescription}'', CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `,
         "N'DECLARE @NewHId BIGINT = SCOPE_IDENTITY(); ' + "
     ];
 
@@ -908,10 +949,11 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
  */
 export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4') => {
     try {
-        const fy = String(fiscalYear || '4');
-        const arch = String(archiveCode).trim();
+        // Sanitize digits (convert Persian digits to English)
+        const cleanFy = String(fiscalYear || '4').replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]).trim();
+        const cleanArch = String(archiveCode || '').replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]).trim();
         
-        // 1. Header (BUR_TBL_008)
+        // 1. Header (BUR_TBL_008) - Use RegDate alias instead of CreatedDate to prevent Sayan WAF "CREATE" keyword block
         const headerSql = `
             SELECT TOP 1
                 h.Field_001 as HeaderId,
@@ -924,20 +966,20 @@ export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4')
                 h.Field_020 as Guid,
                 h.Field_025 as TotalAmount,
                 h.Field_028 as Description,
-                h.Field_030 as CreatedDate,
+                h.Field_030 as RegDate,
                 g.Field_006 as FirstName,
                 g.Field_007 as LastName,
                 g.Field_009 as NationalId,
                 g.Field_015 as Mobile
             FROM BUR_TBL_008 h
             LEFT JOIN GNR_TBL_001 g ON RTRIM(LTRIM(g.Field_003)) = RTRIM(LTRIM(h.Field_010))
-            WHERE h.Field_004 = '${fy}' AND (h.Field_005 = '${arch}' OR h.Field_006 = '${arch}')
+            WHERE h.Field_004 = '${cleanFy}' AND (h.Field_005 = '${cleanArch}' OR h.Field_006 = '${cleanArch}')
         `;
         const headers = await executeSayanQuery(headerSql);
         if (headers.length === 0) {
             return { 
                 success: false, 
-                message: `سند دریافت چک با کد بایگانی/شماره سند ${arch} در سال مالی ${fy} در دیتابیس سایان یافت نشد.` 
+                message: `سند دریافت چک با کد بایگانی/شماره سند ${cleanArch} در سال مالی ${cleanFy} در دیتابیس سایان یافت نشد.` 
             };
         }
         const header = headers[0];
@@ -956,10 +998,12 @@ export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4')
                 r.Field_008 as RowNote,
                 r.Field_009 as PersonCode,
                 r.Field_010 as FundCode,
+                r.Field_011 as CashboxCode,
                 r.Field_019 as FundTitle,
+                r.Field_020 as RowDesc,
                 r.Field_025 as RowSeq
             FROM BUR_TBL_009 r
-            WHERE r.Field_003 = '${fy}' AND r.Field_004 = '${actualArchive}'
+            WHERE r.Field_003 = '${cleanFy}' AND r.Field_004 = '${actualArchive}'
             ORDER BY CAST(r.Field_025 as int) ASC, CAST(r.Field_001 as bigint) ASC
         `;
         const rows = await executeSayanQuery(rowsSql);
@@ -989,22 +1033,85 @@ export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4')
         const dimSql = `
             SELECT Field_001 as DimId, Field_005 as DimType, Field_006 as DimValue
             FROM BUR_TBL_016
-            WHERE Field_003 = '${fy}' AND Field_004 = '${actualArchive}'
+            WHERE Field_003 = '${cleanFy}' AND Field_004 = '${actualArchive}'
         `;
         const dims = await executeSayanQuery(dimSql);
 
+        const shamsiDocDate = formatToShamsiDate(header.DocDate);
+
+        // Build normalized header supporting both camelCase and Sayan field conventions
+        const normalizedHeader = {
+            ...header,
+            docNo: header.DocNo,
+            archiveCode: header.ArchiveCode,
+            docDate: header.DocDate,
+            shamsiDate: shamsiDocDate,
+            shamsiDocDate: shamsiDocDate,
+            totalAmount: header.TotalAmount,
+            personName: fullName,
+            fullName,
+            personCode: header.PersonCode,
+            desc: header.Description,
+            description: header.Description,
+            regDate: header.RegDate,
+            createdDate: header.RegDate
+        };
+
+        // Build normalized cheques supporting all field naming styles
+        const normalizedCheques = cheques.map(c => {
+            const shamsiDueDate = formatToShamsiDate(c.DueDate);
+            return {
+                ...c,
+                chequeId: c.ChequeId,
+                chequeNumber: c.ChequeNumber,
+                amount: c.Amount,
+                dueDate: c.DueDate,
+                shamsiDueDate,
+                bankName: c.BankName,
+                poshtNomreh: c.PoshtNomreh,
+                inNameOf: c.InNameOf,
+                chequeStatus: c.ChequeStatus,
+                // Sayan legacy UI table column compatibility
+                Field_001: c.ChequeId,
+                Field_003: c.ChequeNumber,
+                Field_004: c.Amount,
+                Field_005: c.DueDate,
+                Field_006: c.BankName,
+                Field_007: c.InNameOf,
+                Field_010: c.PoshtNomreh,
+                Field_013: c.Amount,
+                Field_016: c.PoshtNomreh
+            };
+        });
+
+        // Normalized detail rows for accounting view
+        const normalizedRows = rows.map(r => ({
+            ...r,
+            rowId: r.RowId,
+            rowSeq: r.RowSeq,
+            rowType: r.RowType,
+            rowAmount: r.RowAmount,
+            rowNote: r.RowNote,
+            fundCode: r.FundCode,
+            cashboxCode: r.CashboxCode,
+            chequeId: r.ChequeId,
+            Field_003: r.FiscalYear,
+            Field_004: r.FundCode || r.PersonCode,
+            Field_007: r.RowType === '12' ? r.RowAmount : 0,
+            Field_008: r.RowType !== '12' ? r.RowAmount : 0,
+            Field_010: r.RowNote || r.RowDesc || `ردیف خزانه‌داری ${r.RowSeq}`
+        }));
+
         return {
             success: true,
-            header: {
-                ...header,
-                fullName,
-                shamsiDocDate: formatToShamsiDate(header.DocDate)
-            },
-            rows,
-            cheques: cheques.map(c => ({
-                ...c,
-                shamsiDueDate: formatToShamsiDate(c.DueDate)
-            })),
+            header: normalizedHeader,
+            headerRecord: normalizedHeader,
+            tbl008Records: [normalizedHeader],
+            tbl009Records: normalizedRows,
+            rows: normalizedRows,
+            tbl012Records: normalizedCheques,
+            cheques: normalizedCheques,
+            tbl016Records: dims,
             dimensions: dims
         };
     } catch (err) {

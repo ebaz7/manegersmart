@@ -59,6 +59,7 @@ interface Props {
     onChange: (index: number, field: keyof ChequeItemInput, value: any) => void;
     onDelete: (index: number) => void;
     onEnterNext: (currentIndex: number, currentField: string) => void;
+    onArrowNavigate?: (currentIndex: number, currentField: string, direction: 'up' | 'down' | 'left' | 'right') => void;
 }
 
 const toPersianDigits = (num: string | number | undefined | null): string => {
@@ -105,7 +106,8 @@ export const ChequeItemRow: React.FC<Props> = ({
     defaultInNameOf,
     onChange,
     onDelete,
-    onEnterNext
+    onEnterNext,
+    onArrowNavigate
 }) => {
     // Bank autocomplete state
     const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
@@ -171,21 +173,87 @@ export const ChequeItemRow: React.FC<Props> = ({
         onEnterNext(index, 'bankName');
     };
 
-    const handleBankKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'ArrowDown') {
+    const handleFieldKeyDown = (
+        e: React.KeyboardEvent<HTMLInputElement>,
+        fieldName: string
+    ) => {
+        if (e.key === 'Enter') {
             e.preventDefault();
-            setBankDropdownOpen(true);
-            setHighlightedBankIdx(prev => Math.min(prev + 1, filteredBanks.length - 1));
+            onEnterNext(index, fieldName);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            onArrowNavigate?.(index, fieldName, 'down');
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setBankDropdownOpen(true);
-            setHighlightedBankIdx(prev => Math.max(prev - 1, 0));
-        } else if (e.key === 'Enter') {
+            onArrowNavigate?.(index, fieldName, 'up');
+        } else if (e.key === 'ArrowLeft') {
+            // In RTL, left arrow moves to next field
+            const target = e.currentTarget;
+            const isAtEnd = target.selectionStart === target.value.length;
+            if (isAtEnd || target.selectionStart === null) {
+                e.preventDefault();
+                onArrowNavigate?.(index, fieldName, 'left');
+            }
+        } else if (e.key === 'ArrowRight') {
+            // In RTL, right arrow moves to previous field
+            const target = e.currentTarget;
+            const isAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
+            if (isAtStart || target.selectionStart === null) {
+                e.preventDefault();
+                onArrowNavigate?.(index, fieldName, 'right');
+            }
+        }
+    };
+
+    const handleBankKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (bankDropdownOpen && filteredBanks.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setHighlightedBankIdx(prev => Math.min(prev + 1, filteredBanks.length - 1));
+                return;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setHighlightedBankIdx(prev => Math.max(prev - 1, 0));
+                return;
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (highlightedBankIdx >= 0 && filteredBanks[highlightedBankIdx]) {
+                    handleSelectBank(filteredBanks[highlightedBankIdx]);
+                } else {
+                    onEnterNext(index, 'bankName');
+                }
+                return;
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setBankDropdownOpen(false);
+                return;
+            }
+        }
+
+        if (e.key === 'Enter') {
             e.preventDefault();
-            if (bankDropdownOpen && filteredBanks.length > 0 && highlightedBankIdx >= 0) {
-                handleSelectBank(filteredBanks[highlightedBankIdx]);
-            } else {
-                onEnterNext(index, 'bankName');
+            onEnterNext(index, 'bankName');
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            onArrowNavigate?.(index, 'bankName', 'down');
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            onArrowNavigate?.(index, 'bankName', 'up');
+        } else if (e.key === 'ArrowLeft') {
+            const target = e.currentTarget;
+            const isAtEnd = target.selectionStart === target.value.length;
+            if (isAtEnd) {
+                e.preventDefault();
+                setBankDropdownOpen(false);
+                onArrowNavigate?.(index, 'bankName', 'left');
+            }
+        } else if (e.key === 'ArrowRight') {
+            const target = e.currentTarget;
+            const isAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
+            if (isAtStart) {
+                e.preventDefault();
+                setBankDropdownOpen(false);
+                onArrowNavigate?.(index, 'bankName', 'right');
             }
         }
     };
@@ -258,14 +326,11 @@ export const ChequeItemRow: React.FC<Props> = ({
                     <input
                         id={`cheque-${index}-number`}
                         type="text"
+                        inputMode="numeric"
                         value={item.chequeNumber}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) => onChange(index, 'chequeNumber', e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                onEnterNext(index, 'number');
-                            }
-                        }}
+                        onKeyDown={(e) => handleFieldKeyDown(e, 'number')}
                         placeholder="مثال: ۱۲۳۴۵۶۷۸"
                         className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                     />
@@ -284,17 +349,14 @@ export const ChequeItemRow: React.FC<Props> = ({
                     <input
                         id={`cheque-${index}-amount`}
                         type="text"
+                        inputMode="numeric"
                         value={item.amount ? Number(item.amount).toLocaleString('en-US') : ''}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) => {
                             const clean = e.target.value.replace(/,/g, '').replace(/[^0-9]/g, '');
                             onChange(index, 'amount', clean ? Number(clean) : '');
                         }}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                onEnterNext(index, 'amount');
-                            }
-                        }}
+                        onKeyDown={(e) => handleFieldKeyDown(e, 'amount')}
                         placeholder="مبلغ به ریال"
                         className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-emerald-200 dark:border-emerald-900/60 rounded-xl px-3 py-2.5 text-base font-mono font-black text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors shadow-xs"
                     />
@@ -309,14 +371,11 @@ export const ChequeItemRow: React.FC<Props> = ({
                         <input
                             id={`cheque-${index}-dueDate`}
                             type="text"
+                            inputMode="numeric"
                             value={shamsiInput}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => handleShamsiDateTyping(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    onEnterNext(index, 'dueDate');
-                                }
-                            }}
+                            onKeyDown={(e) => handleFieldKeyDown(e, 'dueDate')}
                             placeholder="۱۴۰۵/۰۶/۱۸"
                             className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                         />
@@ -417,13 +476,9 @@ export const ChequeItemRow: React.FC<Props> = ({
                         id={`cheque-${index}-inNameOf`}
                         type="text"
                         value={item.inNameOf || defaultInNameOf}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) => onChange(index, 'inNameOf', e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                onEnterNext(index, 'inNameOf');
-                            }
-                        }}
+                        onKeyDown={(e) => handleFieldKeyDown(e, 'inNameOf')}
                         placeholder="نام صادرکننده چک"
                         className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                     />
@@ -438,13 +493,9 @@ export const ChequeItemRow: React.FC<Props> = ({
                         id={`cheque-${index}-description`}
                         type="text"
                         value={item.description || ''}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) => onChange(index, 'description', e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                onEnterNext(index, 'description');
-                            }
-                        }}
+                        onKeyDown={(e) => handleFieldKeyDown(e, 'description')}
                         placeholder="مثال: قسط ۲ فاکتور ۴۰۵"
                         className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                     />

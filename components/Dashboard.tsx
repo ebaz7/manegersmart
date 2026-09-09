@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PaymentOrder, OrderStatus, SystemSettings, User, ExitPermit, ExitPermitStatus, WarehouseTransaction, UserRole, SystemAnnouncement } from '../types';
 import { formatCurrency, getShamsiDateFromIso } from '../constants';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase } from 'lucide-react';
 import { getRolePermissions } from '../services/authService';
 import { getExitPermits, getWarehouseTransactions, getNotes, getPurchaseRequests, getTaskGroups, getTasks, updateTask } from '../services/storageService';
 import { isInFinancialYear } from '../utils/dateUtils';
@@ -673,27 +673,49 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       }
   }
 
-  // 4. Purchase Pending Count
+  // 4. Purchase Pending Count (broken down by role so Admin/CEO/Commercial distinguish duties)
+  const isUserCEO = currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === UserRole.MANAGER || currentUser.role === 'MANAGER' || (currentUser as any).roles?.some((r: any) => ['ceo', 'CEO', UserRole.CEO, 'manager', UserRole.MANAGER].includes(r)) || permissions.canApprovePurchaseCeo;
+  const isUserCommercial = currentUser.role === UserRole.COMMERCIAL || currentUser.role === 'COMMERCIAL' || (currentUser as any).roles?.some((r: any) => ['commercial', 'COMMERCIAL', UserRole.COMMERCIAL].includes(r)) || permissions.canManagePurchase;
+  const isUserAdmin = currentUser.role === UserRole.ADMIN || (currentUser as any).roles?.includes(UserRole.ADMIN) || permissions.isSuperUser;
+
+  let pendingCeoPurchaseCount = 0;
+  let pendingCommercialPurchaseCount = 0;
+  let pendingOtherPurchaseCount = 0;
   let pendingPurchaseCount = 0;
+
   if (hasPurchaseAccess) {
-      if (currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.ADMIN || permissions.canApprovePurchaseFactory) {
-          pendingPurchaseCount += purchaseReqs.filter(p => p.status === PurchaseRequestStatus.PENDING_TECHNICAL || p.status === PurchaseRequestStatus.PENDING_FACTORY || p.status === PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE).length;
-      }
-      if (currentUser.role === UserRole.CEO || currentUser.role === UserRole.ADMIN || permissions.canApprovePurchaseCeo) {
-          pendingPurchaseCount += purchaseReqs.filter(p => p.status === PurchaseRequestStatus.PENDING_CEO_INITIAL || p.status === PurchaseRequestStatus.PENDING_CEO_SELECTION).length;
-      }
-      if (currentUser.role === UserRole.COMMERCIAL || currentUser.role === UserRole.ADMIN || permissions.canManagePurchase) {
-          pendingPurchaseCount += purchaseReqs.filter(p => p.status === PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA || p.status === PurchaseRequestStatus.PENDING_FACTORY_PROFORMA).length;
-      }
-      if (currentUser.role === UserRole.SECURITY_HEAD || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.SECURITY_GUARD) {
-          pendingPurchaseCount += purchaseReqs.filter(p => p.status === PurchaseRequestStatus.PENDING_SECURITY_ENTRY).length;
-      }
-      if (currentUser.role === UserRole.QC || currentUser.role === UserRole.ADMIN) {
-          pendingPurchaseCount += purchaseReqs.filter(p => p.status === PurchaseRequestStatus.PENDING_QC).length;
-      }
-      if (currentUser.role === UserRole.WAREHOUSE_KEEPER || currentUser.role === UserRole.ADMIN) {
-          pendingPurchaseCount += purchaseReqs.filter(p => p.status === PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT).length;
-      }
+      const ceoStatuses = [
+          PurchaseRequestStatus.PENDING_CEO_INITIAL,
+          PurchaseRequestStatus.PENDING_CEO_SELECTION
+      ];
+      const commercialStatuses = [
+          PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION,
+          PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER,
+          PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA,
+          PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING,
+          PurchaseRequestStatus.PENDING_FACTORY_PROFORMA,
+          PurchaseRequestStatus.PENDING_BUYER_EXECUTION
+      ];
+      const otherUnitStatuses = [
+          PurchaseRequestStatus.PENDING_TECHNICAL,
+          PurchaseRequestStatus.PENDING_SHIFT_LEADER,
+          PurchaseRequestStatus.PENDING_FACTORY,
+          PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER,
+          PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL,
+          PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION,
+          PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE,
+          PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL,
+          PurchaseRequestStatus.PENDING_SECURITY_ENTRY,
+          PurchaseRequestStatus.PENDING_QC,
+          PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL,
+          PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT,
+          PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN
+      ];
+
+      pendingCeoPurchaseCount = purchaseReqs.filter(p => ceoStatuses.includes(p.status)).length;
+      pendingCommercialPurchaseCount = purchaseReqs.filter(p => commercialStatuses.includes(p.status)).length;
+      pendingOtherPurchaseCount = purchaseReqs.filter(p => otherUnitStatuses.includes(p.status)).length;
+      pendingPurchaseCount = purchaseReqs.filter(p => p.status !== PurchaseRequestStatus.COMPLETED && p.status !== PurchaseRequestStatus.REJECTED).length;
   }
 
   // 5. Secretariat Pending Count
@@ -1337,16 +1359,49 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </div>
                     )}
 
-                    {pendingPurchaseCount > 0 && hasPurchaseAccess && (
+                    {/* Role-Specific Colored Action Tiles for Purchase Requests */}
+                    {hasPurchaseAccess && (isUserCEO || isUserAdmin) && pendingCeoPurchaseCount > 0 && (
+                        <div onClick={onGoToPurchaseApprovals} className="bg-gradient-to-br from-[#f59e0b] via-[#d97706] to-[#b45309] rounded-2xl p-6 text-white shadow-lg shadow-amber-500/20 cursor-pointer transform hover:scale-[1.03] hover:-translate-y-1 transition-all relative overflow-hidden group border border-amber-300/40">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Crown size={100}/></div>
+                            <div className="relative z-10">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="bg-white/20 backdrop-blur-md p-3 rounded-xl"><Crown size={24} className="text-amber-100"/></div>
+                                    <span className="bg-amber-200 text-amber-950 text-[11px] font-black px-2.5 py-0.5 rounded-full shadow animate-pulse">{pendingCeoPurchaseCount} مورد</span>
+                                </div>
+                                <h3 className="text-xl font-black mb-1 flex items-center gap-1.5">
+                                    <span>تاییدات خرید (نقش مدیرعامل)</span>
+                                </h3>
+                                <p className="text-amber-100 text-xs opacity-90">مجوزهای استعلام و انتخاب پیش‌فاکتور نهایی</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {hasPurchaseAccess && (isUserCommercial || isUserAdmin) && pendingCommercialPurchaseCount > 0 && (
+                        <div onClick={onGoToPurchaseApprovals} className="bg-gradient-to-br from-[#7c3aed] via-[#6d28d9] to-[#4338ca] rounded-2xl p-6 text-white shadow-lg shadow-purple-500/20 cursor-pointer transform hover:scale-[1.03] hover:-translate-y-1 transition-all relative overflow-hidden group border border-purple-300/40">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Briefcase size={100}/></div>
+                            <div className="relative z-10">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="bg-white/20 backdrop-blur-md p-3 rounded-xl"><Briefcase size={24} className="text-purple-100"/></div>
+                                    <span className="bg-purple-200 text-purple-950 text-[11px] font-black px-2.5 py-0.5 rounded-full shadow animate-pulse">{pendingCommercialPurchaseCount} مورد</span>
+                                </div>
+                                <h3 className="text-xl font-black mb-1 flex items-center gap-1.5">
+                                    <span>کارتابل خرید (نقش مدیر بازرگانی)</span>
+                                </h3>
+                                <p className="text-purple-100 text-xs opacity-90">استعلام قیمت، ثبت پیش‌فاکتور و بررسی کارشناسی</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {hasPurchaseAccess && pendingOtherPurchaseCount > 0 && (isUserAdmin || currentUser.role === UserRole.FACTORY_MANAGER || currentUser.role === UserRole.QC || currentUser.role === UserRole.WAREHOUSE_KEEPER || currentUser.role === UserRole.SECURITY_HEAD) && (
                         <div onClick={onGoToPurchaseApprovals} className="bg-gradient-to-br from-[#10b981] to-[#047857] rounded-2xl p-6 text-white shadow-lg shadow-emerald-500/10 cursor-pointer transform hover:scale-[1.03] hover:-translate-y-1 transition-all relative overflow-hidden group">
                             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Package size={100}/></div>
                             <div className="relative z-10">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl"><CheckSquare size={24} className="text-white"/></div>
-                                    <span className="bg-yellow-400 text-yellow-900 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse">{pendingPurchaseCount} مورد</span>
+                                    <span className="bg-yellow-400 text-yellow-900 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse">{pendingOtherPurchaseCount} مورد</span>
                                 </div>
-                                <h3 className="text-xl font-black mb-1">تایید درخواست خرید</h3>
-                                <p className="text-emerald-50 text-xs opacity-85">درخواست‌های خرید منتظر اقدام</p>
+                                <h3 className="text-xl font-black mb-1">تاییدات خرید کارخانه و فنی</h3>
+                                <p className="text-emerald-50 text-xs opacity-85">بررسی نت، انبار، QC و کنترل ورود کالا</p>
                             </div>
                         </div>
                     )}

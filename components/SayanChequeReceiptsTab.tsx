@@ -13,6 +13,7 @@ import { ChequeItemRow, ChequeItemInput, COMMON_IRANIAN_BANKS } from './sayan-ch
 import { RealSayanDocumentModal } from './sayan-cheques/RealSayanDocumentModal';
 import { AccountingReviewModal } from './sayan-cheques/AccountingReviewModal';
 import { ChequeReceiptDetailModal } from './sayan-cheques/ChequeReceiptDetailModal';
+import { A5ChequeReceiptPrintModal } from './sayan-cheques/A5ChequeReceiptPrintModal';
 
 interface SayanPerson {
     personCode: string;
@@ -177,6 +178,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [inspectingArchiveCode, setInspectingArchiveCode] = useState<{ archiveCode: string | number; docNo?: string | number } | null>(null);
     const [reviewingReceipt, setReviewingReceipt] = useState<ChequeReceiptRecord | null>(null);
     const [selectedDetailReceipt, setSelectedDetailReceipt] = useState<ChequeReceiptRecord | null>(null);
+    const [printReceipt, setPrintReceipt] = useState<any>(null);
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [highlightedPersonIdx, setHighlightedPersonIdx] = useState(0);
 
     // Fetch Receipts
     const fetchMetaNumbers = async () => {
@@ -261,32 +265,169 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     const amountDiff = (Number(targetTotalAmount) || 0) - sumChequesAmount;
 
+    // Global shortcut Ctrl+Enter to submit receipt from anywhere in the form
+    useEffect(() => {
+        const handleGlobalKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                if (activeSubTab === 'NEW_RECEIPT') {
+                    e.preventDefault();
+                    document.getElementById('btn-submit-cheque-receipt')?.click();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [activeSubTab]);
+
     // Handle Keyboard Enter Navigation across fields
     const handleEnterNext = (rowIdx: number, field: string) => {
         if (field === 'person') {
-            document.getElementById('input-posht-nomreh')?.focus();
+            const el = document.getElementById('input-posht-nomreh') as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'poshtNomreh') {
-            document.getElementById('input-target-amount')?.focus();
+            const el = document.getElementById('input-target-amount') as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'targetAmount') {
-            document.getElementById('input-doc-desc')?.focus();
+            const el = document.getElementById('input-doc-desc') as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'docDesc') {
-            document.getElementById(`cheque-0-number`)?.focus();
+            const el = document.getElementById('cheque-0-number') as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'number') {
-            document.getElementById(`cheque-${rowIdx}-amount`)?.focus();
+            const el = document.getElementById(`cheque-${rowIdx}-amount`) as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'amount') {
-            document.getElementById(`cheque-${rowIdx}-dueDate`)?.focus();
+            const el = document.getElementById(`cheque-${rowIdx}-dueDate`) as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'dueDate') {
-            document.getElementById(`cheque-${rowIdx}-bankName`)?.focus();
+            const el = document.getElementById(`cheque-${rowIdx}-bankName`) as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'bankName') {
-            document.getElementById(`cheque-${rowIdx}-inNameOf`)?.focus();
+            const el = document.getElementById(`cheque-${rowIdx}-inNameOf`) as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'inNameOf') {
-            document.getElementById(`cheque-${rowIdx}-description`)?.focus();
+            const el = document.getElementById(`cheque-${rowIdx}-description`) as HTMLInputElement | null;
+            el?.focus();
+            el?.select?.();
         } else if (field === 'description') {
             if (rowIdx === chequeRows.length - 1) {
-                // Add new row and focus on its number
-                handleAddChequeRow(true);
+                // If row has content, add next row; if empty, focus submit
+                if (chequeRows[rowIdx]?.chequeNumber || chequeRows[rowIdx]?.amount) {
+                    handleAddChequeRow(true);
+                } else {
+                    document.getElementById('btn-submit-cheque-receipt')?.focus();
+                }
             } else {
-                document.getElementById(`cheque-${rowIdx + 1}-number`)?.focus();
+                const el = document.getElementById(`cheque-${rowIdx + 1}-number`) as HTMLInputElement | null;
+                el?.focus();
+                el?.select?.();
+            }
+        }
+    };
+
+    // 4-Way Arrow Key Navigation across rows and columns
+    const handleArrowNavigate = (rowIdx: number, field: string, direction: 'up' | 'down' | 'left' | 'right') => {
+        const columns = ['number', 'amount', 'dueDate', 'bankName', 'inNameOf', 'description'];
+        const colIdx = columns.indexOf(field);
+
+        if (direction === 'up') {
+            if (rowIdx > 0) {
+                const prevInput = document.getElementById(`cheque-${rowIdx - 1}-${field}`) as HTMLInputElement | null;
+                if (prevInput) {
+                    prevInput.focus();
+                    prevInput.select?.();
+                }
+            } else {
+                // Moving up from Row 0 to Header
+                if (field === 'number') {
+                    const el = document.getElementById('input-posht-nomreh') as HTMLInputElement | null;
+                    el?.focus();
+                    el?.select?.();
+                } else if (field === 'amount') {
+                    const el = document.getElementById('input-target-amount') as HTMLInputElement | null;
+                    el?.focus();
+                    el?.select?.();
+                } else if (field === 'dueDate') {
+                    const el = document.getElementById('input-doc-date') as HTMLInputElement | null;
+                    el?.focus();
+                    el?.select?.();
+                } else {
+                    const el = document.getElementById('input-doc-desc') as HTMLInputElement | null;
+                    el?.focus();
+                    el?.select?.();
+                }
+            }
+        } else if (direction === 'down') {
+            if (rowIdx < chequeRows.length - 1) {
+                const nextInput = document.getElementById(`cheque-${rowIdx + 1}-${field}`) as HTMLInputElement | null;
+                if (nextInput) {
+                    nextInput.focus();
+                    nextInput.select?.();
+                }
+            } else {
+                // If on last row, auto-add row if current row has data, or focus submit button
+                if (chequeRows[rowIdx]?.chequeNumber || chequeRows[rowIdx]?.amount) {
+                    handleAddChequeRow(false);
+                    setTimeout(() => {
+                        const target = document.getElementById(`cheque-${rowIdx + 1}-${field}`) as HTMLInputElement | null;
+                        if (target) {
+                            target.focus();
+                            target.select?.();
+                        }
+                    }, 60);
+                } else {
+                    document.getElementById('btn-submit-cheque-receipt')?.focus();
+                }
+            }
+        } else if (direction === 'left') {
+            // In Persian RTL: left arrow is forward (next column)
+            if (colIdx >= 0 && colIdx < columns.length - 1) {
+                const nextField = columns[colIdx + 1];
+                const nextEl = document.getElementById(`cheque-${rowIdx}-${nextField}`) as HTMLInputElement | null;
+                if (nextEl) {
+                    nextEl.focus();
+                    nextEl.select?.();
+                }
+            } else if (colIdx === columns.length - 1) {
+                if (rowIdx < chequeRows.length - 1) {
+                    const nextRowEl = document.getElementById(`cheque-${rowIdx + 1}-number`) as HTMLInputElement | null;
+                    if (nextRowEl) {
+                        nextRowEl.focus();
+                        nextRowEl.select?.();
+                    }
+                } else {
+                    document.getElementById('btn-submit-cheque-receipt')?.focus();
+                }
+            }
+        } else if (direction === 'right') {
+            // In Persian RTL: right arrow is backward (previous column)
+            if (colIdx > 0) {
+                const prevField = columns[colIdx - 1];
+                const prevEl = document.getElementById(`cheque-${rowIdx}-${prevField}`) as HTMLInputElement | null;
+                if (prevEl) {
+                    prevEl.focus();
+                    prevEl.select?.();
+                }
+            } else if (colIdx === 0) {
+                if (rowIdx > 0) {
+                    const prevRowEl = document.getElementById(`cheque-${rowIdx - 1}-description`) as HTMLInputElement | null;
+                    if (prevRowEl) {
+                        prevRowEl.focus();
+                        prevRowEl.select?.();
+                    }
+                } else {
+                    const descEl = document.getElementById('input-doc-desc') as HTMLInputElement | null;
+                    descEl?.focus();
+                    descEl?.select?.();
+                }
             }
         }
     };
@@ -407,8 +548,30 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
             const data = await res.json();
             if (data.success) {
+                const createdReceipt = data.receipt || {
+                    id: data.id || data.receiptNo || String(Date.now()),
+                    receiptNo: data.receiptNo || data.id,
+                    poshtNomreh: payload.poshtNomreh,
+                    personCode: payload.personCode,
+                    personName: payload.personName,
+                    cashboxCode: payload.cashboxCode,
+                    cashboxTitle: cashboxesList.find(b => b.code === cashboxCode)?.title || 'صندوق چک',
+                    totalAmount: payload.totalAmount,
+                    description: payload.description,
+                    docDateShamsi: docDateShamsi,
+                    createdAt: new Date().toISOString(),
+                    cheques: payload.cheques,
+                    status: 'PENDING_ACCOUNTING',
+                    createdByName: currentUser?.name || 'ثبت‌کننده'
+                };
+
                 setSuccessMessage(`رسید دریافت چک با شماره #${toPersianDigits(data.receiptNo || data.id)} ثبت شد و به کارتابل حسابداری ارسال گردید.`);
-                // Reset form
+
+                // Immediately open the A5 print & inspection modal
+                setPrintReceipt(createdReceipt);
+                setIsPrintModalOpen(true);
+
+                // Reset form for next entry
                 setPersonQuery('');
                 setSelectedPerson(null);
                 setPoshtNomreh('');
@@ -429,6 +592,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     }
                 ]);
                 fetchReceipts(true);
+                fetchMetaNumbers();
             } else {
                 setErrorMessage(data.error || 'خطا در ثبت رسید چک');
             }
@@ -1035,6 +1199,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     onChange={handleChequeRowChange}
                                     onDelete={handleDeleteChequeRow}
                                     onEnterNext={handleEnterNext}
+                                    onArrowNavigate={handleArrowNavigate}
                                 />
                             ))}
                         </div>
@@ -1537,10 +1702,26 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                         setSelectedDetailReceipt(null);
                         setReviewingReceipt(rec);
                     }}
+                    onPrintA5={(rec) => {
+                        setSelectedDetailReceipt(null);
+                        setPrintReceipt(rec);
+                        setIsPrintModalOpen(true);
+                    }}
                     onApproveByCeo={handleApproveByCeo}
                     onReject={handleReject}
                     onDelete={handleDeleteReceipt}
                     actionLoading={actionLoading}
+                />
+            )}
+
+            {/* A5 Landscape Cheque Receipt Print & Preview Modal */}
+            {isPrintModalOpen && printReceipt && (
+                <A5ChequeReceiptPrintModal
+                    receipt={printReceipt}
+                    onClose={() => {
+                        setIsPrintModalOpen(false);
+                        setPrintReceipt(null);
+                    }}
                 />
             )}
 

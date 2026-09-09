@@ -16,6 +16,7 @@ interface Props {
     onApproveByCeo: (receiptId: string) => void;
     onReject: (receiptId: string) => void;
     onDelete?: (receiptId: string) => void;
+    onPrintA5?: (receipt: any) => void;
     actionLoading: string | null;
 }
 
@@ -47,6 +48,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
     onApproveByCeo,
     onReject,
     onDelete,
+    onPrintA5,
     actionLoading
 }) => {
     const isFinancialOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || currentUser.roles?.includes('financial') || currentUser.roles?.includes('admin');
@@ -237,24 +239,24 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                         </div>
                     </div>
 
-                    {/* Person & Notes */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2.5">
-                            <div className="font-black text-slate-900 dark:text-white flex items-center gap-1.5 border-b pb-2 text-sm">
-                                <User className="w-4 h-4 text-blue-500" />
+                    {/* Person & Notes (Compact Size as Requested) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                        <div className="p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1">
+                            <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 border-b border-slate-200/60 dark:border-slate-700/60 pb-1 text-xs">
+                                <User className="w-3.5 h-3.5 text-blue-500" />
                                 <span>مشخصات طرف حساب و صادرکننده چک</span>
                             </div>
-                            <div className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-800/60">
-                                <span className="text-slate-500 font-bold">نام طرف حساب:</span>
-                                <span className="font-black text-sm text-slate-900 dark:text-white">{receipt.personName}</span>
+                            <div className="flex justify-between items-center py-0.5 border-b border-slate-100 dark:border-slate-800/40 text-[11px]">
+                                <span className="text-slate-500 font-medium">نام طرف حساب:</span>
+                                <span className="font-bold text-slate-900 dark:text-white">{receipt.personName}</span>
                             </div>
-                            <div className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-800/60">
-                                <span className="text-slate-500 font-bold">کد تفصیلی در سایان:</span>
-                                <span className="font-mono font-black text-blue-600 text-xs">{toPersianDigits(receipt.personCode || '-')}</span>
+                            <div className="flex justify-between items-center py-0.5 border-b border-slate-100 dark:border-slate-800/40 text-[11px]">
+                                <span className="text-slate-500 font-medium">کد تفصیلی در سایان:</span>
+                                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{toPersianDigits(receipt.personCode || '-')}</span>
                             </div>
-                            <div className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-800/60">
-                                <span className="text-slate-500 font-bold">صندوق خزانه‌داری سایان:</span>
-                                <span className="font-black text-purple-600 text-xs">
+                            <div className="flex justify-between items-center py-0.5 border-b border-slate-100 dark:border-slate-800/40 text-[11px]">
+                                <span className="text-slate-500 font-medium">صندوق خزانه‌داری سایان:</span>
+                                <span className="font-bold text-purple-600 dark:text-purple-400">
                                     {receipt.cashboxCode === '11001' ? 'صندوق دفتر (۱۱۰۰۱)' : 
                                      receipt.cashboxCode === '11002' ? 'صندوق سکه و کارت هدیه (۱۱۰۰۲)' :
                                      receipt.cashboxCode === '11003' ? 'صندوق آقای مقدم (۱۱۰۰۳)' :
@@ -263,23 +265,23 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                      receipt.cashboxCode ? `صندوق ${toPersianDigits(receipt.cashboxCode)}` : 'صندوق دفتر (۱۱۰۰۱)'}
                                 </span>
                             </div>
-                            <div className="flex justify-between items-center py-1">
-                                <span className="text-slate-500 font-bold">تاریخ دریافت:</span>
-                                <span className="font-mono font-bold">{toPersianDigits(toShamsiDateStr(receipt.docDate || receipt.createdAt))}</span>
+                            <div className="flex justify-between items-center py-0.5 text-[11px]">
+                                <span className="text-slate-500 font-medium">تاریخ دریافت:</span>
+                                <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{toPersianDigits(toShamsiDateStr(receipt.docDate || receipt.createdAt))}</span>
                             </div>
                         </div>
 
-                        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
-                            <div className="font-black text-slate-900 dark:text-white flex items-center gap-1.5 border-b pb-2 text-sm">
-                                <FileText className="w-4 h-4 text-emerald-500" />
+                        <div className="p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1">
+                            <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 border-b border-slate-200/60 dark:border-slate-700/60 pb-1 text-xs">
+                                <FileText className="w-3.5 h-3.5 text-emerald-500" />
                                 <span>شرح رسید و یادداشت‌ها</span>
                             </div>
-                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-sans bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl font-medium">
+                            <p className="text-slate-700 dark:text-slate-300 leading-snug font-sans bg-white dark:bg-slate-900/60 p-2 rounded-lg text-[11px] font-medium border border-slate-100 dark:border-slate-800">
                                 {receipt.description || 'بدون شرح ثبت شده'}
                             </p>
                             {receipt.accountingReview?.note && (
-                                <div className="mt-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300">
-                                    <span className="font-bold block mb-0.5">یادداشت حسابداری:</span>
+                                <div className="p-1.5 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-[10px] text-amber-800 dark:text-amber-300">
+                                    <span className="font-bold inline-block ml-1">یادداشت حسابداری:</span>
                                     {receipt.accountingReview.note}
                                 </div>
                             )}
@@ -435,6 +437,18 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                             >
                                 <Layers className="w-4 h-4" />
                                 <span>مشاهده سند واقعی در سایان</span>
+                            </button>
+                        )}
+
+                        {onPrintA5 && (
+                            <button
+                                type="button"
+                                onClick={() => onPrintA5(receipt)}
+                                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                                title="مشاهده پیش‌نمایش و چاپ رسید استاندارد A5 افقی"
+                            >
+                                <Printer className="w-4 h-4" />
+                                <span>مشاهده و چاپ رسید A5</span>
                             </button>
                         )}
                     </div>

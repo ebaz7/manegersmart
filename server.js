@@ -1993,7 +1993,11 @@ app.get('/api/sayan/cheque-receipts/real-document/:archiveCode', async (req, res
         const archiveCode = req.params.archiveCode;
         const fiscalYear = req.query.fiscalYear || '4';
         const docDetails = await sayanChequeService.getSayanRealDocumentDetails(archiveCode, fiscalYear);
-        res.json(docDetails);
+        res.json({
+            success: docDetails.success,
+            data: docDetails,
+            ...docDetails
+        });
     } catch (err) {
         console.error("Error fetching real Sayan document details:", err);
         res.status(500).json({ success: false, error: err.message });

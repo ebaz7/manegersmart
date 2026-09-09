@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
     FileText, X, CheckCircle2, AlertCircle, RefreshCw, Printer,
-    CreditCard, Building2, Hash, Calendar, Layers, ShieldCheck, Download
+    CreditCard, Building2, Hash, Calendar, Layers, ShieldCheck, Download,
+    Code, Copy, Check
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 
@@ -40,18 +41,20 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [docData, setDocData] = useState<any | null>(null);
-    const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'BUR_TBL_008' | 'BUR_TBL_009' | 'BUR_TBL_012' | 'BUR_TBL_016' | 'PRINT_VIEW'>('OVERVIEW');
+    const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'BUR_TBL_012' | 'BUR_TBL_009' | 'BUR_TBL_008' | 'BUR_TBL_016' | 'PRINT_VIEW' | 'RAW_DATA'>('OVERVIEW');
+    const [copied, setCopied] = useState(false);
 
     const fetchRealDoc = async () => {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/real-document/${archiveCode}?fiscalYear=${fiscalYear}`);
+            const cleanArch = String(archiveCode || docNo || '').trim();
+            const res = await fetch(`/api/sayan/cheque-receipts/real-document/${cleanArch}?fiscalYear=${fiscalYear}`);
             const data = await res.json();
             if (data.success) {
-                setDocData(data.data);
+                setDocData(data.data || data);
             } else {
-                setError(data.error || 'اطلاعات سند در دیتابیس سایان یافت نشد.');
+                setError(data.error || data.message || 'اطلاعات سند در دیتابیس سایان یافت نشد.');
             }
         } catch (err: any) {
             setError(err.message || 'خطا در برقراری ارتباط با سرور');
@@ -61,13 +64,21 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
     };
 
     useEffect(() => {
-        if (archiveCode) {
+        if (archiveCode || docNo) {
             fetchRealDoc();
         }
-    }, [archiveCode, fiscalYear]);
+    }, [archiveCode, docNo, fiscalYear]);
 
     const handlePrint = () => {
         window.print();
+    };
+
+    const handleCopyJson = () => {
+        if (docData) {
+            navigator.clipboard.writeText(JSON.stringify(docData, null, 2));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
     };
 
     return (
@@ -85,8 +96,13 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                                     سند واقعی ثبت شده در پایگاه‌داده ERP سایان
                                 </h3>
                                 <span className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-mono font-bold text-xs border border-purple-200 dark:border-purple-800">
-                                    کد بایگانی: {toPersianDigits(archiveCode)}
+                                    کد بایگانی: {toPersianDigits(archiveCode || docData?.header?.archiveCode)}
                                 </span>
+                                {docData?.header?.docNo && (
+                                    <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-mono font-bold text-xs border border-blue-200 dark:border-blue-800">
+                                        شماره سند: {toPersianDigits(docData.header.docNo)}
+                                    </span>
+                                )}
                             </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                 استعلام زنده و مستقیم از جداول اسناد دریافتنی خزانه داری سایان (BUR_TBL_008, 009, 012, 016)
@@ -98,7 +114,7 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                             type="button"
                             onClick={fetchRealDoc}
                             disabled={loading}
-                            className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                             title="بازخوانی مجدد اطلاعات از دیتابیس"
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -106,7 +122,7 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                         >
                             <X className="w-5 h-5" />
                         </button>
@@ -118,7 +134,7 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                     <button
                         type="button"
                         onClick={() => setActiveTab('OVERVIEW')}
-                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                             activeTab === 'OVERVIEW'
                                 ? 'border-purple-600 text-purple-600 dark:text-purple-400'
                                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -130,38 +146,74 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                     <button
                         type="button"
                         onClick={() => setActiveTab('BUR_TBL_012')}
-                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                             activeTab === 'BUR_TBL_012'
                                 ? 'border-purple-600 text-purple-600 dark:text-purple-400'
                                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                         }`}
                     >
                         <CreditCard className="w-4 h-4" />
-                        <span>اقلام و مشخصات چک‌ها (BUR_TBL_012)</span>
+                        <span>اقلام چک‌ها (BUR_TBL_012)</span>
                     </button>
                     <button
                         type="button"
-                        onClick={() => setActiveTab('BUR_TBL_008')}
-                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                            activeTab === 'BUR_TBL_008'
+                        onClick={() => setActiveTab('BUR_TBL_009')}
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            activeTab === 'BUR_TBL_009'
                                 ? 'border-purple-600 text-purple-600 dark:text-purple-400'
                                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                         }`}
                     >
                         <Hash className="w-4 h-4" />
-                        <span>ردیف‌های حسابداری (BUR_TBL_008)</span>
+                        <span>آرتیکل‌های خزانه‌داری (BUR_TBL_009)</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('BUR_TBL_008')}
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            activeTab === 'BUR_TBL_008'
+                                ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                    >
+                        <Layers className="w-4 h-4" />
+                        <span>هدر سند (BUR_TBL_008)</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('BUR_TBL_016')}
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            activeTab === 'BUR_TBL_016'
+                                ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                    >
+                        <Building2 className="w-4 h-4" />
+                        <span>ابعاد و تفصیلی‌ها (BUR_TBL_016)</span>
                     </button>
                     <button
                         type="button"
                         onClick={() => setActiveTab('PRINT_VIEW')}
-                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                             activeTab === 'PRINT_VIEW'
                                 ? 'border-purple-600 text-purple-600 dark:text-purple-400'
                                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                         }`}
                     >
                         <Printer className="w-4 h-4" />
-                        <span>پیش‌نمایش و چاپ رسید رسمی</span>
+                        <span>پیش‌نمایش و چاپ رسید</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('RAW_DATA')}
+                        className={`pb-2.5 px-3 border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                            activeTab === 'RAW_DATA'
+                                ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                    >
+                        <Code className="w-4 h-4" />
+                        <span>داده‌های خام JSON</span>
                     </button>
                 </div>
 
@@ -290,41 +342,163 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                                 </div>
                             )}
 
-                            {activeTab === 'BUR_TBL_008' && (
+                            {activeTab === 'BUR_TBL_009' && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                                        <span>ردیف‌های گردش حساب در جدول BUR_TBL_008 ({toPersianDigits(docData.tbl008Records?.length || 0)} سطر)</span>
+                                        <span>آرتیکل‌های گردش خزانه‌داری در جدول BUR_TBL_009 ({toPersianDigits(docData.tbl009Records?.length || docData.rows?.length || 0)} سطر)</span>
                                     </div>
                                     <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-x-auto">
                                         <table className="w-full text-right text-xs">
                                             <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700">
                                                 <tr>
                                                     <th className="px-3 py-2.5">ردیف</th>
-                                                    <th className="px-3 py-2.5">کد حساب</th>
-                                                    <th className="px-3 py-2.5">کد تفصیلی</th>
-                                                    <th className="px-3 py-2.5">مبلغ بدهکار (ریال)</th>
-                                                    <th className="px-3 py-2.5">مبلغ بستانکار (ریال)</th>
-                                                    <th className="px-3 py-2.5">شرح سطر</th>
+                                                    <th className="px-3 py-2.5">شناسه آرتیکل</th>
+                                                    <th className="px-3 py-2.5">نوع آرتیکل</th>
+                                                    <th className="px-3 py-2.5">کد حساب / صندوق</th>
+                                                    <th className="px-3 py-2.5">شناسه چک</th>
+                                                    <th className="px-3 py-2.5">مبلغ آرتیکل (ریال)</th>
+                                                    <th className="px-3 py-2.5">شرح سطر خزانه‌داری</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                {docData.tbl008Records?.map((row: any, idx: number) => (
+                                                {(docData.tbl009Records || docData.rows || [])?.map((row: any, idx: number) => (
                                                     <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                                                        <td className="px-3 py-2.5 text-slate-400 font-mono">{idx + 1}</td>
-                                                        <td className="px-3 py-2.5 font-mono">{row.Field_003 || '-'}</td>
-                                                        <td className="px-3 py-2.5 font-mono font-bold text-purple-600">{row.Field_004 || '-'}</td>
-                                                        <td className="px-3 py-2.5 font-mono text-blue-600 font-bold">
-                                                            {toPersianDigits(Number(row.Field_007 || 0).toLocaleString('fa-IR'))}
+                                                        <td className="px-3 py-2.5 text-slate-400 font-mono">{toPersianDigits(row.RowSeq || row.rowSeq || idx + 1)}</td>
+                                                        <td className="px-3 py-2.5 font-mono text-slate-600 dark:text-slate-400">{toPersianDigits(row.RowId || row.rowId || '-')}</td>
+                                                        <td className="px-3 py-2.5 font-mono">
+                                                            <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold text-[11px]">
+                                                                {row.RowType === '12' || row.rowType === '12' ? '۱۲ (چک دریافتی)' : (row.RowType || row.rowType || '-')}
+                                                            </span>
                                                         </td>
-                                                        <td className="px-3 py-2.5 font-mono text-emerald-600 font-bold">
-                                                            {toPersianDigits(Number(row.Field_008 || 0).toLocaleString('fa-IR'))}
+                                                        <td className="px-3 py-2.5 font-mono font-bold text-purple-600 dark:text-purple-400">
+                                                            {toPersianDigits(row.CashboxCode || row.cashboxCode || row.FundCode || row.fundCode || '-')}
                                                         </td>
-                                                        <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300">{row.Field_010 || '-'}</td>
+                                                        <td className="px-3 py-2.5 font-mono text-amber-600">
+                                                            {toPersianDigits(row.ChequeId || row.chequeId || '-')}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                                            {toPersianDigits(Number(row.RowAmount || row.rowAmount || 0).toLocaleString('fa-IR'))}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300">
+                                                            {row.RowNote || row.rowNote || row.RowDesc || row.rowDesc || '-'}
+                                                        </td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'BUR_TBL_008' && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                                        <span>فیلدهای هدر سند خزانه‌داری در جدول BUR_TBL_008</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <span className="text-slate-400 block mb-1">شماره سند (Field_006)</span>
+                                            <span className="font-mono font-black text-sm text-blue-600 dark:text-blue-400">
+                                                {toPersianDigits(docData.header?.docNo || docData.header?.DocNo || '-')}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <span className="text-slate-400 block mb-1">کد بایگانی (Field_005)</span>
+                                            <span className="font-mono font-black text-sm text-purple-600 dark:text-purple-400">
+                                                {toPersianDigits(docData.header?.archiveCode || docData.header?.ArchiveCode || archiveCode)}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <span className="text-slate-400 block mb-1">سال مالی (Field_004)</span>
+                                            <span className="font-mono font-bold text-sm">
+                                                {toPersianDigits(docData.header?.fiscalYear || docData.header?.FiscalYear || fiscalYear)}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <span className="text-slate-400 block mb-1">تاریخ سند (Field_008)</span>
+                                            <span className="font-mono font-bold text-sm">
+                                                {toPersianDigits(docData.header?.shamsiDate || toShamsiDateStr(docData.header?.docDate || docData.header?.DocDate))}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <span className="text-slate-400 block mb-1">تاریخ و ساعت ثبت سیستم (Field_030)</span>
+                                            <span className="font-mono font-bold text-xs text-slate-700 dark:text-slate-300">
+                                                {toPersianDigits(toShamsiDateStr(docData.header?.regDate || docData.header?.RegDate || docData.header?.createdDate))}
+                                            </span>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                                            <span className="text-slate-400 block mb-1">مبلغ کل سند (Field_025)</span>
+                                            <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                                                {toPersianDigits(Number(docData.header?.totalAmount || docData.header?.TotalAmount || 0).toLocaleString('fa-IR'))} ریال
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs">
+                                        <span className="text-slate-400 block mb-1">شرح کامل هدر سند (Field_028)</span>
+                                        <p className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
+                                            {docData.header?.desc || docData.header?.description || docData.header?.Description || 'بدون شرح'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'BUR_TBL_016' && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                                        <span>ابعاد و مراکز هزینه تفصیلی شناور در جدول BUR_TBL_016 ({toPersianDigits(docData.tbl016Records?.length || docData.dimensions?.length || 0)} مورد)</span>
+                                    </div>
+                                    <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-x-auto">
+                                        <table className="w-full text-right text-xs">
+                                            <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700">
+                                                <tr>
+                                                    <th className="px-3 py-2.5">ردیف</th>
+                                                    <th className="px-3 py-2.5">شناسه بعد (DimId)</th>
+                                                    <th className="px-3 py-2.5">نوع بعد (DimType)</th>
+                                                    <th className="px-3 py-2.5">کد مقدار تفصیلی / مرکز (DimValue)</th>
+                                                    <th className="px-3 py-2.5">توضیح بعد در سایان</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                {(docData.tbl016Records || docData.dimensions || [])?.map((dim: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                                        <td className="px-3 py-2.5 text-slate-400 font-mono">{idx + 1}</td>
+                                                        <td className="px-3 py-2.5 font-mono">{toPersianDigits(dim.DimId || dim.Field_001 || '-')}</td>
+                                                        <td className="px-3 py-2.5 font-mono font-bold text-blue-600">
+                                                            {dim.DimType === '6' ? '۶ (جزء / شعبه)' :
+                                                             dim.DimType === '15' ? '۱۵ (تفصیلی شخص)' :
+                                                             toPersianDigits(dim.DimType || dim.Field_005 || '-')}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 font-mono font-black text-purple-600">
+                                                            {toPersianDigits(dim.DimValue || dim.Field_006 || '-')}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-slate-500">
+                                                            {dim.DimType === '6' ? 'کد جزء شعبه اصلی' :
+                                                             dim.DimType === '15' ? 'کد شخص طرف حساب' : 'بعد حسابداری'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'RAW_DATA' && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                                        <span>پاسخ کامل و خام دریافتی از سرور ERP سایان (JSON)</span>
+                                        <button
+                                            type="button"
+                                            onClick={handleCopyJson}
+                                            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer"
+                                        >
+                                            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                                            <span>{copied ? 'کپی شد' : 'کپی JSON'}</span>
+                                        </button>
+                                    </div>
+                                    <pre className="p-4 rounded-2xl bg-slate-950 text-emerald-400 font-mono text-[11px] leading-relaxed overflow-x-auto max-h-[50vh] border border-slate-800" dir="ltr">
+                                        {JSON.stringify(docData, null, 2)}
+                                    </pre>
                                 </div>
                             )}
 

@@ -81,7 +81,8 @@ export const executeSayanQuery = async (queryStr) => {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query: queryStr })
+        body: JSON.stringify({ query: queryStr }),
+        signal: AbortSignal.timeout(20000)
     });
 
     if (!response.ok) {

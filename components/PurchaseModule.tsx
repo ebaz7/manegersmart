@@ -15,11 +15,12 @@ import {
 import { 
     ShoppingCart, Plus, Search, Filter, Eye, Edit, Trash2, 
     CheckCircle, XCircle, FileText, Package, Truck, 
-    ShieldCheck, ClipboardCheck, Warehouse, History, 
+    ShieldCheck, Shield, ClipboardCheck, Warehouse, History, 
     Image as ImageIcon, MoreVertical, Loader2, ArrowRight,
     Ruler, Layers, Tag, Upload, Info, FileUp, UploadCloud, Settings, Printer, FileDown, AlertCircle, X,
     GitFork, Clock, CornerUpLeft, UserCheck, FileCode, AlertTriangle, Check, ExternalLink, Paperclip, Wrench,
-    FileSpreadsheet, Container, ArrowDownCircle, ArrowUpCircle, MessageSquare, Sparkles, Bot
+    FileSpreadsheet, Container, ArrowDownCircle, ArrowUpCircle, MessageSquare, Sparkles, Bot, ChevronUp, ChevronDown,
+    Crown, Briefcase
 } from 'lucide-react';
 import { shareElementToChat, openSendToChat } from '../services/chatShareService';
 import { formatDate, formatCurrency, generateUUID, getCurrentShamsiDate } from '../constants';
@@ -33,6 +34,7 @@ import PrintPurchaseBarcode from './PrintPurchaseBarcode';
 import { generatePdf } from '../utils/pdfGenerator';
 import { getRolePermissions } from '../services/authService';
 import { AiPurchaseAdvisorModal } from './AiPurchaseAdvisorModal';
+import { FileViewerModal } from './FileViewerModal';
 
 const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
     const isMobile = useIsMobile();
@@ -322,13 +324,6 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
         return getRolePermissions(currentUser.role, settings || null, currentUser);
     }, [currentUser, settings]);
 
-    const stats = [
-        { label: 'کل درخواست‌ها', count: requests.length, color: 'indigo', icon: ShoppingCart, tab: 'REQUESTS' },
-        { label: 'در انتظار تایید', count: requests.filter((r: any) => r.status.includes('PENDING')).length, color: 'amber', icon: ClipboardCheck, tab: 'REQUESTS' },
-        { label: 'ورود به کارخانه', count: requests.filter((r: any) => r.status === PurchaseRequestStatus.PENDING_SECURITY_ENTRY || r.status === PurchaseRequestStatus.PENDING_QC).length, color: 'orange', icon: Truck, tab: 'REQUESTS' },
-        { label: 'تکمیل شده', count: requests.filter((r: any) => r.status === PurchaseRequestStatus.COMPLETED).length, color: 'green', icon: CheckCircle, tab: 'ARCHIVE' }
-    ];
-
     const hasPurchasePerm = (perm: string) => {
         if (isAdmin) return true;
         
@@ -343,6 +338,26 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
         }
         return hasPerm;
     };
+
+    const ceoCount = requests.filter((r: any) => 
+        r.status === PurchaseRequestStatus.PENDING_CEO_INITIAL || 
+        r.status === PurchaseRequestStatus.PENDING_CEO_SELECTION
+    ).length;
+
+    const commercialCount = requests.filter((r: any) => 
+        r.status === PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER || 
+        r.status === PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION ||
+        r.status === PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA ||
+        r.status === PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING
+    ).length;
+
+    const stats = [
+        { label: 'کل درخواست‌ها', count: requests.length, color: 'indigo', icon: ShoppingCart, tab: 'REQUESTS', bg: 'border-indigo-100 bg-indigo-50/30' },
+        { label: 'منتظر تایید مدیرعامل', count: ceoCount, color: 'sky', icon: Crown, tab: 'REQUESTS', bg: 'border-sky-200 bg-sky-50/40 text-sky-800', highlightIcon: 'bg-sky-100 text-sky-600' },
+        { label: 'منتظر بررسی بازرگانی', count: commercialCount, color: 'purple', icon: Briefcase, tab: 'REQUESTS', bg: 'border-purple-200 bg-purple-50/40 text-purple-800', highlightIcon: 'bg-purple-100 text-purple-600' },
+        { label: 'ورود و کنترل کیفی', count: requests.filter((r: any) => r.status === PurchaseRequestStatus.PENDING_SECURITY_ENTRY || r.status === PurchaseRequestStatus.PENDING_QC).length, color: 'orange', icon: Truck, tab: 'REQUESTS', bg: 'border-orange-100 bg-orange-50/30 text-orange-800', highlightIcon: 'bg-orange-100 text-orange-600' },
+        { label: 'تکمیل و بایگانی شده', count: requests.filter((r: any) => r.status === PurchaseRequestStatus.COMPLETED).length, color: 'green', icon: CheckCircle, tab: 'ARCHIVE', bg: 'border-green-100 bg-green-50/30 text-green-800', highlightIcon: 'bg-green-100 text-green-600' }
+    ];
 
     const myTasks = requests.filter((r: any) => {
         if (isAdmin) return r.status !== PurchaseRequestStatus.COMPLETED && r.status !== PurchaseRequestStatus.REJECTED;
@@ -390,39 +405,127 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
         }
     });
 
+    const getRoleBadgeForStatus = (status: PurchaseRequestStatus) => {
+        switch (status) {
+            case PurchaseRequestStatus.PENDING_CEO_INITIAL:
+            case PurchaseRequestStatus.PENDING_CEO_SELECTION:
+                return {
+                    title: 'مدیرعامل',
+                    icon: Crown,
+                    badgeClass: 'bg-sky-100 text-sky-800 border-sky-300'
+                };
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+            case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
+            case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING:
+                return {
+                    title: 'مدیر بازرگانی',
+                    icon: Briefcase,
+                    badgeClass: 'bg-purple-100 text-purple-800 border-purple-300'
+                };
+            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
+            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION:
+            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
+            case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
+            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
+                return {
+                    title: 'مدیر کارخانه',
+                    icon: Warehouse,
+                    badgeClass: 'bg-teal-100 text-teal-800 border-teal-300'
+                };
+            case PurchaseRequestStatus.PENDING_TECHNICAL:
+            case PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL:
+                return {
+                    title: 'نت و فنی',
+                    icon: Wrench,
+                    badgeClass: 'bg-blue-100 text-blue-800 border-blue-300'
+                };
+            case PurchaseRequestStatus.PENDING_QC:
+                return {
+                    title: 'کنترل کیفیت QC',
+                    icon: ShieldCheck,
+                    badgeClass: 'bg-green-100 text-green-800 border-green-300'
+                };
+            case PurchaseRequestStatus.PENDING_SECURITY_ENTRY:
+                return {
+                    title: 'انتظامات',
+                    icon: Shield,
+                    badgeClass: 'bg-orange-100 text-orange-800 border-orange-300'
+                };
+            case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
+            case PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT:
+                return {
+                    title: 'انبار کارخانه',
+                    icon: Package,
+                    badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300'
+                };
+            default:
+                return null;
+        }
+    };
+
     return (
         <div className="space-y-8 animate-fade-in">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* High-visibility role-separated stats tiles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 {stats.map((s, idx) => (
-                    <div key={idx} onClick={() => setActiveTab(s.tab)} className={`glass-panel p-6 rounded-[2rem] border-2 cursor-pointer hover:scale-105 transition-all text-center flex flex-col items-center justify-center gap-2 border-indigo-100 bg-indigo-50/30`}>
-                        <div className={`p-3 rounded-2xl bg-indigo-100 text-indigo-600`}>
-                            <s.icon size={28} />
+                    <div 
+                        key={idx} 
+                        onClick={() => setActiveTab(s.tab)} 
+                        className={`glass-panel p-5 rounded-[2rem] border-2 cursor-pointer hover:scale-105 transition-all text-center flex flex-col items-center justify-center gap-2 shadow-sm ${s.bg || 'border-indigo-100 bg-indigo-50/30'}`}
+                    >
+                        <div className={`p-3 rounded-2xl ${s.highlightIcon || 'bg-indigo-100 text-indigo-600'} shadow-sm`}>
+                            <s.icon size={26} />
                         </div>
                         <div className="text-2xl font-black text-gray-800">{s.count}</div>
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{s.label}</div>
+                        <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">{s.label}</div>
                     </div>
                 ))}
             </div>
 
             <div className="glass-panel p-6 rounded-[2.5rem] border border-gray-100 bg-white shadow-sm mb-6">
-                <h3 className="font-black text-indigo-900 border-b pb-4 mb-4 flex items-center gap-2"><ClipboardCheck /> کارتابل وظایف من</h3>
+                <div className="flex justify-between items-center border-b pb-4 mb-4">
+                    <h3 className="font-black text-indigo-900 flex items-center gap-2">
+                        <ClipboardCheck /> 
+                        <span>کارتابل وظایف من</span>
+                    </h3>
+                    <span className="text-xs bg-indigo-50 text-indigo-700 font-black px-3 py-1 rounded-full border border-indigo-100">
+                        {myTasks.length} وظیفه اقدام‌نشده
+                    </span>
+                </div>
+
                 {myTasks.length === 0 ? (
                     <div className="py-8 text-center text-gray-300 italic">موردی جهت اقدام شما یافت نشد.</div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {myTasks.slice(0, 6).map((req: any) => (
-                            <div key={req.id} onClick={() => setActiveTab('REQUESTS')} className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-300 hover:border-indigo-400 hover:bg-indigo-50 transition-all cursor-pointer group">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-[9px] font-mono font-bold text-gray-400">#{req.requestNumber}</span>
-                                    <span className="text-[9px] font-bold text-gray-500 bg-white px-2 py-0.5 rounded-full shadow-sm">{formatDate(req.date)}</span>
+                        {myTasks.slice(0, 9).map((req: any) => {
+                            const roleInfo = getRoleBadgeForStatus(req.status);
+                            const RoleIcon = roleInfo?.icon;
+
+                            return (
+                                <div key={req.id} onClick={() => setActiveTab('REQUESTS')} className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/70 transition-all cursor-pointer group flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-[9px] font-mono font-bold text-gray-400">#{req.requestNumber}</span>
+                                            <div className="flex items-center gap-1.5">
+                                                {roleInfo && (
+                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1 shadow-xs ${roleInfo.badgeClass}`}>
+                                                        {RoleIcon && <RoleIcon size={11} />}
+                                                        {roleInfo.title}
+                                                    </span>
+                                                )}
+                                                <span className="text-[9px] font-bold text-gray-500 bg-white px-2 py-0.5 rounded-full shadow-sm">{formatDate(req.date)}</span>
+                                            </div>
+                                        </div>
+                                        <h4 className="font-black text-gray-800 text-sm group-hover:text-indigo-700 transition-colors uppercase tracking-tight line-clamp-1">{req.itemName}</h4>
+                                    </div>
+                                    <div className="mt-3 pt-2 border-t border-gray-200/60 flex items-center justify-between">
+                                        <span className="text-[10px] font-black text-indigo-600 truncate max-w-[200px]">{req.status}</span>
+                                        <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-indigo-600 shadow-sm shrink-0"><ArrowRight size={14}/></div>
+                                    </div>
                                 </div>
-                                <h4 className="font-black text-gray-800 text-sm group-hover:text-indigo-700 transition-colors uppercase tracking-tight line-clamp-1">{req.itemName}</h4>
-                                <div className="mt-2 flex items-center justify-between">
-                                    <span className="text-[10px] font-black text-indigo-600">{req.status}</span>
-                                    <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-indigo-600 shadow-sm"><ArrowRight size={14}/></div>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -564,27 +667,72 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
         }
     };
 
+    const getRoleBadgeForCard = (status: PurchaseRequestStatus) => {
+        switch (status) {
+            case PurchaseRequestStatus.PENDING_CEO_INITIAL:
+            case PurchaseRequestStatus.PENDING_CEO_SELECTION:
+                return { title: 'تایید مدیرعامل', icon: Crown, cls: 'bg-sky-100 text-sky-800 border-sky-200' };
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+            case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
+            case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING:
+                return { title: 'مدیر بازرگانی', icon: Briefcase, cls: 'bg-purple-100 text-purple-800 border-purple-200' };
+            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
+            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION:
+            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
+            case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
+            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
+                return { title: 'مدیر کارخانه', icon: Warehouse, cls: 'bg-teal-100 text-teal-800 border-teal-200' };
+            case PurchaseRequestStatus.PENDING_TECHNICAL:
+            case PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL:
+                return { title: 'واحد نت', icon: Wrench, cls: 'bg-blue-100 text-blue-800 border-blue-200' };
+            case PurchaseRequestStatus.PENDING_QC:
+                return { title: 'کنترل کیفیت QC', icon: ShieldCheck, cls: 'bg-green-100 text-green-800 border-green-200' };
+            case PurchaseRequestStatus.PENDING_SECURITY_ENTRY:
+                return { title: 'انتظامات', icon: Shield, cls: 'bg-orange-100 text-orange-800 border-orange-200' };
+            case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
+            case PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT:
+                return { title: 'انبار کارخانه', icon: Package, cls: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
+            default:
+                return null;
+        }
+    };
+
+    const roleBadge = getRoleBadgeForCard(req.status);
+    const CardRoleIcon = roleBadge?.icon;
+
     return (
-        <div onClick={onClick} className={`glass-panel border rounded-2xl p-4 cursor-pointer transition-all hover:shadow-md relative overflow-hidden ${isMyTurn(req) ? 'border-indigo-400 ring-1 ring-indigo-50' : 'border-gray-200'}`}>
+        <div onClick={onClick} className={`glass-panel border rounded-2xl p-4 cursor-pointer transition-all hover:shadow-md relative overflow-hidden flex flex-col justify-between ${isMyTurn(req) ? 'border-indigo-400 ring-1 ring-indigo-50' : 'border-gray-200'}`}>
             {isMyTurn(req) && <div className="absolute top-0 right-0 left-0 h-1 bg-indigo-500 animate-pulse"></div>}
-            <div className="flex justify-between items-start mb-3">
-                <span className="text-[10px] font-mono text-gray-400">#{req.requestNumber}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                    req.status === PurchaseRequestStatus.COMPLETED ? 'bg-green-100 text-green-700' : 
-                    req.status === PurchaseRequestStatus.REJECTED ? 'bg-red-100 text-red-700' : 
-                    'bg-indigo-50 text-indigo-600'
-                }`}>
-                    {req.status}
-                </span>
+            <div>
+                <div className="flex justify-between items-start mb-3">
+                    <span className="text-[10px] font-mono text-gray-400">#{req.requestNumber}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        req.status === PurchaseRequestStatus.COMPLETED ? 'bg-green-100 text-green-700' : 
+                        req.status === PurchaseRequestStatus.REJECTED ? 'bg-red-100 text-red-700' : 
+                        'bg-indigo-50 text-indigo-600'
+                    }`}>
+                        {req.status}
+                    </span>
+                </div>
+                <h3 className="font-bold text-gray-800 text-base mb-1">{req.itemName}</h3>
+                <div className="flex gap-4 text-xs text-gray-500">
+                    <span>📦 {req.quantity} {req.unit}</span>
+                    <span>📅 {formatDate(req.date)}</span>
+                </div>
+                {req.image && (
+                    <div className="mt-3 rounded-lg overflow-hidden h-12 bg-gray-100 border">
+                        <img src={req.image} className="w-full h-full object-cover" alt="part" referrerPolicy="no-referrer" />
+                    </div>
+                )}
             </div>
-            <h3 className="font-bold text-gray-800 text-base mb-1">{req.itemName}</h3>
-            <div className="flex gap-4 text-xs text-gray-500">
-                <span>📦 {req.quantity} {req.unit}</span>
-                <span>📅 {formatDate(req.date)}</span>
-            </div>
-            {req.image && (
-                <div className="mt-3 rounded-lg overflow-hidden h-12 bg-gray-100 border">
-                    <img src={req.image} className="w-full h-full object-cover" alt="part" referrerPolicy="no-referrer" />
+            {roleBadge && (
+                <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border flex items-center gap-1 shadow-xs ${roleBadge.cls}`}>
+                        {CardRoleIcon && <CardRoleIcon size={11} />}
+                        اقدام: {roleBadge.title}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{req.location === 'Tehran' ? 'شعبه تهران' : 'کارخانه'}</span>
                 </div>
             )}
         </div>
@@ -1459,6 +1607,113 @@ const PurchasingAgentModal = ({ onClose, onConfirm }: { onClose: () => void, onC
     );
 };
 
+const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () => void }) => {
+    const [isSharing, setIsSharing] = useState(false);
+    const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string } | null>(null);
+
+    const handleSendToChat = async () => {
+        setIsSharing(true);
+        try {
+            const el = document.getElementById('datasheet-print-area');
+            if (!el) throw new Error('المان چاپ یافت نشد');
+            await shareElementToChat(
+                el,
+                `DataSheet_${part.id}.jpg`,
+                {
+                    defaultMessage: `📋 شناسنامه فنی کالا: ${part.name} - گروه: ${part.category || 'عمومی'}`,
+                    title: 'ارسال شناسنامه کالا به گفتگو'
+                }
+            );
+        } catch (e) {
+            console.error(e);
+            alert('خطا در آماده‌سازی سند جهت ارسال به گفتگو');
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 z-[100000008] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center p-4 bg-black/70 backdrop-blur-md">
+            <div className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl border border-white/20 animate-in fade-in zoom-in h-[90vh] flex flex-col">
+                <div className="p-6 border-b flex justify-between items-center bg-gray-900 text-white">
+                    <div className="flex items-center gap-3">
+                        <Info size={28} className="text-yellow-400" />
+                        <div>
+                            <h2 className="text-xl font-black">شناسنامه کالا (Data Sheet)</h2>
+                            <p className="text-[10px] opacity-80 font-mono tracking-widest">{part.id}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><XCircle size={24} /></button>
+                </div>
+
+                {/* Quick Attachments Bar */}
+                {(part.image || part.pdfAttachment) && (
+                    <div className="bg-indigo-50/90 px-6 py-2.5 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
+                            <Paperclip size={14} className="text-indigo-600" />
+                            فایل‌های پیوست فنی کالا:
+                        </span>
+                        <div className="flex items-center gap-2">
+                            {part.image && (
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewFile({ url: part.image!, fileName: `تصویر_${part.name}` })}
+                                    className="px-3 py-1 bg-white text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                >
+                                    <ImageIcon size={14} className="text-indigo-500" />
+                                    پیش‌نمایش تصویر کالا
+                                </button>
+                            )}
+                            {part.pdfAttachment && (
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewFile({ url: part.pdfAttachment!, fileName: `کاتالوگ_${part.name}.pdf` })}
+                                    className="px-3 py-1 bg-white text-red-700 hover:bg-red-50 border border-red-200 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                                >
+                                    <FileText size={14} className="text-red-500" />
+                                    پیش‌نمایش کاتالوگ / نقشه (PDF)
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+                
+                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8">
+                    <div id="datasheet-print-area" className="bg-white p-4 md:p-12 shadow-sm rounded-2xl mx-auto max-w-3xl border border-gray-200 printable-datasheet">
+                         <PrintPartDataSheet part={part} />
+                    </div>
+                </div>
+
+                <div className="p-6 border-t flex justify-end gap-3 bg-white">
+                    <button onClick={onClose} className="px-6 py-3 border-2 border-gray-200 rounded-2xl font-bold text-gray-500">بستن</button>
+                    <button 
+                        onClick={handleSendToChat} 
+                        disabled={isSharing}
+                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-emerald-100 transition-colors cursor-pointer"
+                        title="ارسال شناسنامه کالا به گفتگو"
+                    >
+                        {isSharing ? <Loader2 size={20} className="animate-spin" /> : <MessageSquare size={20}/>}
+                        ارسال به گفتگو
+                    </button>
+                    <button onClick={() => window.print()} className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-indigo-100">
+                        <Printer size={20}/> چاپ شناسنامه
+                    </button>
+                </div>
+
+                {previewFile && (
+                    <FileViewerModal
+                        isOpen={!!previewFile}
+                        onClose={() => setPreviewFile(null)}
+                        fileUrl={previewFile.url}
+                        fileName={previewFile.fileName}
+                    />
+                )}
+            </div>
+        </div>,
+        document.body
+    );
+};
+
 const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, parts }: { request: PurchaseRequest, onClose: () => void, currentUser: User, onSuccess: () => void, settings?: SystemSettings, parts: PartMasterData[] }) => {
     const [actionLoading, setActionLoading] = useState(false);
     const [pdfLoading, setPdfLoading] = useState(false);
@@ -1479,6 +1734,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     const [printingProforma, setPrintingProforma] = useState<PurchaseProforma | null>(null);
     const [printType, setPrintType] = useState<'REQUEST' | 'PROFORMA' | 'RECEIPT' | 'BARCODE'>('REQUEST');
     const [definingItem, setDefiningItem] = useState<any>(null);
+    const [viewingPartDataSheet, setViewingPartDataSheet] = useState<PartMasterData | null>(null);
+    const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string } | null>(null);
+    const [isPrintDropdownOpen, setIsPrintDropdownOpen] = useState(false);
+    const [isShareDropdownOpen, setIsShareDropdownOpen] = useState(false);
     const [isSharingDoc, setIsSharingDoc] = useState(false);
     const [sharingType, setSharingType] = useState<'REQUEST' | 'PROFORMA' | 'RECEIPT' | null>(null);
     const [sharingProforma, setSharingProforma] = useState<PurchaseProforma | null>(null);
@@ -1725,18 +1984,54 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                 {request.items && request.items.length > 0 ? (
                                     <div className="space-y-3">
                                         <div className="block md:hidden space-y-2.5">
-                                            {request.items.map((it: any, idx: number) => (
-                                                <div key={it.id || idx} className="p-3 bg-indigo-50/40 dark:bg-gray-800/60 border border-indigo-100 dark:border-gray-700 rounded-2xl space-y-2">
-                                                    <div className="flex justify-between items-center border-b border-indigo-100/60 dark:border-gray-700 pb-1.5">
-                                                        <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
-                                                            <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-mono">{idx + 1}</span>
-                                                            <span className="text-gray-800 dark:text-gray-200">{it.itemName}</span>
-                                                        </span>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className="text-xs font-black text-indigo-600 bg-white dark:bg-gray-900 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-gray-700">
-                                                                {it.quantity} {it.unit}
+                                            {request.items.map((it: any, idx: number) => {
+                                                const matchedPart = parts.find(p => (it.partId && p.id === it.partId) || (p.name && it.itemName && p.name.trim().toLowerCase() === it.itemName.trim().toLowerCase()) || (it.itemCode && (p.id === it.itemCode || (p as any).code === it.itemCode)));
+                                                const partForSheet: PartMasterData = matchedPart || {
+                                                    id: it.partId || it.itemCode || generateUUID(),
+                                                    name: it.itemName,
+                                                    unit: it.unit || request.unit || 'عدد',
+                                                    dimensions: it.specifications || '',
+                                                    type: 'قطعات',
+                                                    category: request.category || 'عمومی',
+                                                    subCategory: '',
+                                                    currentStock: 0,
+                                                    minStock: 0
+                                                };
+
+                                                return (
+                                                    <div key={it.id || idx} className="p-3 bg-indigo-50/40 dark:bg-gray-800/60 border border-indigo-100 dark:border-gray-700 rounded-2xl space-y-2">
+                                                        <div className="flex justify-between items-center border-b border-indigo-100/60 dark:border-gray-700 pb-1.5">
+                                                            <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                                                                <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-mono">{idx + 1}</span>
+                                                                <span className="text-gray-800 dark:text-gray-200">{it.itemName}</span>
                                                             </span>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-xs font-black text-indigo-600 bg-white dark:bg-gray-900 px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-gray-700">
+                                                                    {it.quantity} {it.unit}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        {it.specifications && (
+                                                            <div className="text-[11px] text-gray-600 dark:text-gray-400 bg-white/70 dark:bg-gray-900/60 p-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                                                                <span className="font-bold text-gray-400 text-[10px] block mb-0.5">مشخصات فنی / ابعاد:</span>
+                                                                <p className="leading-relaxed">{it.specifications}</p>
+                                                            </div>
+                                                        )}
+                                                        {it.itemCode && (
+                                                            <div className="text-[10px] font-mono text-gray-400">کد کالا: {it.itemCode}</div>
+                                                        )}
+                                                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-indigo-100/40 dark:border-gray-700">
                                                             <button 
+                                                                type="button"
+                                                                onClick={() => setViewingPartDataSheet(partForSheet)}
+                                                                className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 px-2.5 py-1 rounded-lg flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer"
+                                                                title="مشاهده شناسنامه فنی، مشخصات، ابعاد و پیوست‌های کالا"
+                                                            >
+                                                                <Info size={11} className="text-indigo-600 dark:text-indigo-400" />
+                                                                <span>جزئیات و شناسنامه کالا</span>
+                                                            </button>
+                                                            <button 
+                                                                type="button"
                                                                 onClick={() => {
                                                                     setAiAdvisorInitialIndex(idx);
                                                                     setShowAiAdvisorModal(true);
@@ -1749,17 +2044,8 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    {it.specifications && (
-                                                        <div className="text-[11px] text-gray-600 dark:text-gray-400 bg-white/70 dark:bg-gray-900/60 p-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
-                                                            <span className="font-bold text-gray-400 text-[10px] block mb-0.5">مشخصات فنی / ابعاد:</span>
-                                                            <p className="leading-relaxed">{it.specifications}</p>
-                                                        </div>
-                                                    )}
-                                                    {it.itemCode && (
-                                                        <div className="text-[10px] font-mono text-gray-400">کد: {it.itemCode}</div>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
 
                                         {/* Desktop Table View */}
@@ -1771,31 +2057,62 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                         <th className="p-3">نام قطعه / کالا</th>
                                                         <th className="p-3 w-28 text-center">تعداد / مقدار</th>
                                                         <th className="p-3">مشخصات فنی و ابعاد</th>
+                                                        <th className="p-3 w-36 text-center">شناسنامه و جزئیات کالا</th>
                                                         <th className="p-3 w-32 text-center">استعلام و تامین‌کننده</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                                    {request.items.map((it: any, idx: number) => (
-                                                        <tr key={it.id || idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
-                                                            <td className="p-3 text-center font-mono font-bold text-gray-400">{idx + 1}</td>
-                                                            <td className="p-3 font-black text-gray-800 dark:text-gray-200">{it.itemName}</td>
-                                                            <td className="p-3 text-center font-black text-indigo-600">{it.quantity} {it.unit}</td>
-                                                            <td className="p-3 text-gray-600 dark:text-gray-400">{it.specifications || '---'}</td>
-                                                            <td className="p-3 text-center">
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        setAiAdvisorInitialIndex(idx);
-                                                                        setShowAiAdvisorModal(true);
-                                                                    }}
-                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:text-purple-300 rounded-xl border border-purple-200 dark:border-purple-800 transition-all active:scale-95 cursor-pointer"
-                                                                    title="استعلام هوشمند قیمت و تامین‌کنندگان این قلم"
-                                                                >
-                                                                    <Sparkles size={12} className="text-yellow-500" />
-                                                                    <span>استعلام این قلم</span>
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {request.items.map((it: any, idx: number) => {
+                                                        const matchedPart = parts.find(p => (it.partId && p.id === it.partId) || (p.name && it.itemName && p.name.trim().toLowerCase() === it.itemName.trim().toLowerCase()) || (it.itemCode && (p.id === it.itemCode || (p as any).code === it.itemCode)));
+                                                        const partForSheet: PartMasterData = matchedPart || {
+                                                            id: it.partId || it.itemCode || generateUUID(),
+                                                            name: it.itemName,
+                                                            unit: it.unit || request.unit || 'عدد',
+                                                            dimensions: it.specifications || '',
+                                                            type: 'قطعات',
+                                                            category: request.category || 'عمومی',
+                                                            subCategory: '',
+                                                            currentStock: 0,
+                                                            minStock: 0
+                                                        };
+
+                                                        return (
+                                                            <tr key={it.id || idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
+                                                                <td className="p-3 text-center font-mono font-bold text-gray-400">{idx + 1}</td>
+                                                                <td className="p-3 font-black text-gray-800 dark:text-gray-200">
+                                                                    <div>{it.itemName}</div>
+                                                                    {it.itemCode && <div className="text-[10px] font-mono text-gray-400 font-normal">کد: {it.itemCode}</div>}
+                                                                </td>
+                                                                <td className="p-3 text-center font-black text-indigo-600">{it.quantity} {it.unit}</td>
+                                                                <td className="p-3 text-gray-600 dark:text-gray-400">{it.specifications || '---'}</td>
+                                                                <td className="p-3 text-center">
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setViewingPartDataSheet(partForSheet)}
+                                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                                                                        title="مشاهده شناسنامه فنی، مشخصات، ابعاد و پیوست‌های کالا"
+                                                                    >
+                                                                        <Info size={12} className="text-indigo-600 dark:text-indigo-400" />
+                                                                        <span>نمایش جزئیات کالا</span>
+                                                                    </button>
+                                                                </td>
+                                                                <td className="p-3 text-center">
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setAiAdvisorInitialIndex(idx);
+                                                                            setShowAiAdvisorModal(true);
+                                                                        }}
+                                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black text-purple-700 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:text-purple-300 rounded-xl border border-purple-200 dark:border-purple-800 transition-all active:scale-95 cursor-pointer"
+                                                                        title="استعلام هوشمند قیمت و تامین‌کنندگان این قلم"
+                                                                    >
+                                                                        <Sparkles size={12} className="text-yellow-500" />
+                                                                        <span>استعلام این قلم</span>
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -1804,7 +2121,37 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div><label className="text-[10px] font-bold text-gray-400 block mb-1">نام قطعه / کالا:</label><p className="text-sm font-black text-gray-800 dark:text-gray-200">{request.itemName}</p></div>
                                         <div><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد درخواستی:</label><p className="text-lg font-black text-indigo-600">{request.quantity} {request.unit}</p></div>
-                                        <div className="col-span-full"><label className="text-[10px] font-bold text-gray-400 block mb-1">مشخصات فنی و ملاحظات:</label><p className="text-xs text-gray-600 dark:text-gray-400 font-medium leading-relaxed bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">{request.specifications || '---'}</p></div>
+                                        <div className="col-span-full flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                                            <div className="flex-1">
+                                                <label className="text-[10px] font-bold text-gray-400 block mb-1">مشخصات فنی و ملاحظات:</label>
+                                                <p className="text-xs text-gray-600 dark:text-gray-400 font-medium leading-relaxed">{request.specifications || '---'}</p>
+                                            </div>
+                                            {(() => {
+                                                const matchedPart = parts.find(p => (p.name && request.itemName && p.name.trim().toLowerCase() === request.itemName.trim().toLowerCase()));
+                                                const partForSheet: PartMasterData = matchedPart || {
+                                                    id: generateUUID(),
+                                                    name: request.itemName,
+                                                    unit: request.unit || 'عدد',
+                                                    dimensions: request.specifications || '',
+                                                    type: 'قطعات',
+                                                    category: request.category || 'عمومی',
+                                                    subCategory: '',
+                                                    currentStock: 0,
+                                                    minStock: 0
+                                                };
+                                                return (
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setViewingPartDataSheet(partForSheet)}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black text-indigo-700 bg-white dark:bg-gray-900 hover:bg-indigo-50 dark:hover:bg-gray-800 rounded-xl border border-indigo-200 dark:border-gray-700 transition-all shadow-sm shrink-0 cursor-pointer"
+                                                        title="مشاهده شناسنامه فنی، ابعاد و پیوست‌های کالا"
+                                                    >
+                                                        <Info size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                                        <span>نمایش جزئیات کالا</span>
+                                                    </button>
+                                                );
+                                            })()}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1840,10 +2187,33 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
                                                         <p className="text-xs font-black text-gray-800">{p.vendorName}</p>
-                                                        <p className="text-[10px] text-gray-500 font-bold">{p.number} | {formatDate(p.date)}</p>
+                                                        <p className="text-[10px] text-gray-500 font-bold">{p.number || 'بدون شماره'} | {formatDate(p.date)}</p>
                                                     </div>
                                                     {p.isChosen && <span className="bg-green-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm">انتخاب شده</span>}
                                                 </div>
+
+                                                {/* Proforma Attachments Preview */}
+                                                {p.attachments && p.attachments.length > 0 && (
+                                                    <div className="mb-3 p-2 bg-white/80 dark:bg-gray-800/80 rounded-xl border border-indigo-100 dark:border-gray-700 flex flex-wrap items-center gap-1.5">
+                                                        <span className="text-[10px] font-bold text-gray-500 flex items-center gap-1">
+                                                            <Paperclip size={11} className="text-indigo-500" />
+                                                            <span>فایل پیش‌فاکتور:</span>
+                                                        </span>
+                                                        {p.attachments.map((att: any, attIdx: number) => (
+                                                            <button
+                                                                key={att.id || attIdx}
+                                                                type="button"
+                                                                onClick={() => setPreviewFile({ url: att.url, fileName: att.name || `پیش‌فاکتور_${p.vendorName}` })}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-lg text-[10px] font-bold border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                                                                title="مشاهده و پیش‌نمایش فایل پیش‌فاکتور"
+                                                            >
+                                                                <Eye size={11}/>
+                                                                <span className="max-w-[120px] truncate">{att.name || 'مشاهده پیش‌فاکتور'}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+
                                                 <div className="flex justify-between items-center border-t border-gray-100 pt-3">
                                                     <span className="text-sm font-black text-indigo-700">{formatCurrency(p.totalAmount)} <span className="text-[9px]">ریال</span></span>
                                                     <div className="flex gap-1">
@@ -1985,17 +2355,26 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Tehran Branch: CEO Initial Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_CEO_INITIAL) && (isAdmin || hasPurchasePerm('canApproveCEO')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA, {}, 'تایید اولیه و مجوز اخذ استعلام')} className="bg-sky-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg" disabled={actionLoading}>تایید اولیه استعلام و اجازه ثبت پروفرما</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA, {}, 'تایید اولیه و مجوز اخذ استعلام')} className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 transition-all hover:scale-105" disabled={actionLoading}>
+                                <Crown size={16} className="text-amber-300" />
+                                <span>تایید اولیه و اجازه ثبت پروفرما (نقش مدیرعامل)</span>
+                            </button>
                         )}
 
                         {/* Tehran Branch: Proforma Entry */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) && request.proformas.length > 0 && (isAdmin || hasPurchasePerm('canManageProformas')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER, {}, 'ارسال پروفرماها به مدیر بازرگانی')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-xs" disabled={actionLoading}>ارسال لیست پیش‌فاکتورها به مدیر بازرگانی</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER, {}, 'ارسال پروفرماها به مدیر بازرگانی')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 transition-all hover:scale-105" disabled={actionLoading}>
+                                <Briefcase size={16} className="text-indigo-200" />
+                                <span>ارسال لیست پیش‌فاکتورها به مدیر بازرگانی</span>
+                            </button>
                         )}
 
                         {/* Tehran Branch: Commercial Manager Selection */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER) && (isAdmin || hasPurchasePerm('canCommercialFinalize')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg" disabled={actionLoading}>تایید مدیر بازرگانی و ارسال به مدیرعامل</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 transition-all hover:scale-105" disabled={actionLoading}>
+                                <Briefcase size={16} className="text-purple-200" />
+                                <span>تایید مدیر بازرگانی و ارجاع به مدیرعامل</span>
+                            </button>
                         )}
 
                         {/* Zanjan Branch: Proposal & Purchasing */}
@@ -2005,7 +2384,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Zanjan Branch: Factory Manager Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_BUYER_EXECUTION, {}, 'دستور خرید و صدور سفارش کارخانه')} className="bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg" disabled={actionLoading}>دستور خرید و ارجاع به کارپرداز</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_BUYER_EXECUTION, {}, 'دستور خرید و صدور سفارش کارخانه')} className="bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2" disabled={actionLoading}>
+                                <Warehouse size={16} className="text-teal-200" />
+                                <span>دستور خرید و ارجاع به کارپرداز (مدیر کارخانه)</span>
+                            </button>
                         )}
 
                         {/* Zanjan Branch: Purchasing Agent Execution */}
@@ -2020,7 +2402,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Common: Factory Manager Entry Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_SECURITY_ENTRY, {}, 'صدور مجوز ورود کالا به کارخانه')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg" disabled={actionLoading}>مجوز ورود کالا به کارخانه</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_SECURITY_ENTRY, {}, 'صدور مجوز ورود کالا به کارخانه')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2" disabled={actionLoading}>
+                                <Warehouse size={16} className="text-emerald-200" />
+                                <span>مجوز ورود کالا به کارخانه (مدیر کارخانه)</span>
+                            </button>
                         )}
 
                         {/* Security Entry */}
@@ -2035,7 +2420,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Factory Manager Final Approve */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT, {}, 'تایید نهایی تحویل و ارسال به انبار')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-xs" disabled={actionLoading}>تایید نهایی ورود کالا (مدیر کارخانه)</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT, {}, 'تایید نهایی تحویل و ارسال به انبار')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-xs flex items-center gap-2" disabled={actionLoading}>
+                                <Warehouse size={16} className="text-indigo-200" />
+                                <span>تایید نهایی تحویل و ارسال به انبار (مدیر کارخانه)</span>
+                            </button>
                         )}
 
                         {/* Warehouse Receipt */}
@@ -2045,7 +2433,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Factory Manager Final Sign */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.COMPLETED, {}, 'امضای الکترونیکی و بایگانی پرونده')} className="bg-indigo-900 text-white px-8 py-3 rounded-2xl font-black shadow-2xl transition-all hover:bg-black text-xs">امضا، تکمیل و بایگانی نهایی پرونده</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.COMPLETED, {}, 'امضای الکترونیکی و بایگانی پرونده')} className="bg-indigo-900 text-white px-8 py-3 rounded-2xl font-black shadow-2xl transition-all hover:bg-black text-xs flex items-center gap-2">
+                                <Warehouse size={16} className="text-amber-400" />
+                                <span>امضا، تکمیل و بایگانی نهایی پرونده (مدیر کارخانه)</span>
+                            </button>
                         )}
 
                         {isCurrentStep(PurchaseRequestStatus.REJECTED) && (
@@ -2057,58 +2448,130 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     </div>
 
                     <div className="flex gap-4 border-r pr-4 border-gray-200">
-                         <div className="relative group">
-                            <button className="flex items-center gap-2 p-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors shadow-sm font-black text-xs">
-                                <Printer size={16} /> چاپ اسناد
+                         {/* Robust Clickable Print Menu */}
+                         <div className="relative">
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    setIsPrintDropdownOpen(!isPrintDropdownOpen);
+                                    setIsShareDropdownOpen(false);
+                                }}
+                                className="flex items-center gap-2 p-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 active:scale-95 transition-all shadow-sm font-black text-xs cursor-pointer"
+                            >
+                                <Printer size={16} /> 
+                                <span>چاپ اسناد</span>
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${isPrintDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
-                            <div className="absolute bottom-full mb-2 left-0 w-48 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 hidden group-hover:block animate-in slide-in-from-bottom-2 fade-in">
-                                <button onClick={() => { setPrintType('REQUEST'); setTimeout(() => window.print(), 300); }} className="w-full text-right p-2 hover:bg-gray-50 rounded-lg text-[10px] font-bold border-b mb-1">چاپ درخواست اولیه (A5)</button>
-                                <button onClick={() => { setPrintType('BARCODE'); setTimeout(() => window.print(), 300); }} className="w-full text-right p-2 hover:bg-gray-50 rounded-lg text-[10px] font-bold border-b mb-1 text-indigo-700 font-black">چاپ برچسب بارکد (Barcode)</button>
-                                {request.proformas.find(p => p.isChosen) && (
-                                    <button onClick={() => { setPrintType('PROFORMA'); setTimeout(() => window.print(), 300); }} className="w-full text-right p-2 hover:bg-gray-50 rounded-lg text-[10px] font-bold border-b mb-1">چاپ پیش‌فاکتور منتخب (A5)</button>
-                                )}
-                                {request.warehouseReceiptNumber && (
-                                    <button onClick={() => { setPrintType('RECEIPT'); setTimeout(() => window.print(), 300); }} className="w-full text-right p-2 hover:bg-gray-50 rounded-lg text-[10px] font-bold">چاپ رسید انبار نهایی (A5)</button>
-                                )}
-                            </div>
+
+                            {isPrintDropdownOpen && (
+                                <div className="absolute bottom-full mb-2 left-0 w-52 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                                    <button 
+                                        onClick={() => { 
+                                            setIsPrintDropdownOpen(false);
+                                            setPrintType('REQUEST'); 
+                                            setTimeout(() => window.print(), 300); 
+                                        }} 
+                                        className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 transition-colors flex items-center justify-between"
+                                    >
+                                        <span>چاپ فرم درخواست (A5)</span>
+                                        <FileText size={13} className="text-gray-400"/>
+                                    </button>
+                                    <button 
+                                        onClick={() => { 
+                                            setIsPrintDropdownOpen(false);
+                                            setPrintType('BARCODE'); 
+                                            setTimeout(() => window.print(), 300); 
+                                        }} 
+                                        className="w-full text-right p-2.5 hover:bg-indigo-50 rounded-xl text-xs font-black text-indigo-700 border-b border-gray-100 mb-1 transition-colors flex items-center justify-between"
+                                    >
+                                        <span>چاپ برچسب بارکد (Barcode)</span>
+                                        <Tag size={13} className="text-indigo-600"/>
+                                    </button>
+                                    {request.proformas.find(p => p.isChosen) && (
+                                        <button 
+                                            onClick={() => { 
+                                                setIsPrintDropdownOpen(false);
+                                                setPrintType('PROFORMA'); 
+                                                setTimeout(() => window.print(), 300); 
+                                            }} 
+                                            className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 transition-colors flex items-center justify-between"
+                                        >
+                                            <span>چاپ پیش‌فاکتور منتخب (A5)</span>
+                                            <Printer size={13} className="text-gray-400"/>
+                                        </button>
+                                    )}
+                                    {request.warehouseReceiptNumber && (
+                                        <button 
+                                            onClick={() => { 
+                                                setIsPrintDropdownOpen(false);
+                                                setPrintType('RECEIPT'); 
+                                                setTimeout(() => window.print(), 300); 
+                                            }} 
+                                            className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold transition-colors flex items-center justify-between"
+                                        >
+                                            <span>چاپ رسید انبار نهایی (A5)</span>
+                                            <Warehouse size={13} className="text-gray-400"/>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                          </div>
 
-                         <div className="relative group">
+                         {/* Robust Clickable Share Menu */}
+                         <div className="relative">
                             <button 
+                                type="button"
                                 disabled={isSharingDoc}
-                                className="flex items-center gap-2 p-3 text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors shadow-sm font-black text-xs disabled:opacity-50"
+                                onClick={() => {
+                                    setIsShareDropdownOpen(!isShareDropdownOpen);
+                                    setIsPrintDropdownOpen(false);
+                                }}
+                                className="flex items-center gap-2 p-3 text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-sm font-black text-xs disabled:opacity-50 cursor-pointer"
                                 title="ارسال اسناد درخواست به گفتگو"
                             >
                                 {isSharingDoc ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />} 
-                                ارسال به گفتگو
+                                <span>ارسال به گفتگو</span>
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${isShareDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
-                            <div className="absolute bottom-full mb-2 left-0 w-52 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 hidden group-hover:block animate-in slide-in-from-bottom-2 fade-in z-50">
-                                <button 
-                                    onClick={() => handleSharePurchaseDoc('REQUEST')} 
-                                    className="w-full text-right p-2 hover:bg-emerald-50 text-gray-800 rounded-lg text-[10px] font-bold border-b mb-1 flex items-center justify-between"
-                                >
-                                    <span>ارسال فرم درخواست (A5)</span>
-                                    <MessageSquare size={12} className="text-emerald-600"/>
-                                </button>
-                                {request.proformas.find(p => p.isChosen) && (
+
+                            {isShareDropdownOpen && (
+                                <div className="absolute bottom-full mb-2 left-0 w-56 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
                                     <button 
-                                        onClick={() => handleSharePurchaseDoc('PROFORMA')} 
-                                        className="w-full text-right p-2 hover:bg-emerald-50 text-gray-800 rounded-lg text-[10px] font-bold border-b mb-1 flex items-center justify-between"
+                                        onClick={() => {
+                                            setIsShareDropdownOpen(false);
+                                            handleSharePurchaseDoc('REQUEST');
+                                        }} 
+                                        className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 flex items-center justify-between transition-colors"
                                     >
-                                        <span>ارسال پیش‌فاکتور منتخب</span>
-                                        <MessageSquare size={12} className="text-emerald-600"/>
+                                        <span>ارسال فرم درخواست (A5)</span>
+                                        <MessageSquare size={13} className="text-emerald-600"/>
                                     </button>
-                                )}
-                                {request.warehouseReceiptNumber && (
-                                    <button 
-                                        onClick={() => handleSharePurchaseDoc('RECEIPT')} 
-                                        className="w-full text-right p-2 hover:bg-emerald-50 text-gray-800 rounded-lg text-[10px] font-bold flex items-center justify-between"
-                                    >
-                                        <span>ارسال رسید انبار نهایی</span>
-                                        <MessageSquare size={12} className="text-emerald-600"/>
-                                    </button>
-                                )}
-                            </div>
+                                    {request.proformas.find(p => p.isChosen) && (
+                                        <button 
+                                            onClick={() => {
+                                                setIsShareDropdownOpen(false);
+                                                handleSharePurchaseDoc('PROFORMA');
+                                            }} 
+                                            className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 flex items-center justify-between transition-colors"
+                                        >
+                                            <span>ارسال پیش‌فاکتور منتخب</span>
+                                            <MessageSquare size={13} className="text-emerald-600"/>
+                                        </button>
+                                    )}
+                                    {request.warehouseReceiptNumber && (
+                                        <button 
+                                            onClick={() => {
+                                                setIsShareDropdownOpen(false);
+                                                handleSharePurchaseDoc('RECEIPT');
+                                            }} 
+                                            className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+                                        >
+                                            <span>ارسال رسید انبار نهایی</span>
+                                            <MessageSquare size={13} className="text-emerald-600"/>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                          </div>
                     </div>
                 </div>
@@ -2312,6 +2775,22 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                    onClose={() => setShowWarehouseModal(false)}
                    onConfirm={(data: any) => handleAction(PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN, data, 'صدور رسید انبار')}
                 />}
+
+                {viewingPartDataSheet && (
+                    <DataSheetModal 
+                        part={viewingPartDataSheet} 
+                        onClose={() => setViewingPartDataSheet(null)} 
+                    />
+                )}
+
+                {previewFile && (
+                    <FileViewerModal 
+                        isOpen={!!previewFile} 
+                        onClose={() => setPreviewFile(null)} 
+                        fileUrl={previewFile.url} 
+                        fileName={previewFile.fileName} 
+                    />
+                )}
             </div>
         </div>,
         document.body
@@ -2337,6 +2816,9 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
     });
     const [tax, setTax] = useState(0);
     const [discount, setDiscount] = useState(0);
+    const [attachments, setAttachments] = useState<PurchaseAttachment[]>(initialVendorData?.attachments || []);
+    const [uploadingAttachment, setUploadingAttachment] = useState(false);
+    const [previewAttachmentFile, setPreviewAttachmentFile] = useState<{ url: string; fileName: string } | null>(null);
     const [showAiAdvisor, setShowAiAdvisor] = useState(false);
 
     useEffect(() => {
@@ -2351,8 +2833,40 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
                     totalPrice: (it.quantity || 1) * (initialVendorData.unitPrice || 0)
                 } : it));
             }
+            if (initialVendorData.attachments) {
+                setAttachments(initialVendorData.attachments);
+            }
         }
     }, [initialVendorData]);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploadingAttachment(true);
+        try {
+            const res = await uploadFileChunked(file, () => {});
+            const newAtt: PurchaseAttachment = {
+                id: generateUUID(),
+                fileName: file.name,
+                url: res.url,
+                fileUrl: res.url,
+                fileType: file.type.includes('image') ? 'image' : file.type.includes('pdf') ? 'pdf' : 'other',
+                uploadedAt: new Date().toISOString(),
+                uploadedBy: currentUser.fullName
+            };
+            setAttachments(prev => [...prev, newAtt]);
+        } catch (err) {
+            console.error('File upload error', err);
+            alert('خطا در بارگذاری فایل پیش‌فاکتور');
+        } finally {
+            setUploadingAttachment(false);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const removeAttachment = (attId: string) => {
+        setAttachments(prev => prev.filter(a => a.id !== attId));
+    };
 
     const updateItem = (id: string, field: string, val: any) => {
         setItems(items.map(it => {
@@ -2384,7 +2898,7 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
             totalAmount: finalTotal,
             taxAmount: tax,
             discountAmount: discount,
-            attachments: [],
+            attachments: attachments,
             registeredBy: currentUser.fullName
         };
         onSuccess([...request.proformas, newP]);
@@ -2398,7 +2912,7 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
                         <h3 className="font-black text-xl text-gray-800">ثبت پیش‌فاکتور حرفه‌ای</h3>
                         <p className="text-xs text-gray-500 font-bold mt-0.5">درخواست شماره: {request.requestNumber} - کالا: {request.itemName}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full"><XCircle/></button>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full cursor-pointer"><XCircle/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
                     {/* AI Advisor Banner */}
@@ -2452,12 +2966,71 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
                                         <td className="p-2"><input className="w-full p-2 bg-transparent text-center" value={it.unit} onChange={e=>updateItem(it.id, 'unit', e.target.value)} /></td>
                                         <td className="p-2"><input type="number" className="w-full p-2 bg-transparent text-center font-bold text-indigo-600" value={it.unitPrice} onChange={e=>updateItem(it.id, 'unitPrice', +e.target.value)} /></td>
                                         <td className="p-2 text-center font-black">{formatCurrency(it.totalPrice)}</td>
-                                        <td className="p-2"><button onClick={()=>removeItem(it.id)} className="text-red-500"><Trash2 size={16}/></button></td>
+                                        <td className="p-2"><button onClick={()=>removeItem(it.id)} className="text-red-500 cursor-pointer"><Trash2 size={16}/></button></td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                        <button onClick={addItem} className="w-full py-3 bg-gray-50 text-indigo-600 font-bold hover:bg-indigo-50 border-t border-dashed">+ افزودن ردیف جدید</button>
+                        <button onClick={addItem} className="w-full py-3 bg-gray-50 text-indigo-600 font-bold hover:bg-indigo-50 border-t border-dashed cursor-pointer">+ افزودن ردیف جدید</button>
+                    </div>
+
+                    {/* Proforma File Attachment & Preview Section */}
+                    <div className="p-4 bg-indigo-50/50 dark:bg-gray-800/60 rounded-2xl border border-indigo-100 dark:border-gray-700 space-y-3">
+                        <div className="flex flex-wrap justify-between items-center gap-2">
+                            <label className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                <Paperclip size={16} className="text-indigo-600" />
+                                <span>پیوست فایل اصلی پیش‌فاکتور (PDF / عکس)</span>
+                            </label>
+                            <label className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 ${uploadingAttachment ? 'opacity-50 pointer-events-none' : ''}`}>
+                                {uploadingAttachment ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                <span>{uploadingAttachment ? 'در حال بارگذاری...' : 'انتخاب و آپلود فایل'}</span>
+                                <input 
+                                    type="file" 
+                                    accept="image/*,application/pdf" 
+                                    className="hidden" 
+                                    onChange={handleFileUpload} 
+                                    disabled={uploadingAttachment}
+                                />
+                            </label>
+                        </div>
+
+                        {attachments.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                                {attachments.map((att) => {
+                                    const isPdf = att.fileType?.toLowerCase().includes('pdf') || att.fileName?.toLowerCase().endsWith('.pdf');
+                                    const fileLink = att.url || att.fileUrl || '';
+
+                                    return (
+                                        <div key={att.id} className="flex items-center justify-between p-2.5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 text-xs">
+                                            <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+                                                {isPdf ? <FileText size={16} className="text-red-500 shrink-0" /> : <ImageIcon size={16} className="text-blue-500 shrink-0" />}
+                                                <span className="font-bold text-gray-800 dark:text-gray-200 truncate">{att.fileName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0 mr-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreviewAttachmentFile({ url: fileLink, fileName: att.fileName })}
+                                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 rounded-lg transition-colors cursor-pointer"
+                                                    title="پیش‌نمایش فایل"
+                                                >
+                                                    <Eye size={15} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeAttachment(att.id)}
+                                                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors cursor-pointer"
+                                                    title="حذف پیوست"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className="text-[11px] text-gray-400 italic">فایلی پیوست نشده است. می‌توانید تصویر یا فایل PDF پیش‌فاکتور دریافتی را برای بررسی و پیش‌نمایش بارگذاری نمایید.</p>
+                        )}
                     </div>
 
                     <div className="flex flex-col items-end gap-3 pt-4 border-t">
@@ -2480,8 +3053,8 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
                     </div>
                 </div>
                 <div className="p-6 bg-gray-50 flex gap-3">
-                    <button onClick={handleAdd} className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 active:scale-95 transition-all">تایید و ثبت نهایی پیش‌فاکتور</button>
-                    <button onClick={onClose} className="px-8 bg-white border border-gray-300 text-gray-600 font-bold rounded-2xl hover:bg-gray-100 transition-all">انصراف</button>
+                    <button onClick={handleAdd} className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 active:scale-95 transition-all cursor-pointer">تایید و ثبت نهایی پیش‌فاکتور</button>
+                    <button onClick={onClose} className="px-8 bg-white border border-gray-300 text-gray-600 font-bold rounded-2xl hover:bg-gray-100 transition-all cursor-pointer">انصراف</button>
                 </div>
 
                 {showAiAdvisor && (
@@ -2502,6 +3075,15 @@ const ProfessionalProformaModal = ({ request, onClose, onSuccess, currentUser, i
                             }
                             setShowAiAdvisor(false);
                         }}
+                    />
+                )}
+
+                {previewAttachmentFile && (
+                    <FileViewerModal 
+                        isOpen={!!previewAttachmentFile} 
+                        onClose={() => setPreviewAttachmentFile(null)} 
+                        fileUrl={previewAttachmentFile.url} 
+                        fileName={previewAttachmentFile.fileName} 
                     />
                 )}
             </div>
@@ -2914,72 +3496,9 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
     );
 };
 
-const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () => void }) => {
-    const [isSharing, setIsSharing] = useState(false);
-    const handleSendToChat = async () => {
-        setIsSharing(true);
-        try {
-            const el = document.getElementById('datasheet-print-area');
-            if (!el) throw new Error('المان چاپ یافت نشد');
-            await shareElementToChat(
-                el,
-                `DataSheet_${part.id}.jpg`,
-                {
-                    defaultMessage: `📋 شناسنامه فنی کالا: ${part.name} - گروه: ${part.category || 'عمومی'}`,
-                    title: 'ارسال شناسنامه کالا به گفتگو'
-                }
-            );
-        } catch (e) {
-            console.error(e);
-            alert('خطا در آماده‌سازی سند جهت ارسال به گفتگو');
-        } finally {
-            setIsSharing(false);
-        }
-    };
-
-    return createPortal(
-        <div className="fixed inset-0 z-[100000008] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center p-4 bg-black/70 backdrop-blur-md">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl border border-white/20 animate-in fade-in zoom-in h-[90vh] flex flex-col">
-                <div className="p-6 border-b flex justify-between items-center bg-gray-900 text-white">
-                    <div className="flex items-center gap-3">
-                        <Info size={28} className="text-yellow-400" />
-                        <div>
-                            <h2 className="text-xl font-black">شناسنامه کالا (Data Sheet)</h2>
-                            <p className="text-[10px] opacity-80 font-mono tracking-widest">{part.id}</p>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><XCircle size={24} /></button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8">
-                    <div id="datasheet-print-area" className="bg-white p-4 md:p-12 shadow-sm rounded-2xl mx-auto max-w-3xl border border-gray-200 printable-datasheet">
-                         <PrintPartDataSheet part={part} />
-                    </div>
-                </div>
-
-                <div className="p-6 border-t flex justify-end gap-3 bg-white">
-                    <button onClick={onClose} className="px-6 py-3 border-2 border-gray-200 rounded-2xl font-bold text-gray-500">بستن</button>
-                    <button 
-                        onClick={handleSendToChat} 
-                        disabled={isSharing}
-                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-emerald-100 transition-colors cursor-pointer"
-                        title="ارسال شناسنامه کالا به گفتگو"
-                    >
-                        {isSharing ? <Loader2 size={20} className="animate-spin" /> : <MessageSquare size={20}/>}
-                        ارسال به گفتگو
-                    </button>
-                    <button onClick={() => window.print()} className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-indigo-100">
-                        <Printer size={20}/> چاپ شناسنامه
-                    </button>
-                </div>
-            </div>
-        </div>,
-        document.body
-    );
-};
-
 const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
     const [loading, setLoading] = useState(false);
+    const [previewPdf, setPreviewPdf] = useState<{ url: string; fileName: string } | null>(null);
     const [formData, setFormData] = useState<Partial<PartMasterData>>(initialData || {
         name: '',
         type: 'قطعات',
@@ -3037,7 +3556,7 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
             <div className="bg-white rounded-[2.5rem] w-full max-w-2xl p-8 animate-scale-in max-h-[92vh] overflow-y-auto no-scrollbar mb-10 relative">
                 <div className="flex justify-between items-center mb-8">
                     <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Layers className="text-indigo-600"/> {initialData ? 'ویرایش کالا / قطعه' : 'معرفی کالا جدید'}</h2>
-                    <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><XCircle size={28} className="text-gray-400"/></button>
+                    <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"><XCircle size={28} className="text-gray-400"/></button>
                 </div>
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
@@ -3073,7 +3592,17 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
                                 </div>
                                 <div className="relative group h-32 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden cursor-pointer hover:bg-gray-100 transition-all">
                                     {formData.image ? (
-                                        <img src={formData.image} className="w-full h-full object-cover" alt="preview" />
+                                        <div className="relative w-full h-full">
+                                            <img src={formData.image} className="w-full h-full object-cover" alt="preview" />
+                                            <button 
+                                                type="button" 
+                                                onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, image: '' }); }} 
+                                                className="absolute top-2 left-2 p-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md cursor-pointer z-10"
+                                                title="حذف تصویر"
+                                            >
+                                                <Trash2 size={14}/>
+                                            </button>
+                                        </div>
                                     ) : (
                                         <>
                                             <Upload className="text-gray-300 group-hover:text-indigo-400 transition-colors" size={32}/>
@@ -3083,26 +3612,60 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
                                     <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
                                 </div>
 
-                                <div className="relative group p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-all">
-                                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center">
+                                <div className="relative group p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center gap-3 transition-all">
+                                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shrink-0">
                                         <FileUp size={20} />
                                     </div>
-                                    <div className="flex-1">
-                                        <p className="text-xs font-bold text-gray-700">{formData.pdfAttachment ? 'فایل ضمیمه بارگذاری شد' : 'بارگذاری کاتالوگ / PDF'}</p>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-gray-700 truncate">{formData.pdfAttachment ? 'فایل ضمیمه / کاتالوگ بارگذاری شد' : 'بارگذاری کاتالوگ / PDF'}</p>
                                         <p className="text-[10px] text-gray-400">{formData.pdfAttachment ? 'جهت جایگزینی کلیک کنید' : 'فقط فایل‌های PDF مجاز است'}</p>
                                     </div>
-                                    {formData.pdfAttachment && <CheckCircle size={16} className="text-green-500"/>}
+                                    {formData.pdfAttachment && (
+                                        <div className="flex items-center gap-1.5 shrink-0 z-10">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPreviewPdf({ url: formData.pdfAttachment!, fileName: `Catalog_${formData.name || 'part'}.pdf` });
+                                                }}
+                                                className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                                                title="پیش‌نمایش PDF"
+                                            >
+                                                <Eye size={16} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFormData({ ...formData, pdfAttachment: '' });
+                                                }}
+                                                className="p-1.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+                                                title="حذف PDF"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    )}
                                     <input type="file" accept="application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handlePdfUpload} />
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div className="md:col-span-2 pt-4">
-                        <button disabled={loading} className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70">
+                        <button disabled={loading} className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70 cursor-pointer">
                             {loading ? <Loader2 className="animate-spin"/> : <ClipboardCheck size={20}/>} {initialData ? 'ثبت تغییرات' : 'معرفی نهایی کالا'}
                         </button>
                     </div>
                 </form>
+
+                {previewPdf && (
+                    <FileViewerModal 
+                        isOpen={!!previewPdf} 
+                        onClose={() => setPreviewPdf(null)} 
+                        fileUrl={previewPdf.url} 
+                        fileName={previewPdf.fileName} 
+                    />
+                )}
             </div>
         </div>,
         document.body

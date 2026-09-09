@@ -473,11 +473,39 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         }
     }, [selectedRecord]);
 
+    const sanitizeTradeDate = (val?: string): string => {
+        if (!val || typeof val !== 'string') return '';
+        const clean = val.replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)])
+                         .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)]).trim();
+        const parts = clean.split(/[\/\-]/);
+        if (parts.length >= 1 && parts[0].length > 4) {
+            const fixedYear = parts[0].slice(0, 4);
+            const remaining = parts.slice(1).map(p => p.slice(0, 2)).join('/');
+            return remaining ? `${fixedYear}/${remaining}` : fixedYear;
+        }
+        return val;
+    };
+
     const loadRecords = async () => { 
         try {
             const data = await getTradeRecords(); 
-            // Safety Check: Ensure records is always an array
-            setRecords(Array.isArray(data) ? data : []); 
+            // Safety Check: Ensure records is always an array and auto-heal invalid year formats
+            const rawList = Array.isArray(data) ? data : [];
+            const sanitizedList = rawList.map(r => {
+                let changed = false;
+                let regDate = r.registrationDate;
+                let expDate = r.registrationExpiry;
+                if (regDate && typeof regDate === 'string') {
+                    const clean = sanitizeTradeDate(regDate);
+                    if (clean !== regDate) { regDate = clean; changed = true; }
+                }
+                if (expDate && typeof expDate === 'string') {
+                    const clean = sanitizeTradeDate(expDate);
+                    if (clean !== expDate) { expDate = clean; changed = true; }
+                }
+                return changed ? { ...r, registrationDate: regDate, registrationExpiry: expDate } : r;
+            });
+            setRecords(sanitizedList); 
         } catch (e) {
             console.error("Error loading trade records", e);
             setRecords([]);

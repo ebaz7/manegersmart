@@ -21,6 +21,7 @@ import {
 import { resolveImageUrl } from '../services/apiService';
 import { downloadAndOpenFile } from '../services/fileService';
 import { openSendToChat } from '../services/chatShareService';
+import { getCachedAsset } from '../utils/assetCache';
 
 export interface FileViewerProps {
   isOpen: boolean;
@@ -75,9 +76,22 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
       } catch (e) {
         console.error("Error converting Base64 to Blob URL in FileViewerModal:", e);
       }
-    }
+    } else {
+      let isMounted = true;
+      getCachedAsset(resolvedUrl).then((cachedUrl) => {
+        if (isMounted) {
+          setPreviewUrl(cachedUrl);
+        }
+      }).catch(() => {
+        if (isMounted) {
+          setPreviewUrl(resolvedUrl);
+        }
+      });
 
-    setPreviewUrl(resolvedUrl);
+      return () => {
+        isMounted = false;
+      };
+    }
   }, [isOpen, resolvedUrl]);
 
   // Reset zoom & rotation when file changes

@@ -99,7 +99,7 @@ interface Props {
     settings?: any;
 }
 
-export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
+export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, settings }) => {
     // Main module sub-navigation: Tab 1 = Purchase Pre-Invoices (53 -> 57), Tab 2 = Cheque Receipts (Bursary 11), Tab 3 = Other future Sayan registrations
     const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
 
@@ -583,7 +583,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser }) => {
 
             {/* TAB 2: Cheque Receipts Module */}
             {mainSubTab === 'CHEQUE_RECEIPTS' && (
-                <SayanChequeReceiptsTab currentUser={currentUser} />
+                <SayanChequeReceiptsTab currentUser={currentUser} settings={settings} />
             )}
 
             {/* TAB 3: Future Document Types Placeholder */}

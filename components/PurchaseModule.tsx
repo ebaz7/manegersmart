@@ -36,6 +36,12 @@ import { getRolePermissions } from '../services/authService';
 import { AiPurchaseAdvisorModal } from './AiPurchaseAdvisorModal';
 import { FileViewerModal } from './FileViewerModal';
 import { LS_KEYS, getLocalData } from '../services/apiService';
+import { useCachedAsset } from '../hooks/useCachedAsset';
+
+const CachedImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({ src, alt, className, ...props }) => {
+    const cachedSrc = useCachedAsset(src);
+    return <img src={cachedSrc || src} alt={alt} className={className} {...props} />;
+};
 
 const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
     const isMobile = useIsMobile();
@@ -765,7 +771,7 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
                 </div>
                 {req.image && (
                     <div className="mt-3 rounded-lg overflow-hidden h-12 bg-gray-100 border">
-                        <img src={req.image} className="w-full h-full object-cover" alt="part" referrerPolicy="no-referrer" />
+                        <CachedImage src={req.image} className="w-full h-full object-cover" alt="part" referrerPolicy="no-referrer" />
                     </div>
                 )}
             </div>
@@ -2551,7 +2557,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                              {request.image && (
                                 <div className="rounded-3xl overflow-hidden border-2 border-gray-100 shadow-md group relative h-64">
-                                     <img src={request.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="part" referrerPolicy="no-referrer" />
+                                     <CachedImage src={request.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="part" referrerPolicy="no-referrer" />
                                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                                          <p className="text-white text-[10px] font-bold opacity-80 line-clamp-2">{request.itemName}</p>
                                      </div>
@@ -3624,7 +3630,8 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
         p.name.includes(searchTerm) || 
         p.category.includes(searchTerm) || 
         (p.subCategory && p.subCategory.includes(searchTerm)) ||
-        (p.dimensions && p.dimensions.includes(searchTerm))
+        (p.dimensions && p.dimensions.includes(searchTerm)) ||
+        (p.machineName && p.machineName.includes(searchTerm))
     );
 
     const categories = Array.from(new Set(parts.map((p: PartMasterData) => p.category)));
@@ -3653,6 +3660,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                         category: row['گروه'] || 'عمومی',
                         subCategory: row['زیرگروه'] || '',
                         dimensions: row['ابعاد یا مشخصات'] || '',
+                        machineName: row['نام دستگاه'] || '',
                         unit: row['واحد'] || 'عدد',
                         minStock: parseInt(row['حداقل موجودی']) || 0,
                         currentStock: parseInt(row['موجودی اولیه']) || 0
@@ -3709,7 +3717,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                         <div key={p.id} className="glass-panel border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
                             <div className="h-40 bg-gray-100 relative overflow-hidden cursor-pointer" onClick={() => setShowDataSheet(p)}>
                                 {p.image ? (
-                                    <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} referrerPolicy="no-referrer" />
+                                    <CachedImage src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} referrerPolicy="no-referrer" />
                                 ) : (
                                     <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
                                         <ImageIcon size={48} />
@@ -3720,7 +3728,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                             </div>
                             <div className="p-4">
                                 <h3 className="font-black text-gray-800 text-sm mb-1">{p.name}</h3>
-                                <p className="text-[10px] text-gray-500 line-clamp-1 mb-3">{p.subCategory ? `زیرگروه: ${p.subCategory}` : 'فاقد زیرگروه'} | {p.dimensions || 'فاقد مشخصات ابعادی'}</p>
+                                <p className="text-[10px] text-gray-500 line-clamp-1 mb-3">{p.subCategory ? `زیرگروه: ${p.subCategory}` : 'فاقد زیرگروه'} | {p.dimensions || 'فاقد مشخصات ابعادی'}{p.machineName ? ` | دستگاه: ${p.machineName}` : ''}</p>
                                 
                                 <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                                     <div className="flex flex-col">
@@ -3796,7 +3804,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                              <div key={p.id} className="glass-panel border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
                                 <div className="h-40 bg-gray-100 relative overflow-hidden cursor-pointer" onClick={() => setShowDataSheet(p)}>
                                     {p.image ? (
-                                        <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} referrerPolicy="no-referrer" />
+                                        <CachedImage src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} referrerPolicy="no-referrer" />
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
                                             <ImageIcon size={48} />
@@ -3807,7 +3815,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                 </div>
                                 <div className="p-4">
                                     <h3 className="font-black text-gray-800 text-sm mb-1">{p.name}</h3>
-                                    <p className="text-[10px] text-gray-500 line-clamp-1 mb-3">{p.subCategory ? `زیرگروه: ${p.subCategory}` : 'فاقد زیرگروه'} | {p.dimensions || 'فاقد مشخصات ابعادی'}</p>
+                                    <p className="text-[10px] text-gray-500 line-clamp-1 mb-3">{p.subCategory ? `زیرگروه: ${p.subCategory}` : 'فاقد زیرگروه'} | {p.dimensions || 'فاقد مشخصات ابعادی'}{p.machineName ? ` | دستگاه: ${p.machineName}` : ''}</p>
                                     
                                     <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                                         <div className="flex flex-col">
@@ -3856,11 +3864,11 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                          ))
                      )
                 ) : (
-                     parts.filter((p: any) => p.category === selectedCategory && (!selectedSubCategory || p.subCategory === selectedSubCategory)).map((p: any) => (
+                       parts.filter((p: any) => p.category === selectedCategory && (!selectedSubCategory || p.subCategory === selectedSubCategory)).map((p: any) => (
                         <div key={p.id} className="glass-panel border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
                             <div className="h-40 bg-gray-100 relative overflow-hidden cursor-pointer" onClick={() => setShowDataSheet(p)}>
                                 {p.image ? (
-                                    <img src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} referrerPolicy="no-referrer" />
+                                    <CachedImage src={p.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} referrerPolicy="no-referrer" />
                                 ) : (
                                     <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
                                         <ImageIcon size={48} />
@@ -3871,7 +3879,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                             </div>
                             <div className="p-4">
                                 <h3 className="font-black text-gray-800 text-sm mb-1">{p.name}</h3>
-                                <p className="text-[10px] text-gray-500 line-clamp-1 mb-3">{p.subCategory ? `زیرگروه: ${p.subCategory}` : 'فاقد زیرگروه'} | {p.dimensions || 'فاقد مشخصات ابعادی'}</p>
+                                <p className="text-[10px] text-gray-500 line-clamp-1 mb-3">{p.subCategory ? `زیرگروه: ${p.subCategory}` : 'فاقد زیرگروه'} | {p.dimensions || 'فاقد مشخصات ابعادی'}{p.machineName ? ` | دستگاه: ${p.machineName}` : ''}</p>
                                 
                                 <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                                     <div className="flex flex-col">
@@ -3944,6 +3952,7 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
         category: '',
         subCategory: '',
         dimensions: '',
+        machineName: '',
         unit: 'عدد',
         minStock: 0,
         currentStock: 0,
@@ -4019,6 +4028,8 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
                                 <datalist id="subcategory-list">{subCategories.map((c: any) => <option key={c} value={c} />)}</datalist>
 
                                 <div className="relative"><input className="w-full border-2 border-gray-100 rounded-2xl p-3 pr-10 text-sm focus:border-indigo-400 outline-none" placeholder="ابعاد و مشخصات ابعادی..." value={formData.dimensions} onChange={e=>setFormData({...formData, dimensions: e.target.value})} /><Ruler className="absolute right-3 top-3.5 text-gray-300" size={18}/></div>
+
+                                <div className="relative"><input className="w-full border-2 border-gray-100 rounded-2xl p-3 pr-10 text-sm focus:border-indigo-400 outline-none" placeholder="نام دستگاه (مثلا: دستگاه استرچ)..." value={formData.machineName || ''} onChange={e=>setFormData({...formData, machineName: e.target.value})} /><Settings className="absolute right-3 top-3.5 text-gray-300" size={18}/></div>
                             </div>
                         </div>
                     </div>
@@ -4281,6 +4292,7 @@ const KardexTab = ({ parts, selectedPart, setSelectedPart, kardexEntries, loadKa
                 'گروه': p.category,
                 'زیرگروه': p.subCategory || '-',
                 'ابعاد / مشخصات': p.dimensions || '-',
+                'نام دستگاه': p.machineName || '-',
                 'واحد سنجش': p.unit || 'عدد',
                 'موجودی فعلی': p.currentStock || 0,
                 'حداقل موجودی': p.minStock || 0,

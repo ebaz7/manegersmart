@@ -20,6 +20,9 @@ interface Props {
     onDelete?: (receiptId: string) => void;
     onPrintA5?: (receipt: any) => void;
     actionLoading: string | null;
+    isFinancialOrAdmin?: boolean;
+    isCeoOrAdmin?: boolean;
+    canDeleteReceipt?: boolean;
 }
 
 const toPersianDigits = (num: string | number | undefined | null): string => {
@@ -51,10 +54,20 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
     onReject,
     onDelete,
     onPrintA5,
-    actionLoading
+    actionLoading,
+    isFinancialOrAdmin: propsIsFinancialOrAdmin,
+    isCeoOrAdmin: propsIsCeoOrAdmin,
+    canDeleteReceipt: propsCanDeleteReceipt
 }) => {
-    const isFinancialOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || currentUser.roles?.includes('financial') || currentUser.roles?.includes('admin');
-    const isCeoOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === 'MANAGER' || currentUser.roles?.includes('ceo') || currentUser.roles?.includes('admin');
+    const isFinancialOrAdmin = propsIsFinancialOrAdmin !== undefined 
+        ? propsIsFinancialOrAdmin 
+        : (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || currentUser.roles?.includes('financial') || currentUser.roles?.includes('admin'));
+    const isCeoOrAdmin = propsIsCeoOrAdmin !== undefined 
+        ? propsIsCeoOrAdmin 
+        : (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === 'MANAGER' || currentUser.roles?.includes('ceo') || currentUser.roles?.includes('admin'));
+    const canDeleteReceipt = propsCanDeleteReceipt !== undefined
+        ? propsCanDeleteReceipt
+        : isFinancialOrAdmin;
 
     const detailContentRef = useRef<HTMLDivElement>(null);
     const [previewAttachment, setPreviewAttachment] = useState<{ fileName: string; fileData?: string; fileType?: string; url?: string; resolvedSrc?: string } | null>(null);
@@ -457,7 +470,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                             <span>ارسال به گفتگوی سازمانی</span>
                         </button>
 
-                        {receipt.status !== 'REGISTERED_IN_SAYAN' && isFinancialOrAdmin && onDelete && (
+                        {receipt.status !== 'REGISTERED_IN_SAYAN' && canDeleteReceipt && onDelete && (
                             <button
                                 type="button"
                                 onClick={() => onDelete(receipt.id)}

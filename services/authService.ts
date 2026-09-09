@@ -57,7 +57,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
                 canViewSecurity: true, canCreateSecurityLog: true, canApproveSecuritySupervisor: true, canManagePurchase: true,
                 canViewNotifications: true, canCreateNotifications: true, canCreateAnnouncements: true,
                 canViewCustomerBalances: true, canImportCustomerBalances: true,
-                canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true
+                canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
+                canSayanRegisterCheque: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true
             };
         }
 
@@ -89,6 +90,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             canViewNotifications: true, canCreateNotifications: true, canCreateAnnouncements: true,
             canViewCustomerBalances: true, canImportCustomerBalances: true,
             canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
+            canSayanRegisterCheque: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
             // Purchase-specific permissions hardwired for administrator:
             canView: true, canCreate: true, canApproveTechnical: true, canApproveFactory: true, canApproveCEO: true,
             canManageProformas: true, canSelectProforma: true, canRegisterEntry: true, canCheckQC: true,
@@ -109,7 +111,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewSecurity: false, canCreateSecurityLog: false, canApproveSecuritySupervisor: false,
         canViewNotifications: false, canCreateNotifications: false, canCreateAnnouncements: false,
         canViewCustomerBalances: false, canImportCustomerBalances: false,
-        canViewSayan: false, canViewSayanTraz: false, canViewSayanSales: false, canViewSayanProduction: false, canViewSayanProdReturns: false, canViewSayanCheques: false, canViewSayanRemittances: false, canViewSayanWarehouseOverview: false, canViewSayanWarehouseWidget: false
+        canViewSayan: false, canViewSayanTraz: false, canViewSayanSales: false, canViewSayanProduction: false, canViewSayanProdReturns: false, canViewSayanCheques: false, canViewSayanRemittances: false, canViewSayanWarehouseOverview: false, canViewSayanWarehouseWidget: false,
+        canSayanRegisterCheque: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanDeleteReceipt: false
     };
 
     // Apply System Defaults (Hardcoded Logic)
@@ -125,6 +128,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canViewSecurity = true;
             perms.canViewCustomerBalances = true;
             perms.canImportCustomerBalances = true;
+            perms.canSayanApproveCeo = true;
             break;
 
         case UserRole.FINANCIAL:
@@ -133,6 +137,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canApproveFinancial = true;
             perms.canViewCustomerBalances = true;
             perms.canImportCustomerBalances = true;
+            perms.canSayanRegisterCheque = true;
+            perms.canSayanApproveAccounting = true;
+            perms.canSayanDeleteReceipt = true;
             break;
 
         case UserRole.MANAGER:

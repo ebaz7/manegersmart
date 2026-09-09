@@ -191,6 +191,10 @@ export interface RolePermissions {
   canAccessSayanDailySales?: boolean;
   canAccessSayanCompareSales?: boolean;
   canAccessSayanRegistrations?: boolean;
+  canSayanRegisterCheque?: boolean;
+  canSayanApproveAccounting?: boolean;
+  canSayanApproveCeo?: boolean;
+  canSayanDeleteReceipt?: boolean;
   canAccessSecretariat?: boolean;
   canManageSecretariatSettings?: boolean;
   [key: string]: boolean | undefined;
@@ -1520,6 +1524,17 @@ export interface PurchaseRequest {
     returnReason?: string;
     createdAt: number;
     updatedAt: number;
+    comments?: PurchaseComment[];
+}
+
+export interface PurchaseComment {
+    id: string;
+    userId: string;
+    userName: string;
+    userRole?: string;
+    text: string;
+    createdAt: number;
+    replyToId?: string; // ID of the comment this is replying to (for nested comments/replies)
 }
 
 export interface PartMasterData {
@@ -1532,6 +1547,7 @@ export interface PartMasterData {
     category: string;
     subCategory?: string;
     dimensions?: string;
+    machineName?: string; // e.g. 'دستگاه استرچ'
     unit: string;
     image?: string;
     pdfAttachment?: string; // NEW

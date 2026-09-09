@@ -46,6 +46,9 @@ const PrintPartDataSheet: React.FC<{ part: PartMasterData }> = ({ part }) => {
                 
                 <div className="border-b border-l border-black p-3 bg-gray-100 font-bold text-sm">زیر گروه</div>
                 <div className="border-b border-black p-3 text-sm">{part.subCategory || '-'}</div>
+
+                <div className="border-b border-l border-black p-3 bg-gray-100 font-bold text-sm">نام دستگاه</div>
+                <div className="border-b border-black p-3 text-sm font-black">{part.machineName || '-'}</div>
                 
                 <div className="border-b border-l border-black p-3 bg-gray-100 font-bold text-sm">مشخصات ابعادی / فنی</div>
                 <div className="border-b border-black p-3 text-sm font-mono">{part.dimensions || '-'}</div>

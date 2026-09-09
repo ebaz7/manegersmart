@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import * as jalaali from 'jalaali-js';
 import { UserRole } from '../types';
+import { getRolePermissions } from '../services/authService';
 import { ChequeItemRow, ChequeItemInput, COMMON_IRANIAN_BANKS } from './sayan-cheques/ChequeItemRow';
 import { RealSayanDocumentModal } from './sayan-cheques/RealSayanDocumentModal';
 import { AccountingReviewModal } from './sayan-cheques/AccountingReviewModal';
@@ -77,6 +78,7 @@ interface ChequeReceiptRecord {
 interface Props {
     currentUser: any;
     fiscalYear?: string;
+    settings?: any;
 }
 
 const toPersianDigits = (num: string | number | undefined | null): string => {
@@ -103,14 +105,44 @@ const getShamsiPlusMonths = (months: number): string => {
 
 export const SayanChequeReceiptsTab: React.FC<Props> = ({
     currentUser,
-    fiscalYear = '4'
+    fiscalYear = '4',
+    settings
 }) => {
     // Current Active Tab
     const [activeSubTab, setActiveSubTab] = useState<'NEW_RECEIPT' | 'CARTABLE' | 'ARCHIVE'>('NEW_RECEIPT');
 
-    // Roles and Permissions
-    const isFinancialOrAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial') || currentUser?.roles?.includes('admin');
-    const isCeoOrAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.CEO || currentUser?.role === 'CEO' || currentUser?.role === 'MANAGER' || currentUser?.roles?.includes('ceo') || currentUser?.roles?.includes('admin');
+    // Dynamic Permissions based on Settings & Roles
+    const resolvedPermissions = useMemo(() => {
+        let perms = currentUser?.rolePermissions || {};
+        if (settings) {
+            try {
+                perms = getRolePermissions(currentUser?.role, settings, currentUser);
+            } catch (e) {
+                console.error("Error resolving role permissions in SayanChequeReceiptsTab:", e);
+            }
+        }
+        
+        const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.roles?.includes(UserRole.ADMIN) || currentUser?.roles?.includes('admin');
+        
+        return {
+            canSayanRegisterCheque: isAdmin || perms.canSayanRegisterCheque !== false, // default to true if not explicitly restricted
+            canSayanApproveAccounting: isAdmin || perms.canSayanApproveAccounting === true || (perms.canSayanApproveAccounting === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial'))),
+            canSayanApproveCeo: isAdmin || perms.canSayanApproveCeo === true || (perms.canSayanApproveCeo === undefined && (currentUser?.role === UserRole.CEO || currentUser?.role === 'CEO' || currentUser?.role === 'MANAGER' || currentUser?.roles?.includes('ceo'))),
+            canSayanDeleteReceipt: isAdmin || perms.canSayanDeleteReceipt === true || (perms.canSayanDeleteReceipt === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial')))
+        };
+    }, [currentUser, settings]);
+
+    const isFinancialOrAdmin = resolvedPermissions.canSayanApproveAccounting;
+    const isCeoOrAdmin = resolvedPermissions.canSayanApproveCeo;
+    const canDeleteReceipt = resolvedPermissions.canSayanDeleteReceipt;
+    const canRegisterReceipt = resolvedPermissions.canSayanRegisterCheque;
+
+    // Redirect to Cartable if registration is not allowed
+    useEffect(() => {
+        if (!canRegisterReceipt && activeSubTab === 'NEW_RECEIPT') {
+            setActiveSubTab('CARTABLE');
+        }
+    }, [canRegisterReceipt, activeSubTab]);
 
     // Form States
     const [personQuery, setPersonQuery] = useState('');
@@ -804,18 +836,20 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
                 {/* Sub-tab Switcher */}
                 <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700 text-xs font-bold w-full sm:w-auto overflow-x-auto">
-                    <button
-                        type="button"
-                        onClick={() => setActiveSubTab('NEW_RECEIPT')}
-                        className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
-                            activeSubTab === 'NEW_RECEIPT'
-                                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                    >
-                        <Plus className="w-4 h-4" />
-                        <span>ثبت رسید جدید</span>
-                    </button>
+                    {canRegisterReceipt && (
+                        <button
+                            type="button"
+                            onClick={() => setActiveSubTab('NEW_RECEIPT')}
+                            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
+                                activeSubTab === 'NEW_RECEIPT'
+                                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                            }`}
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>ثبت رسید جدید</span>
+                        </button>
+                    )}
 
                     <button
                         type="button"
@@ -1711,6 +1745,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     onReject={handleReject}
                     onDelete={handleDeleteReceipt}
                     actionLoading={actionLoading}
+                    isFinancialOrAdmin={isFinancialOrAdmin}
+                    isCeoOrAdmin={isCeoOrAdmin}
+                    canDeleteReceipt={canDeleteReceipt}
                 />
             )}
 

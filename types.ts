@@ -197,6 +197,7 @@ export interface RolePermissions {
   canSayanDeleteReceipt?: boolean;
   canAccessSecretariat?: boolean;
   canManageSecretariatSettings?: boolean;
+  canAccessChequeReceipts?: boolean;
   [key: string]: boolean | undefined;
 }
 

@@ -8,7 +8,8 @@ import {
     FileSpreadsheet, ArrowUpRight, History, X, CreditCard, FileCheck
 } from 'lucide-react';
 import { formatDate } from '../constants';
-import { User } from '../types';
+import { User, UserRole } from '../types';
+import { getRolePermissions } from '../services/authService';
 import SayanChequeReceiptsTab from './SayanChequeReceiptsTab';
 
 interface PendingRequest {
@@ -103,17 +104,25 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
     // Main module sub-navigation: Tab 1 = Purchase Pre-Invoices (53 -> 57), Tab 2 = Cheque Receipts (Bursary 11), Tab 3 = Other future Sayan registrations
     const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>('PURCHASE_PREINVOICES');
 
+    const perms = useMemo(() => {
+        return getRolePermissions(currentUser?.role, settings || null, currentUser);
+    }, [currentUser, settings]);
+
+    const canSayanRegisterCheque = currentUser?.role === UserRole.ADMIN || perms.canSayanRegisterCheque === true;
+
     useEffect(() => {
         const handleSubTabEvent = (e: any) => {
             if (e.detail === 'CHEQUE_RECEIPTS' || e.detail === 'CHEQUE' || e.detail === 'RECEIPTS') {
-                setMainSubTab('CHEQUE_RECEIPTS');
+                if (canSayanRegisterCheque) {
+                    setMainSubTab('CHEQUE_RECEIPTS');
+                }
             } else if (e.detail === 'PURCHASE_PREINVOICES') {
                 setMainSubTab('PURCHASE_PREINVOICES');
             }
         };
         window.addEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
         return () => window.removeEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
-    }, []);
+    }, [canSayanRegisterCheque]);
 
     // State for Purchase Pre-Invoices automation
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<'4' | '3'>('4');
@@ -554,18 +563,20 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                         <Sparkles className="w-4 h-4 text-amber-500" />
                         <span>ثبت پیش‌فاکتورهای درخواست خرید</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setMainSubTab('CHEQUE_RECEIPTS')}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                            mainSubTab === 'CHEQUE_RECEIPTS'
-                                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                    >
-                        <CreditCard className="w-4 h-4 text-emerald-500" />
-                        <span>رسید دریافت چک (اسناد خزانه)</span>
-                    </button>
+                    {canSayanRegisterCheque && (
+                        <button
+                            type="button"
+                            onClick={() => setMainSubTab('CHEQUE_RECEIPTS')}
+                            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                                mainSubTab === 'CHEQUE_RECEIPTS'
+                                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200 dark:border-slate-700'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <CreditCard className="w-4 h-4 text-emerald-500" />
+                            <span>رسید دریافت چک (اسناد خزانه)</span>
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => setMainSubTab('FUTURE_DOCS')}
@@ -582,7 +593,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
             </div>
 
             {/* TAB 2: Cheque Receipts Module */}
-            {mainSubTab === 'CHEQUE_RECEIPTS' && (
+            {mainSubTab === 'CHEQUE_RECEIPTS' && canSayanRegisterCheque && (
                 <SayanChequeReceiptsTab currentUser={currentUser} settings={settings} />
             )}
 

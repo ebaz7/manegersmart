@@ -132,12 +132,29 @@ const PERMISSION_GROUPS = [
             { id: 'canViewSayanCheques', label: 'مشاهده بخش لیست چک‌های سایان' },
             { id: 'canViewSayanRemittances', label: 'مشاهده بخش حواله فروش و خروج کالا سایان' },
             { id: 'canViewSayanWarehouseOverview', label: 'مشاهده بخش تراز وزنی و نمای کلی انبار سایان' },
-            { id: 'canViewSayanWarehouseWidget', label: 'نمایش ویجت آمار انبار سایان در داشبورد (وزن منفی و مثبت کلی)' },
+            { id: 'canViewSayanWarehouseWidget', label: 'نمایش ویجت آمار انبار سایان در داشبورد (وزن منفی و مثبت کلی)' }
+        ] 
+    },
+    { 
+        id: 'sayan_registrations', 
+        title: 'ثبت اسناد و چک سایان (ERP)', 
+        icon: FileText, 
+        color: 'indigo', 
+        items: [
             { id: 'canAccessSayanRegistrations', label: 'دسترسی به بخش ثبت‌های سایان و صدور اسناد' },
             { id: 'canSayanRegisterCheque', label: 'ثبت رسید چک سایان (ورود اطلاعات و بارگذاری رسید جدید)' },
             { id: 'canSayanApproveAccounting', label: 'تایید مرحله اول (ویرایش و تایید حسابداری چک سایان)' },
             { id: 'canSayanApproveCeo', label: 'تایید مرحله نهایی (تایید مدیرعامل و ثبت خودکار در ERP سایان)' },
             { id: 'canSayanDeleteReceipt', label: 'حذف کامل رسید یا بازگردانی (عدم تایید ثبت سایان)' }
+        ] 
+    },
+    { 
+        id: 'cheque_receipts_general', 
+        title: 'ماژول رسید دریافت چک عمومی (غیر سایان)', 
+        icon: Landmark, 
+        color: 'emerald', 
+        items: [
+            { id: 'canAccessChequeReceipts', label: 'مشاهده و دسترسی به ماژول مستقل رسید دریافت چک عمومی' }
         ] 
     },
     { 

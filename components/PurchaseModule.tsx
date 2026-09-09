@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { 
     PurchaseRequest, PurchaseRequestStatus, User, UserRole, 
     SystemSettings, PurchaseProforma, PartMasterData, PartKardex,
-    PurchaseRequestItem, PurchaseAttachment, PurchaseAuditLog 
+    PurchaseRequestItem, PurchaseAttachment, PurchaseAuditLog, PurchaseComment 
 } from '../types';
 import { 
     getPurchaseRequests, savePurchaseRequest, updatePurchaseRequest, 
@@ -1902,6 +1902,221 @@ const ViewProformaDetailsModal = ({ proforma, onClose, setPreviewFile }: { profo
     );
 };
 
+interface PurchaseCommentsSectionProps {
+    request: PurchaseRequest;
+    currentUser: User;
+    onSuccess: () => void;
+}
+
+const PurchaseCommentsSection: React.FC<PurchaseCommentsSectionProps> = ({ request, currentUser, onSuccess }) => {
+    const [comments, setComments] = useState<PurchaseComment[]>(request.comments || []);
+    const [newCommentText, setNewCommentText] = useState('');
+    const [replyTo, setReplyTo] = useState<PurchaseComment | null>(null);
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        setComments(request.comments || []);
+    }, [request.comments]);
+
+    const handleAddComment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCommentText.trim()) return;
+
+        setSubmitting(true);
+        try {
+            const newComment: PurchaseComment = {
+                id: generateUUID(),
+                userId: currentUser.id || currentUser.fullName,
+                userName: currentUser.fullName,
+                userRole: currentUser.role,
+                text: newCommentText.trim(),
+                createdAt: Date.now(),
+                replyToId: replyTo ? replyTo.id : undefined
+            };
+
+            const updatedComments = [...comments, newComment];
+            const updatedRequest = {
+                ...request,
+                comments: updatedComments
+            };
+
+            await updatePurchaseRequest(updatedRequest);
+            setComments(updatedComments);
+            setNewCommentText('');
+            setReplyTo(null);
+            onSuccess();
+        } catch (err) {
+            console.error('Failed to save comment:', err);
+            alert('خطا در ثبت نظر');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleDeleteComment = async (commentId: string) => {
+        if (!confirm('آیا از حذف این نظر مطمئن هستید؟')) return;
+
+        try {
+            const deleteIds = new Set<string>([commentId]);
+            let checked = true;
+            while (checked) {
+                const beforeSize = deleteIds.size;
+                comments.forEach(c => {
+                    if (c.replyToId && deleteIds.has(c.replyToId)) {
+                        deleteIds.add(c.id);
+                    }
+                });
+                if (deleteIds.size === beforeSize) {
+                    checked = false;
+                }
+            }
+
+            const updatedComments = comments.filter(c => !deleteIds.has(c.id));
+            const updatedRequest = {
+                ...request,
+                comments: updatedComments
+            };
+
+            await updatePurchaseRequest(updatedRequest);
+            setComments(updatedComments);
+            onSuccess();
+        } catch (err) {
+            console.error('Failed to delete comment:', err);
+            alert('خطا در حذف نظر');
+        }
+    };
+
+    const rootComments = comments.filter(c => !c.replyToId);
+    const getRepliesFor = (parentId: string) => comments.filter(c => c.replyToId === parentId);
+
+    const renderCommentCard = (c: PurchaseComment, isReply = false) => {
+        const canDelete = currentUser.role === UserRole.ADMIN || c.userId === currentUser.id || c.userName === currentUser.fullName;
+        const formattedDate = new Date(c.createdAt).toLocaleDateString('fa-IR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        return (
+            <div key={c.id} className={`p-4 rounded-2xl border transition-all ${isReply ? 'bg-gray-50/50 border-gray-150 mr-6 sm:mr-8' : 'bg-white border-gray-200'} space-y-2 shadow-sm`}>
+                <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                            {c.userName ? c.userName.charAt(0) : 'U'}
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-black text-gray-800 dark:text-gray-200">{c.userName}</span>
+                                {c.userRole && (
+                                    <span className="text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-md">
+                                        {c.userRole}
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-[9px] text-gray-400 font-medium block mt-0.5">{formattedDate}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        {!isReply && (
+                            <button
+                                onClick={() => setReplyTo(c)}
+                                className="p-1 px-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                title="پاسخ به این نظر"
+                            >
+                                <CornerUpLeft size={12} />
+                                <span>پاسخ</span>
+                            </button>
+                        )}
+                        {canDelete && (
+                            <button
+                                onClick={() => handleDeleteComment(c.id)}
+                                className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-all cursor-pointer"
+                                title="حذف نظر"
+                            >
+                                <Trash2 size={13} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+                <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed pr-10 whitespace-pre-line font-medium">
+                    {c.text}
+                </p>
+            </div>
+        );
+    };
+
+    return (
+        <div className="glass-panel p-4 md:p-6 rounded-3xl border border-gray-200 bg-white shadow-sm space-y-4">
+            <h3 className="text-sm font-black text-gray-800 flex items-center gap-2">
+                <MessageSquare className="text-indigo-500" size={18} />
+                <span>گفتگو و نظرات پیرامون درخواست</span>
+                {comments.length > 0 && (
+                    <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-mono font-bold">
+                        {comments.length}
+                    </span>
+                )}
+            </h3>
+
+            <form onSubmit={handleAddComment} className="space-y-3">
+                {replyTo && (
+                    <div className="flex justify-between items-center bg-indigo-50/50 dark:bg-indigo-950/30 p-2.5 px-4 rounded-xl border border-indigo-100 text-xs text-indigo-800 dark:text-indigo-300">
+                        <div className="flex items-center gap-2 font-bold">
+                            <CornerUpLeft size={14} className="text-indigo-500" />
+                            <span>در حال پاسخ به: <strong className="text-indigo-900 dark:text-indigo-200">{replyTo.userName}</strong></span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setReplyTo(null)}
+                            className="p-1 text-gray-400 hover:text-gray-600 font-bold"
+                        >
+                            انصراف
+                        </button>
+                    </div>
+                )}
+                <div className="relative">
+                    <textarea
+                        value={newCommentText}
+                        onChange={e => setNewCommentText(e.target.value)}
+                        placeholder={replyTo ? "پاسخ خود را بنویسید..." : "نظری یا یادداشتی درباره این درخواست ثبت کنید..."}
+                        rows={3}
+                        className="w-full glass-panel border border-gray-200 rounded-2xl p-3 text-xs outline-none focus:ring-2 focus:ring-indigo-100 placeholder-gray-400 resize-none leading-relaxed"
+                    />
+                    <button
+                        type="submit"
+                        disabled={submitting || !newCommentText.trim()}
+                        className="absolute left-3 bottom-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-xl text-[11px] font-black shadow-md shadow-indigo-100 flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                        {submitting ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                            <Plus size={14} />
+                        )}
+                        <span>{replyTo ? 'ثبت پاسخ' : 'ثبت نظر'}</span>
+                    </button>
+                </div>
+            </form>
+
+            {comments.length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
+                    <MessageSquare size={32} className="text-gray-300 mx-auto mb-2" />
+                    <p className="text-xs text-gray-400">هنوز هیچ نظری ثبت نشده است. اولین گفتگو را شما آغاز کنید!</p>
+                </div>
+            ) : (
+                <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1 no-scrollbar">
+                    {rootComments.map(rootComment => (
+                        <div key={rootComment.id} className="space-y-3">
+                            {renderCommentCard(rootComment)}
+                            {getRepliesFor(rootComment.id).map(reply => renderCommentCard(reply, true))}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, parts }: { request: PurchaseRequest, onClose: () => void, currentUser: User, onSuccess: () => void, settings?: SystemSettings, parts: PartMasterData[] }) => {
     const [actionLoading, setActionLoading] = useState(false);
     const [pdfLoading, setPdfLoading] = useState(false);
@@ -2528,6 +2743,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     </div>
                                 </div>
                             )}
+
+                            <div className="mt-6">
+                                <PurchaseCommentsSection request={request} currentUser={currentUser} onSuccess={onSuccess} />
+                            </div>
                         </div>
 
                         {/* Sidebar Approvals */}

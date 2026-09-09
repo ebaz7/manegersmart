@@ -1639,7 +1639,7 @@ function App() {
                 {activeTab === 'meetings' && <div className="page-transition flex flex-col flex-1 min-h-0"><MeetingModule currentUser={currentUser} /></div>}
                 {activeTab === 'purchase' && <div className="page-transition flex flex-col flex-1 min-h-0"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>}
                 {activeTab === 'secretariat' && currentUser && <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>}
-                {activeTab === 'cheque-receipts' && currentUser && <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div>}
+                {activeTab === 'cheque-receipts' && currentUser && (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) && <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div>}
                 
                 <div className={activeTab === 'chat' ? 'flex-1 flex flex-col w-full min-h-0 h-full page-transition' : 'fixed inset-0 pointer-events-none opacity-0 invisible overflow-hidden h-0'}>
                     <ChatRoom 

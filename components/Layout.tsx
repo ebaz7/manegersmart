@@ -566,6 +566,8 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
       perms.canAccessSayanRegistrations === true || 
       perms.canAccessSayanPendingDocs === true;
 
+    const canSeeChequeReceipts = currentUser.role === UserRole.ADMIN || perms.canAccessChequeReceipts === true;
+
     const items = [
       { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
     ];
@@ -582,7 +584,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
     if (canSeeMeetings) items.push({ id: 'meetings', label: 'جلسات تولید', icon: CalendarDays });
     if (canSeePurchase) items.push({ id: 'purchase', label: 'درخواست خرید', icon: ShoppingCart });
     items.push({ id: 'secretariat', label: 'دبیرخانه اداری', icon: FolderArchive });
-    items.push({ id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Banknote });
+    if (canSeeChequeReceipts) items.push({ id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Banknote });
     items.push({ id: 'chat', label: 'گفتگو', icon: MessagesSquare });
     if (canSeeKnowledgeBase) items.push({ id: 'knowledge', label: 'اطلاعات و یادداشت ها', icon: BookOpen });
     if (canSeeTrade) items.push({ id: 'trade', label: 'بازرگانی', icon: Globe });

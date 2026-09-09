@@ -20,7 +20,7 @@ import {
     Ruler, Layers, Tag, Upload, Info, FileUp, UploadCloud, Settings, Printer, FileDown, AlertCircle, X,
     GitFork, Clock, CornerUpLeft, UserCheck, FileCode, AlertTriangle, Check, ExternalLink, Paperclip, Wrench,
     FileSpreadsheet, Container, ArrowDownCircle, ArrowUpCircle, MessageSquare, Sparkles, Bot, ChevronUp, ChevronDown,
-    Crown, Briefcase
+    Crown, Briefcase, ShoppingBag
 } from 'lucide-react';
 import { shareElementToChat, openSendToChat } from '../services/chatShareService';
 import { formatDate, formatCurrency, generateUUID, getCurrentShamsiDate } from '../constants';
@@ -35,6 +35,7 @@ import { generatePdf } from '../utils/pdfGenerator';
 import { getRolePermissions } from '../services/authService';
 import { AiPurchaseAdvisorModal } from './AiPurchaseAdvisorModal';
 import { FileViewerModal } from './FileViewerModal';
+import { LS_KEYS, getLocalData } from '../services/apiService';
 
 const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
     const isMobile = useIsMobile();
@@ -45,14 +46,35 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
         return getRolePermissions(currentUser.role, settings || null, currentUser);
     }, [currentUser, settings]);
     
-    // Requests State
-    const [requests, setRequests] = useState<PurchaseRequest[]>([]);
+    // Requests State - Initialize from cache for instant 0ms rendering
+    const [requests, setRequests] = useState<PurchaseRequest[]>(() => {
+        try {
+            const cached = getLocalData<PurchaseRequest[]>(LS_KEYS.PURCHASE_REQS, []);
+            const arr = Array.isArray(cached) ? cached : [];
+            const sanitized = arr.map(r => {
+                if (r.status === 'در انتظار تصمیم بازرگانی (محل خرید)' as any) {
+                    return { ...r, status: PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION };
+                }
+                return r;
+            });
+            return sanitized.sort((a, b) => b.createdAt - a.createdAt);
+        } catch {
+            return [];
+        }
+    });
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [requestSearch, setRequestSearch] = useState('');
     const [viewRequest, setViewRequest] = useState<PurchaseRequest | null>(null);
 
-    // Parts State
-    const [parts, setParts] = useState<PartMasterData[]>([]);
+    // Parts State - Initialize from cache for instant 0ms rendering
+    const [parts, setParts] = useState<PartMasterData[]>(() => {
+        try {
+            const cached = getLocalData<PartMasterData[]>('app_data_parts', []);
+            return Array.isArray(cached) ? cached : [];
+        } catch {
+            return [];
+        }
+    });
     const [showPartModal, setShowPartModal] = useState(false);
     const [partSearch, setPartSearch] = useState('');
     const [editingPart, setEditingPart] = useState<PartMasterData | null>(null);
@@ -94,10 +116,19 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
     }, [viewRequest, editingPart, selectedPartKardex, showCreateModal, showPartModal, activeTab]);
 
     const loadRequests = async () => {
-        setLoading(true);
+        if (requests.length === 0) {
+            setLoading(true);
+        }
         try {
             const data = await getPurchaseRequests();
-            setRequests(data.sort((a, b) => b.createdAt - a.createdAt));
+            const arr = Array.isArray(data) ? data : [];
+            const sanitized = arr.map(r => {
+                if (r.status === 'در انتظار تصمیم بازرگانی (محل خرید)' as any) {
+                    return { ...r, status: PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION };
+                }
+                return r;
+            });
+            setRequests(sanitized.sort((a, b) => b.createdAt - a.createdAt));
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
     };
@@ -346,9 +377,9 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
 
     const commercialCount = requests.filter((r: any) => 
         r.status === PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER || 
-        r.status === PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION ||
         r.status === PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA ||
-        r.status === PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING
+        r.status === PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING ||
+        r.status === PurchaseRequestStatus.PENDING_BUYER_EXECUTION
     ).length;
 
     const stats = [
@@ -368,7 +399,9 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
             case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
             case PurchaseRequestStatus.PENDING_FACTORY:
                 return hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canApproveFactory');
-            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION: return hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canCommercialFinalize');
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+            case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
+                return hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory');
             
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING: 
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
@@ -414,8 +447,14 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
                     icon: Crown,
                     badgeClass: 'bg-sky-100 text-sky-800 border-sky-300'
                 };
-            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
             case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+            case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
+                return {
+                    title: 'مدیر کارخانه (تعیین مسیر)',
+                    icon: Warehouse,
+                    badgeClass: 'bg-amber-100 text-amber-800 border-amber-300'
+                };
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING:
                 return {
@@ -646,7 +685,9 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
         switch (r.status) {
             case PurchaseRequestStatus.PENDING_TECHNICAL: return hasPurchasePerm('canApproveTechnical');
             case PurchaseRequestStatus.PENDING_FACTORY: return hasPurchasePerm('canApproveFactory');
-            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION: return hasPurchasePerm('canCommercialFinalize');
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+            case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
+                return hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory');
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING: 
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
                 return hasPurchasePerm('canManageProformas') && r.location === 'Tehran';
@@ -672,8 +713,10 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
             case PurchaseRequestStatus.PENDING_CEO_INITIAL:
             case PurchaseRequestStatus.PENDING_CEO_SELECTION:
                 return { title: 'تایید مدیرعامل', icon: Crown, cls: 'bg-sky-100 text-sky-800 border-sky-200' };
-            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
             case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+            case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
+                return { title: 'مدیر کارخانه (تعیین مسیر)', icon: Warehouse, cls: 'bg-amber-100 text-amber-800 border-amber-200' };
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING:
                 return { title: 'مدیر بازرگانی', icon: Briefcase, cls: 'bg-purple-100 text-purple-800 border-purple-200' };
@@ -760,6 +803,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
 
     const [attachments, setAttachments] = useState<PurchaseAttachment[]>([]);
     const [uploading, setUploading] = useState(false);
+    const [previewAttachment, setPreviewAttachment] = useState<{ url: string; fileName: string } | null>(null);
 
     const handleAddItemRow = () => {
         setItems([...items, { id: generateUUID(), itemName: '', itemCode: '', suggestedBrand: '', quantity: 1, unit: 'عدد', specifications: '' }]);
@@ -1197,7 +1241,17 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                                                 <FileText size={16} className="text-indigo-500 shrink-0" />
                                                 <span className="font-bold text-gray-700 dark:text-gray-200 truncate">{att.fileName}</span>
                                             </div>
-                                            <button type="button" onClick={() => setAttachments(attachments.filter(a => a.id !== att.id))} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded-lg"><X size={14}/></button>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setPreviewAttachment({ url: att.fileUrl || att.url || '', fileName: att.fileName || 'پیوست' })} 
+                                                    className="text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 p-1 rounded-lg transition-colors"
+                                                    title="پیش‌نمایش فایل"
+                                                >
+                                                    <Eye size={14}/>
+                                                </button>
+                                                <button type="button" onClick={() => setAttachments(attachments.filter(a => a.id !== att.id))} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded-lg"><X size={14}/></button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -1215,6 +1269,14 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                     </form>
                 </div>
             </div>
+            {previewAttachment && (
+                <FileViewerModal 
+                    isOpen={!!previewAttachment} 
+                    onClose={() => setPreviewAttachment(null)} 
+                    fileUrl={previewAttachment.url} 
+                    fileName={previewAttachment.fileName} 
+                />
+            )}
         </div>,
         document.body
     );
@@ -2154,6 +2216,52 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Request-Level Attachments Preview */}
+                                {((request.attachments && request.attachments.length > 0) || (request as any).attachment || request.pdfAttachment) && (
+                                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                                        <label className="text-[10px] font-black text-gray-400 block mb-2 flex items-center gap-1.5">
+                                            <Paperclip size={12} className="text-indigo-500" />
+                                            <span>فایل‌ها و مدارک پیوست این درخواست:</span>
+                                        </label>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {request.attachments?.map((att: any, attIdx: number) => (
+                                                <button
+                                                    key={att.id || attIdx}
+                                                    type="button"
+                                                    onClick={() => setPreviewFile({ url: att.url, fileName: att.name || `پیوست_درخواست_${request.requestNumber}` })}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                                                    title="مشاهده و پیش‌نمایش فایل پیوست در همین صفحه"
+                                                >
+                                                    <Eye size={13} />
+                                                    <span className="max-w-[180px] truncate">{att.name || `پیوست ${attIdx + 1}`}</span>
+                                                </button>
+                                            ))}
+                                            {(request as any).attachment && !request.attachments?.some((a: any) => a.url === (request as any).attachment) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreviewFile({ url: (request as any).attachment!, fileName: `پیوست_${request.requestNumber}` })}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                                                    title="مشاهده و پیش‌نمایش فایل پیوست اصلی"
+                                                >
+                                                    <Eye size={13} />
+                                                    <span>مشاهده فایل اصلی پیوست</span>
+                                                </button>
+                                            )}
+                                            {request.pdfAttachment && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreviewFile({ url: request.pdfAttachment!, fileName: `کاتالوگ_${request.requestNumber}.pdf` })}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 rounded-xl text-xs font-bold border border-red-200 dark:border-red-800 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                                                    title="مشاهده کاتالوگ / PDF پیوست"
+                                                >
+                                                    <FileText size={13} />
+                                                    <span>کاتالوگ فنی پیوست</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Proformas */}
@@ -2318,6 +2426,123 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     </div>
                 </div>
 
+                {/* Current Stage & Role Authority Notification Banner */}
+                {(() => {
+                    const getRoleInfo = (st: PurchaseRequestStatus) => {
+                        switch (st) {
+                            case PurchaseRequestStatus.PENDING_CEO_INITIAL:
+                                return {
+                                    title: 'تایید اولیه و مجوز اخذ استعلام',
+                                    roleName: 'مدیرعامل',
+                                    icon: Crown,
+                                    badgeClass: 'bg-sky-500 text-white',
+                                    borderClass: 'border-sky-300 bg-sky-50/80 text-sky-950',
+                                    isCeoRole: true,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_CEO_SELECTION:
+                                return {
+                                    title: 'تایید و انتخاب نهایی تامین‌کننده / پیش‌فاکتور',
+                                    roleName: 'مدیرعامل',
+                                    icon: Crown,
+                                    badgeClass: 'bg-sky-600 text-white',
+                                    borderClass: 'border-sky-300 bg-sky-50/80 text-sky-950',
+                                    isCeoRole: true,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
+                                return {
+                                    title: 'بررسی و تایید پیش‌فاکتورها و پیشنهاد بازرگانی',
+                                    roleName: 'مدیر بازرگانی',
+                                    icon: Briefcase,
+                                    badgeClass: 'bg-purple-600 text-white',
+                                    borderClass: 'border-purple-300 bg-purple-50/80 text-purple-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: true
+                                };
+                            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+                                return {
+                                    title: 'تعیین مسیر خرید (تهران یا کارخانه زنجان)',
+                                    roleName: 'مدیر کارخانه',
+                                    icon: Warehouse,
+                                    badgeClass: 'bg-amber-600 text-white',
+                                    borderClass: 'border-amber-300 bg-amber-50/80 text-amber-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
+                                return {
+                                    title: 'اخذ و ثبت پیش‌فاکتورها',
+                                    roleName: 'تدارکات بازرگانی تهران',
+                                    icon: ShoppingBag,
+                                    badgeClass: 'bg-indigo-600 text-white',
+                                    borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING:
+                                return {
+                                    title: 'استعلام و پیشنهاد خرید محلی',
+                                    roleName: 'تدارکات کارخانه زنجان',
+                                    icon: ShoppingBag,
+                                    badgeClass: 'bg-teal-600 text-white',
+                                    borderClass: 'border-teal-300 bg-teal-50/80 text-teal-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
+                            case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
+                            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
+                            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
+                                return {
+                                    title: 'دستور خرید و تاییدات نهایی کارخانه',
+                                    roleName: 'مدیر کارخانه',
+                                    icon: Warehouse,
+                                    badgeClass: 'bg-teal-700 text-white',
+                                    borderClass: 'border-teal-300 bg-teal-50/80 text-teal-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
+                            default:
+                                return null;
+                        }
+                    };
+
+                    const roleInfo = getRoleInfo(request.status);
+                    if (!roleInfo) return null;
+                    const RoleIcon = roleInfo.icon;
+
+                    return (
+                        <div className={`mx-6 mt-4 p-4 rounded-2xl border-2 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${roleInfo.borderClass} shadow-xs`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2.5 rounded-xl ${roleInfo.badgeClass} shadow-md`}>
+                                    <RoleIcon size={20} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${roleInfo.badgeClass}`}>
+                                            جایگاه مجاز: {roleInfo.roleName}
+                                        </span>
+                                        {isAdmin && (
+                                            <span className="text-[9px] font-black bg-gray-900 text-amber-300 px-2 py-0.5 rounded-md">
+                                                دسترسی مدیر ارشد سیستم (Admin)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs font-black mt-1">
+                                        مرحله جاری: <span className="underline decoration-2">{roleInfo.title}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            {isAdmin && (
+                                <div className="text-[11px] font-bold text-gray-600 dark:text-gray-300 bg-white/70 dark:bg-gray-800/70 px-3 py-1.5 rounded-xl border border-gray-200">
+                                    💡 توجه مدیر محترم: این تاییدیه مختص جایگاه <strong className="text-gray-900 dark:text-white font-black">{roleInfo.roleName}</strong> می‌باشد.
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+
                 {/* Actions Footer */}
                 <div className="p-6 border-t glass-panel flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/80">
                     <div className="flex flex-wrap gap-2 justify-center md:justify-start">
@@ -2355,9 +2580,9 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Tehran Branch: CEO Initial Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_CEO_INITIAL) && (isAdmin || hasPurchasePerm('canApproveCEO')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA, {}, 'تایید اولیه و مجوز اخذ استعلام')} className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 transition-all hover:scale-105" disabled={actionLoading}>
-                                <Crown size={16} className="text-amber-300" />
-                                <span>تایید اولیه و اجازه ثبت پروفرما (نقش مدیرعامل)</span>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA, {}, 'تایید اولیه و مجوز اخذ استعلام')} className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-sky-500/30 ring-2 ring-sky-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" disabled={actionLoading}>
+                                <Crown size={18} className="text-amber-300 animate-bounce" />
+                                <span>👑 تایید اولیه و مجوز استعلام (نقش مدیرعامل)</span>
                             </button>
                         )}
 
@@ -2371,9 +2596,9 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                         {/* Tehran Branch: Commercial Manager Selection */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER) && (isAdmin || hasPurchasePerm('canCommercialFinalize')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 transition-all hover:scale-105" disabled={actionLoading}>
-                                <Briefcase size={16} className="text-purple-200" />
-                                <span>تایید مدیر بازرگانی و ارجاع به مدیرعامل</span>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-purple-500/30 ring-2 ring-purple-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" disabled={actionLoading}>
+                                <Briefcase size={18} className="text-amber-300 animate-pulse" />
+                                <span>💼 تایید مدیر بازرگانی و ارجاع به مدیرعامل</span>
                             </button>
                         )}
 
@@ -2448,15 +2673,21 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     </div>
 
                     <div className="flex gap-4 border-r pr-4 border-gray-200">
-                         {/* Robust Clickable Print Menu */}
+                         {/* Robust Clickable Print Menu with Backdrop */}
                          <div className="relative">
+                            {isPrintDropdownOpen && (
+                                <div 
+                                    className="fixed inset-0 z-40" 
+                                    onClick={() => setIsPrintDropdownOpen(false)} 
+                                />
+                            )}
                             <button 
                                 type="button"
                                 onClick={() => {
                                     setIsPrintDropdownOpen(!isPrintDropdownOpen);
                                     setIsShareDropdownOpen(false);
                                 }}
-                                className="flex items-center gap-2 p-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 active:scale-95 transition-all shadow-sm font-black text-xs cursor-pointer"
+                                className="flex items-center gap-2 p-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 active:scale-95 transition-all shadow-sm font-black text-xs cursor-pointer relative z-50"
                             >
                                 <Printer size={16} /> 
                                 <span>چاپ اسناد</span>
@@ -2464,14 +2695,17 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                             </button>
 
                             {isPrintDropdownOpen && (
-                                <div className="absolute bottom-full mb-2 left-0 w-52 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                                <div 
+                                    className="absolute bottom-full mb-2 left-0 w-52 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
                                     <button 
                                         onClick={() => { 
                                             setIsPrintDropdownOpen(false);
                                             setPrintType('REQUEST'); 
                                             setTimeout(() => window.print(), 300); 
                                         }} 
-                                        className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 transition-colors flex items-center justify-between"
+                                        className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 transition-colors flex items-center justify-between cursor-pointer"
                                     >
                                         <span>چاپ فرم درخواست (A5)</span>
                                         <FileText size={13} className="text-gray-400"/>
@@ -2482,7 +2716,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                             setPrintType('BARCODE'); 
                                             setTimeout(() => window.print(), 300); 
                                         }} 
-                                        className="w-full text-right p-2.5 hover:bg-indigo-50 rounded-xl text-xs font-black text-indigo-700 border-b border-gray-100 mb-1 transition-colors flex items-center justify-between"
+                                        className="w-full text-right p-2.5 hover:bg-indigo-50 rounded-xl text-xs font-black text-indigo-700 border-b border-gray-100 mb-1 transition-colors flex items-center justify-between cursor-pointer"
                                     >
                                         <span>چاپ برچسب بارکد (Barcode)</span>
                                         <Tag size={13} className="text-indigo-600"/>
@@ -2494,7 +2728,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                 setPrintType('PROFORMA'); 
                                                 setTimeout(() => window.print(), 300); 
                                             }} 
-                                            className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 transition-colors flex items-center justify-between"
+                                            className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 transition-colors flex items-center justify-between cursor-pointer"
                                         >
                                             <span>چاپ پیش‌فاکتور منتخب (A5)</span>
                                             <Printer size={13} className="text-gray-400"/>
@@ -2507,7 +2741,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                 setPrintType('RECEIPT'); 
                                                 setTimeout(() => window.print(), 300); 
                                             }} 
-                                            className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold transition-colors flex items-center justify-between"
+                                            className="w-full text-right p-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-xs font-bold transition-colors flex items-center justify-between cursor-pointer"
                                         >
                                             <span>چاپ رسید انبار نهایی (A5)</span>
                                             <Warehouse size={13} className="text-gray-400"/>
@@ -2517,8 +2751,14 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                             )}
                          </div>
 
-                         {/* Robust Clickable Share Menu */}
+                         {/* Robust Clickable Share Menu with Backdrop */}
                          <div className="relative">
+                            {isShareDropdownOpen && (
+                                <div 
+                                    className="fixed inset-0 z-40" 
+                                    onClick={() => setIsShareDropdownOpen(false)} 
+                                />
+                            )}
                             <button 
                                 type="button"
                                 disabled={isSharingDoc}
@@ -2526,7 +2766,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     setIsShareDropdownOpen(!isShareDropdownOpen);
                                     setIsPrintDropdownOpen(false);
                                 }}
-                                className="flex items-center gap-2 p-3 text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-sm font-black text-xs disabled:opacity-50 cursor-pointer"
+                                className="flex items-center gap-2 p-3 text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-sm font-black text-xs disabled:opacity-50 cursor-pointer relative z-50"
                                 title="ارسال اسناد درخواست به گفتگو"
                             >
                                 {isSharingDoc ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />} 
@@ -2535,13 +2775,16 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                             </button>
 
                             {isShareDropdownOpen && (
-                                <div className="absolute bottom-full mb-2 left-0 w-56 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                                <div 
+                                    className="absolute bottom-full mb-2 left-0 w-56 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
                                     <button 
                                         onClick={() => {
                                             setIsShareDropdownOpen(false);
                                             handleSharePurchaseDoc('REQUEST');
                                         }} 
-                                        className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 flex items-center justify-between transition-colors"
+                                        className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 flex items-center justify-between transition-colors cursor-pointer"
                                     >
                                         <span>ارسال فرم درخواست (A5)</span>
                                         <MessageSquare size={13} className="text-emerald-600"/>
@@ -2552,7 +2795,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                 setIsShareDropdownOpen(false);
                                                 handleSharePurchaseDoc('PROFORMA');
                                             }} 
-                                            className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 flex items-center justify-between transition-colors"
+                                            className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold border-b border-gray-100 mb-1 flex items-center justify-between transition-colors cursor-pointer"
                                         >
                                             <span>ارسال پیش‌فاکتور منتخب</span>
                                             <MessageSquare size={13} className="text-emerald-600"/>
@@ -2564,7 +2807,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                 setIsShareDropdownOpen(false);
                                                 handleSharePurchaseDoc('RECEIPT');
                                             }} 
-                                            className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+                                            className="w-full text-right p-2.5 hover:bg-emerald-50 text-gray-800 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer"
                                         >
                                             <span>ارسال رسید انبار نهایی</span>
                                             <MessageSquare size={13} className="text-emerald-600"/>
@@ -3183,6 +3426,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
     const [showModal, setShowModal] = useState(false);
     const [showDataSheet, setShowDataSheet] = useState<PartMasterData | null>(null);
     const [editingPart, setEditingPart] = useState<PartMasterData | null>(null);
+    const [previewPdf, setPreviewPdf] = useState<{ url: string; fileName: string } | null>(null);
 
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
@@ -3323,7 +3567,14 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                         <button onClick={() => setShowDataSheet(p)} className="p-2 bg-gray-50 text-indigo-600 rounded-lg hover:bg-indigo-100" title="مشاهده شناسنامه فنی"><Info size={16}/></button>
                                         {p.pdfAttachment && (
                                             <>
-                                                <a href={p.pdfAttachment} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100" title="مشاهده کاتالوگ/PDF"><FileText size={16}/></a>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setPreviewPdf({ url: p.pdfAttachment, fileName: `کاتالوگ_${p.name}.pdf` })} 
+                                                    className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" 
+                                                    title="پیش‌نمایش کاتالوگ/PDF"
+                                                >
+                                                    <FileText size={16}/>
+                                                </button>
                                                 <button 
                                                     type="button"
                                                     onClick={() => openSendToChat({
@@ -3403,7 +3654,14 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                             <button onClick={() => setShowDataSheet(p)} className="p-2 bg-gray-50 text-indigo-600 rounded-lg hover:bg-indigo-100" title="مشاهده شناسنامه فنی"><Info size={16}/></button>
                                             {p.pdfAttachment && (
                                                 <>
-                                                    <a href={p.pdfAttachment} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100" title="مشاهده کاتالوگ/PDF"><FileText size={16}/></a>
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => setPreviewPdf({ url: p.pdfAttachment, fileName: `کاتالوگ_${p.name}.pdf` })} 
+                                                        className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" 
+                                                        title="پیش‌نمایش کاتالوگ/PDF"
+                                                    >
+                                                        <FileText size={16}/>
+                                                    </button>
                                                     <button 
                                                         type="button"
                                                         onClick={() => openSendToChat({
@@ -3460,7 +3718,14 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                                         <button onClick={() => setShowDataSheet(p)} className="p-2 bg-gray-50 text-indigo-600 rounded-lg hover:bg-indigo-100" title="مشاهده شناسنامه فنی"><Info size={16}/></button>
                                         {p.pdfAttachment && (
                                             <>
-                                                <a href={p.pdfAttachment} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100" title="مشاهده کاتالوگ/PDF"><FileText size={16}/></a>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => setPreviewPdf({ url: p.pdfAttachment, fileName: `کاتالوگ_${p.name}.pdf` })} 
+                                                    className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors" 
+                                                    title="پیش‌نمایش کاتالوگ/PDF"
+                                                >
+                                                    <FileText size={16}/>
+                                                </button>
                                                 <button 
                                                     type="button"
                                                     onClick={() => openSendToChat({
@@ -3492,6 +3757,14 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
 
             {showModal && <PartModal onClose={() => setShowModal(false)} onSuccess={onPartUpdate} initialData={editingPart} parts={parts} />}
             {showDataSheet && <DataSheetModal part={showDataSheet} onClose={() => setShowDataSheet(null)} />}
+            {previewPdf && (
+                <FileViewerModal 
+                    isOpen={!!previewPdf} 
+                    onClose={() => setPreviewPdf(null)} 
+                    fileUrl={previewPdf.url} 
+                    fileName={previewPdf.fileName} 
+                />
+            )}
         </div>
     );
 };

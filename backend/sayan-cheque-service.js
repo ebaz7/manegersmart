@@ -2,6 +2,61 @@ import { executeSayanQuery } from './sayan-order-automation.js';
 import { getDb, saveDb } from './db-manager.js';
 import crypto from 'crypto';
 import * as jalaali from 'jalaali-js';
+import fs from 'fs';
+import path from 'path';
+
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+    try {
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    } catch (e) {}
+}
+
+/**
+ * Persist attachment base64 to disk and maintain URL + fileData
+ */
+export const persistAttachment = (att) => {
+    if (!att) return null;
+    let url = att.url || '';
+    let fileName = att.fileName || 'attachment';
+    let fileType = att.fileType || '';
+    let fileData = att.fileData || '';
+
+    if (fileData && fileData.startsWith('data:')) {
+        try {
+            const safeName = fileName.replace(/[^a-zA-Z0-9.\u0600-\u06FF_-]/g, '_');
+            const uniqueName = `cheque_${Date.now()}_${safeName}`;
+            const filePath = path.join(UPLOADS_DIR, uniqueName);
+            const base64Data = fileData.replace(/^data:.*;base64,/, '');
+            fs.writeFileSync(filePath, base64Data, 'base64');
+            url = `/uploads/${uniqueName}`;
+        } catch (err) {
+            console.error('Error saving cheque attachment file to disk:', err);
+        }
+    } else if (url && !fileData) {
+        // Attempt to load base64 from disk if url exists
+        try {
+            const filename = path.basename(url);
+            const filePath = path.join(UPLOADS_DIR, filename);
+            if (fs.existsSync(filePath)) {
+                const buffer = fs.readFileSync(filePath);
+                const ext = path.extname(filePath).toLowerCase();
+                let mime = fileType || 'application/octet-stream';
+                if (ext === '.pdf') mime = 'application/pdf';
+                else if (ext === '.png') mime = 'image/png';
+                else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+                fileData = `data:${mime};base64,${buffer.toString('base64')}`;
+            }
+        } catch (e) {}
+    }
+
+    return {
+        fileName,
+        fileType,
+        url,
+        fileData: fileData || undefined
+    };
+};
 
 /**
  * Common Iranian Banks list for auto-complete and standardisation
@@ -551,10 +606,7 @@ export const saveChequeReceiptDraft = async (receiptData, currentUser) => {
         totalAmount,
         description: String(receiptData.description || '').trim(),
         cheques: cleanCheques,
-        attachments: (receiptData.attachments || []).map(att => ({
-            fileName: att.fileName,
-            fileType: att.fileType
-        })), // Store only filenames/metadata, no heavy fileData base64 in the database
+        attachments: (receiptData.attachments || []).map(persistAttachment).filter(Boolean),
         createdBy: isEdit && receiptData.createdBy ? receiptData.createdBy : (currentUser ? { id: currentUser.id, name: currentUser.fullName || currentUser.name, role: currentUser.role } : null),
         createdAt: isEdit && receiptData.createdAt ? receiptData.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),

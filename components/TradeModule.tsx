@@ -6,7 +6,7 @@ import { getTradeRecords, saveTradeRecord, updateTradeRecord, deleteTradeRecord,
 import { getUsers } from '../services/authService';
 import { generateUUID, formatCurrency, formatNumberString, deformatNumberString, parsePersianDate, formatDate, calculateDaysDiff, getStatusLabel } from '../constants';
 import FormattedNumberInput from './FormattedNumberInput';
-import { Container, Plus, Search, CheckCircle2, Save, Trash2, X, Package, ArrowRight, History, Banknote, Coins, Wallet, FileSpreadsheet, Shield, LayoutDashboard, Printer, FileDown, Paperclip, Building2, FolderOpen, Home, Calculator, FileText, Microscope, ListFilter, Warehouse, Calendar as CalendarIcon, PieChart, BarChart, Clock, Leaf, Scale, ShieldCheck, Percent, Truck, CheckSquare, Square, ToggleLeft, ToggleRight, DollarSign, UserCheck, Check, Archive, AlertCircle, RefreshCw, Box, Loader2, Share2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, CalendarDays, Info, ArrowLeftRight, ArrowRightLeft, Edit2, Edit, Undo2, Eye, EyeOff } from 'lucide-react';
+import { Container, Plus, Search, CheckCircle2, Save, Trash2, X, Package, ArrowRight, History, Banknote, Coins, Wallet, FileSpreadsheet, Shield, LayoutDashboard, Printer, FileDown, Paperclip, Building2, FolderOpen, Home, Calculator, FileText, Microscope, ListFilter, Warehouse, Calendar as CalendarIcon, PieChart, BarChart, Clock, Leaf, Scale, ShieldCheck, Percent, Truck, CheckSquare, Square, ToggleLeft, ToggleRight, DollarSign, UserCheck, Check, Archive, AlertCircle, RefreshCw, Box, Loader2, Share2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, CalendarDays, Info, ArrowLeftRight, ArrowRightLeft, Edit2, Edit, Undo2, Eye, EyeOff, Copy } from 'lucide-react';
 import { apiCall, LS_KEYS, getLocalData } from '../services/apiService';
 import { downloadAndOpenFile } from '../services/fileService';
 import AllocationReport from './AllocationReport';
@@ -650,6 +650,38 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             if (selectedRecord?.id === id) setSelectedRecord(null); 
             loadRecords(); 
         } 
+    };
+
+    const handleDuplicateRecord = async (record: TradeRecord, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const suffix = ' - کپی';
+        let newFileNumber = (record.fileNumber || '') + suffix;
+        
+        let attempts = 1;
+        while (records.some(r => r.fileNumber === newFileNumber)) {
+            newFileNumber = `${record.fileNumber}${suffix} (${attempts})`;
+            attempts++;
+        }
+
+        const newId = 'TR-' + Date.now() + Math.random().toString(36).substring(2, 7);
+        const duplicatedRecord: TradeRecord = {
+            ...record,
+            id: newId,
+            fileNumber: newFileNumber,
+            createdAt: Date.now(),
+            createdBy: currentUser.fullName,
+            status: 'Active',
+            isArchived: false,
+        };
+
+        try {
+            await saveTradeRecord(duplicatedRecord);
+            await loadRecords();
+            alert(`پرونده بازرگانی با شماره جدید «${newFileNumber}» با موفقیت کپی شد.`);
+        } catch (err) {
+            console.error("Error duplicating record", err);
+            alert("خطا در کپی پرونده بازرگانی");
+        }
     };
 
     const handleUpdateProforma = async (field: keyof TradeRecord, value: string | number) => { 
@@ -2526,6 +2558,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                         <span className="text-[10px] sm:text-xs font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-full" title="شماره پروفرم">پروفرم: {selectedRecord.proformaNumber}</span>
                                     )}
                                     <button type="button" onClick={openEditMetadata} className="text-gray-400 hover:text-blue-600 transition-colors p-0.5" title="ویرایش مشخصات پرونده"><Edit size={14}/></button>
+                                    <button type="button" onClick={(e) => handleDuplicateRecord(selectedRecord, e)} className="text-gray-400 hover:text-indigo-600 transition-colors p-0.5" title="کپی آنی پرونده"><Copy size={14}/></button>
                                 </h1>
                                 <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">{selectedRecord.company} | {selectedRecord.sellerName}</p>
                                 {selectedRecord.transferredFrom && (
@@ -2844,14 +2877,28 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                 </tr>
                                             ))}
                                         </tbody>
-                                        <tfoot className="bg-blue-50 font-bold">
-                                            <tr>
-                                                <td className="p-3">جمع کل</td>
+                                        <tfoot className="bg-blue-50 font-bold border-t-2 border-blue-200">
+                                            <tr className="border-b border-blue-100">
+                                                <td className="p-3">جمع اقلام (FOB)</td>
                                                 <td></td>
                                                 <td className="p-3 font-mono">{formatNumberString(selectedRecord.items.reduce((a,b)=>a+b.weight,0))}</td>
                                                 <td className="p-3 font-mono">{formatNumberString(selectedRecord.items.reduce((a,b)=>a+(b.grossWeight || b.weight),0))}</td>
                                                 <td></td>
                                                 <td className="p-3 font-mono text-blue-700">{formatNumberString(selectedRecord.items.reduce((a,b)=>a+b.totalPrice,0))} {selectedRecord.mainCurrency}</td>
+                                                <td></td>
+                                            </tr>
+                                            {Number(selectedRecord.freightCost) > 0 && (
+                                                <tr className="border-b border-blue-100 text-slate-700 bg-blue-50/70">
+                                                    <td className="p-3">هزینه حمل کل (Freight)</td>
+                                                    <td colSpan={4}></td>
+                                                    <td className="p-3 font-mono text-indigo-700">+{formatNumberString(selectedRecord.freightCost)} {selectedRecord.mainCurrency}</td>
+                                                    <td></td>
+                                                </tr>
+                                            )}
+                                            <tr className="bg-blue-100/80 text-blue-950 font-black">
+                                                <td className="p-3">جمع نهایی پروفرما (FOB + Freight)</td>
+                                                <td colSpan={4}></td>
+                                                <td className="p-3 font-mono text-blue-900 text-base">{formatNumberString(selectedRecord.items.reduce((a,b)=>a+b.totalPrice,0) + (Number(selectedRecord.freightCost) || 0))} {selectedRecord.mainCurrency}</td>
                                                 <td></td>
                                             </tr>
                                         </tfoot>
@@ -2878,25 +2925,45 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                             </div>
                                         </div>
                                     ))}
-                                    <div className="bg-blue-600 text-white p-4 rounded-xl shadow-lg shadow-blue-600/20 flex justify-between items-center">
-                                        <div className="text-xs font-bold opacity-80 uppercase tracking-wider">Total Summary</div>
-                                        <div className="text-right">
-                                            <div className="text-[10px] opacity-70">جمع کل پروفرما ({selectedRecord.mainCurrency})</div>
-                                            <div className="text-lg font-black">{formatNumberString(selectedRecord.items.reduce((a,b)=>a+b.totalPrice,0))}</div>
+                                    {(() => {
+                                        const fobTotal = selectedRecord.items.reduce((a, b) => a + (b.totalPrice || 0), 0);
+                                        const freight = Number(selectedRecord.freightCost) || 0;
+                                        const grandTotal = fobTotal + freight;
+                                        return (
+                                            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white p-4 rounded-xl shadow-lg shadow-blue-600/20 flex flex-wrap justify-between items-center gap-3">
+                                                <div>
+                                                    <div className="text-xs font-bold opacity-80 uppercase tracking-wider">Total Summary</div>
+                                                    <div className="text-[11px] opacity-75 mt-0.5">
+                                                        اقلام (FOB): {formatNumberString(fobTotal)} | کرایه حمل: {formatNumberString(freight)}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-[10px] opacity-80 font-medium">جمع کل پروفرما (فوب + حمل)</div>
+                                                    <div className="text-lg font-black font-mono">{formatNumberString(grandTotal)} {selectedRecord.mainCurrency}</div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-700 block mb-1">هزینه حمل کل (Freight)</label>
+                                        <div className="flex gap-2 items-center">
+                                            <input 
+                                                type="number" 
+                                                step="0.01"
+                                                className="w-48 border rounded-lg p-2 text-sm dir-ltr font-mono font-bold bg-white" 
+                                                value={selectedRecord.freightCost || ''} 
+                                                onChange={e => handleUpdateProforma('freightCost', parseFloat(e.target.value) || 0)} 
+                                            />
+                                            <span className="text-sm font-bold text-gray-500">{selectedRecord.mainCurrency}</span>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="mt-4 pt-4 border-t border-gray-200">
-                                    <label className="text-xs font-bold text-gray-700 block mb-1">هزینه حمل کل (Freight)</label>
-                                    <div className="flex gap-2 items-center">
-                                        <input 
-                                            type="number" 
-                                            step="0.01"
-                                            className="w-48 border rounded p-2 text-sm dir-ltr font-mono" 
-                                            value={selectedRecord.freightCost || ''} 
-                                            onChange={e => handleUpdateProforma('freightCost', parseFloat(e.target.value) || 0)} 
-                                        />
-                                        <span className="text-sm font-bold text-gray-500">{selectedRecord.mainCurrency}</span>
+                                    <div className="text-right">
+                                        <div className="text-xs font-bold text-gray-500">مجموع ارزش پروفرما (FOB + Freight)</div>
+                                        <div className="text-xl font-black text-blue-700 font-mono">
+                                            {formatNumberString(selectedRecord.items.reduce((a, b) => a + (b.totalPrice || 0), 0) + (Number(selectedRecord.freightCost) || 0))} {selectedRecord.mainCurrency}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -4341,14 +4408,23 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         })
                         .map(record => (
                             <div key={record.id} onClick={() => { setSelectedRecord(record); setViewMode('details'); setActiveTab('timeline'); }} className="glass-panel p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4 border-l-transparent hover:border-l-blue-500 relative">
-                                {/* DELETE BUTTON ADDED HERE - Moved to Right to avoid status overlap */}
-                                <button type="button" 
-                                    onClick={(e) => handleDeleteRecord(record.id, e)} 
-                                    className="absolute top-4 right-4 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all z-10"
-                                    title="حذف پرونده"
-                                >
-                                    <Trash2 size={18}/>
-                                </button>
+                                {/* ACTIONS: COPY & DELETE BUTTONS - Moved to Right to avoid status overlap */}
+                                <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                                    <button type="button" 
+                                        onClick={(e) => handleDuplicateRecord(record, e)} 
+                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                        title="کپی آنی پرونده"
+                                    >
+                                        <Copy size={18}/>
+                                    </button>
+                                    <button type="button" 
+                                        onClick={(e) => handleDeleteRecord(record.id, e)} 
+                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                        title="حذف پرونده"
+                                    >
+                                        <Trash2 size={18}/>
+                                    </button>
+                                </div>
 
                                 <div className="flex justify-between items-start mb-3">
                                     <h3 className="font-bold text-gray-800 line-clamp-1 pr-8" title={record.goodsName}>{record.goodsName}</h3>

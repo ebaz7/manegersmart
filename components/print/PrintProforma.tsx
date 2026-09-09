@@ -15,7 +15,9 @@ const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose
   const [processing, setProcessing] = useState(false);
   const totalWeight = record.items?.reduce((sum, item) => sum + (item.weight || 0), 0) || 0;
   const totalGrossWeight = record.items?.reduce((sum, item) => sum + (item.grossWeight || item.weight || 0), 0) || 0;
-  const totalAmount = record.items?.reduce((sum, item) => sum + (item.totalPrice || (item.weight * item.unitPrice) || 0), 0) || 0;
+  const totalFobAmount = record.items?.reduce((sum, item) => sum + (item.totalPrice || (item.weight * item.unitPrice) || 0), 0) || 0;
+  const freightCost = Number(record.freightCost) || 0;
+  const totalGrandProforma = totalFobAmount + freightCost;
   const company = settings?.companies?.find(c => c.name === record.company);
 
   // Scaling & Zoom States
@@ -196,7 +198,7 @@ const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose
         'proforma-content',
         `Proforma_${proformaNum}.jpg`,
         {
-          defaultMessage: `پیش‌فاکتور / فاکتور تجاری شماره ${proformaNum} - شرکت: ${record.company || '---'} (مبلغ: ${formatCurrency(totalAmount)} ${currencyStr})`,
+          defaultMessage: `پیش‌فاکتور / فاکتور تجاری شماره ${proformaNum} - شرکت: ${record.company || '---'} (مبلغ: ${formatCurrency(totalGrandProforma)} ${currencyStr})`,
           title: 'ارسال پیش‌فاکتور به گفتگو'
         }
       );
@@ -270,13 +272,23 @@ const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose
               <td className="p-2 text-center font-mono font-bold">{formatNumberString(item.totalPrice || (item.weight * item.unitPrice))}</td>
             </tr>
           ))}
-          {/* Totals Row */}
+          {/* Totals Rows */}
           <tr className="bg-gray-50 border-t-2 border-black font-bold">
-            <td colSpan={3} className="p-2 border-r border-black text-left pl-4">جمع کل:</td>
+            <td colSpan={3} className="p-2 border-r border-black text-left pl-4">جمع اقلام (FOB):</td>
             <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(totalWeight)}</td>
             <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(totalGrossWeight)}</td>
             <td className="p-2 border-r border-black text-center">-</td>
-            <td className="p-2 text-center font-mono text-sm">{formatNumberString(totalAmount)} {currencyStr}</td>
+            <td className="p-2 text-center font-mono text-sm">{formatNumberString(totalFobAmount)} {currencyStr}</td>
+          </tr>
+          {freightCost > 0 && (
+            <tr className="bg-gray-50 border-t border-black font-bold">
+              <td colSpan={6} className="p-2 border-r border-black text-left pl-4">هزینه حمل کل (Freight):</td>
+              <td className="p-2 text-center font-mono text-sm">+{formatNumberString(freightCost)} {currencyStr}</td>
+            </tr>
+          )}
+          <tr className="bg-gray-100 border-t-2 border-black font-black text-sm">
+            <td colSpan={6} className="p-2 border-r border-black text-left pl-4">جمع کل نهایی پروفرما (Total = FOB + Freight):</td>
+            <td className="p-2 text-center font-mono text-sm font-black text-blue-900">{formatNumberString(totalGrandProforma)} {currencyStr}</td>
           </tr>
         </tbody>
       </table>

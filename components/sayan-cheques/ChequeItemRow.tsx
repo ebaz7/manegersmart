@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CreditCard, Trash2, Calendar, Building2, User, ChevronDown, Check, Plus, Hash } from 'lucide-react';
+import { CreditCard, Trash2, Calendar, Building2, User, ChevronDown, Check, Plus, Copy, Hash, Sparkles } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 // @ts-ignore
 import DatePicker from "react-multi-date-picker";
@@ -60,6 +60,8 @@ interface Props {
     onDelete: (index: number) => void;
     onEnterNext: (currentIndex: number, currentField: string) => void;
     onArrowNavigate?: (currentIndex: number, currentField: string, direction: 'up' | 'down' | 'left' | 'right') => void;
+    onDuplicateRow?: (index: number) => void;
+    onAddRowBelow?: () => void;
 }
 
 const toPersianDigits = (num: string | number | undefined | null): string => {
@@ -107,7 +109,9 @@ export const ChequeItemRow: React.FC<Props> = ({
     onChange,
     onDelete,
     onEnterNext,
-    onArrowNavigate
+    onArrowNavigate,
+    onDuplicateRow,
+    onAddRowBelow
 }) => {
     // Bank autocomplete state
     const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
@@ -179,7 +183,11 @@ export const ChequeItemRow: React.FC<Props> = ({
     ) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            onEnterNext(index, fieldName);
+            if (e.ctrlKey && onAddRowBelow) {
+                onAddRowBelow();
+            } else {
+                onEnterNext(index, fieldName);
+            }
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
             onArrowNavigate?.(index, fieldName, 'down');
@@ -266,28 +274,28 @@ export const ChequeItemRow: React.FC<Props> = ({
     };
 
     return (
-        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3 relative group">
+        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3 relative group transition-all duration-200 focus-within:border-emerald-500 focus-within:ring-4 focus-within:ring-emerald-500/15 focus-within:shadow-md">
             <div className="flex flex-wrap items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5 gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-sm font-black font-mono flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
+                    <span className="w-7 h-7 rounded-xl bg-emerald-500 text-white text-xs font-black font-mono flex items-center justify-center shadow-xs">
                         {toPersianDigits(index + 1)}
                     </span>
                     <span className="text-sm font-black text-slate-900 dark:text-slate-100">
                         برگه چک شماره {toPersianDigits(item.chequeNumber || (index + 1))}
                     </span>
                     {item.amount ? (
-                        <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                        <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
                             {toPersianDigits(Number(item.amount).toLocaleString('fa-IR'))} ریال
                         </span>
                     ) : null}
                     {item.inNameOf ? (
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
                             صادرکننده: {item.inNameOf}
                         </span>
                     ) : null}
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                     {/* Quick Shamsi Month Buttons */}
                     <div className="hidden sm:flex items-center gap-1 text-[11px]">
                         <span className="text-slate-400 ml-1">سررسید سریع:</span>
@@ -296,12 +304,38 @@ export const ChequeItemRow: React.FC<Props> = ({
                                 key={m}
                                 type="button"
                                 onClick={() => handleQuickAddMonths(m)}
-                                className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 font-bold transition-colors"
+                                className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 font-bold transition-colors"
                             >
                                 {toPersianDigits(m)} ماهه
                             </button>
                         ))}
                     </div>
+
+                    {/* Quick duplicate row action */}
+                    {onDuplicateRow && (
+                        <button
+                            type="button"
+                            onClick={() => onDuplicateRow(index)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors flex items-center gap-1 text-xs font-bold"
+                            title="تکثیر مشخصات این چک در ردیف جدید"
+                        >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">تکثیر</span>
+                        </button>
+                    )}
+
+                    {/* Quick Add Row Button */}
+                    {onAddRowBelow && (
+                        <button
+                            type="button"
+                            onClick={onAddRowBelow}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors flex items-center gap-1 text-xs font-bold"
+                            title="افزودن چک جدید"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">+ چک جدید</span>
+                        </button>
+                    )}
 
                     {totalRows > 1 && (
                         <button
@@ -320,8 +354,9 @@ export const ChequeItemRow: React.FC<Props> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                 {/* 1. Cheque Number */}
                 <div>
-                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
-                        شماره چک (صیادی) *
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1 flex items-center gap-1">
+                        <span>شماره چک (صیادی)</span>
+                        <span className="text-rose-500">*</span>
                     </label>
                     <input
                         id={`cheque-${index}-number`}
@@ -332,14 +367,17 @@ export const ChequeItemRow: React.FC<Props> = ({
                         onChange={(e) => onChange(index, 'chequeNumber', e.target.value)}
                         onKeyDown={(e) => handleFieldKeyDown(e, 'number')}
                         placeholder="مثال: ۱۲۳۴۵۶۷۸"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/20 transition-all"
                     />
                 </div>
 
                 {/* 2. Amount */}
                 <div className="lg:col-span-1">
                     <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1 flex items-center justify-between">
-                        <span>مبلغ چک (ریال) *</span>
+                        <span className="flex items-center gap-1">
+                            <span>مبلغ چک (ریال)</span>
+                            <span className="text-rose-500">*</span>
+                        </span>
                         {item.amount ? (
                             <span className="text-[10px] font-mono text-emerald-600 font-bold">
                                 {toPersianDigits(Math.floor(Number(item.amount) / 10).toLocaleString('fa-IR'))} تومان
@@ -358,14 +396,15 @@ export const ChequeItemRow: React.FC<Props> = ({
                         }}
                         onKeyDown={(e) => handleFieldKeyDown(e, 'amount')}
                         placeholder="مبلغ به ریال"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-emerald-200 dark:border-emerald-900/60 rounded-xl px-3 py-2.5 text-base font-mono font-black text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors shadow-xs"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-emerald-300 dark:border-emerald-800 rounded-xl px-3 py-2.5 text-base font-mono font-black text-emerald-700 dark:text-emerald-400 outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/25 transition-all shadow-xs"
                     />
                 </div>
 
                 {/* 3. Due Date (Shamsi) */}
                 <div>
-                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
-                        تاریخ سررسید (شمسی) *
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1 flex items-center gap-1">
+                        <span>تاریخ سررسید (شمسی)</span>
+                        <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative flex items-center">
                         <input
@@ -377,7 +416,7 @@ export const ChequeItemRow: React.FC<Props> = ({
                             onChange={(e) => handleShamsiDateTyping(e.target.value)}
                             onKeyDown={(e) => handleFieldKeyDown(e, 'dueDate')}
                             placeholder="۱۴۰۵/۰۶/۱۸"
-                            className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                            className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/20 transition-all"
                         />
                         <div className="absolute left-2 top-2 z-10">
                             <DatePicker
@@ -410,8 +449,9 @@ export const ChequeItemRow: React.FC<Props> = ({
 
                 {/* 4. Bank Name with Autocomplete */}
                 <div className="relative" ref={bankDropdownRef}>
-                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
-                        نام بانک *
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1 flex items-center gap-1">
+                        <span>نام بانک</span>
+                        <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
                         <input
@@ -430,7 +470,7 @@ export const ChequeItemRow: React.FC<Props> = ({
                             }}
                             onKeyDown={handleBankKeyDown}
                             placeholder="نام بانک"
-                            className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                            className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/20 transition-all"
                         />
                         <button
                             type="button"
@@ -480,7 +520,7 @@ export const ChequeItemRow: React.FC<Props> = ({
                         onChange={(e) => onChange(index, 'inNameOf', e.target.value)}
                         onKeyDown={(e) => handleFieldKeyDown(e, 'inNameOf')}
                         placeholder="نام صادرکننده چک"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/20 transition-all"
                     />
                 </div>
 
@@ -497,7 +537,7 @@ export const ChequeItemRow: React.FC<Props> = ({
                         onChange={(e) => onChange(index, 'description', e.target.value)}
                         onKeyDown={(e) => handleFieldKeyDown(e, 'description')}
                         placeholder="مثال: قسط ۲ فاکتور ۴۰۵"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/20 transition-all"
                     />
                 </div>
             </div>

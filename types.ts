@@ -1331,7 +1331,7 @@ export enum PurchaseRequestStatus {
     PENDING_WAREHOUSE_KEEPER = 'در انتظار بررسی انباردار کارخانه',
     PENDING_FACTORY = 'در انتظار مدیر کارخانه',
     PENDING_FACTORY_DECISION = 'در انتظار تصمیم مدیر کارخانه (تعیین مسیر خرید)',
-    PENDING_COMMERCIAL_DECISION = 'در انتظار تصمیم بازرگانی (محل خرید)',
+    PENDING_COMMERCIAL_DECISION = 'در انتظار تعیین مسیر خرید (مدیر کارخانه)',
     
     // Tehran Branch
     PENDING_TEHRAN_PURCHASING = 'در انتظار مسئول خرید تهران',

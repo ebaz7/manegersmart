@@ -689,7 +689,6 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
           PurchaseRequestStatus.PENDING_CEO_SELECTION
       ];
       const commercialStatuses = [
-          PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION,
           PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER,
           PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA,
           PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING,
@@ -701,6 +700,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
           PurchaseRequestStatus.PENDING_SHIFT_LEADER,
           PurchaseRequestStatus.PENDING_FACTORY,
           PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER,
+          PurchaseRequestStatus.PENDING_FACTORY_DECISION,
+          PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION,
           PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL,
           PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION,
           PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE,

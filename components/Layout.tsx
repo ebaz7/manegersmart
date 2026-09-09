@@ -7,7 +7,7 @@ import {
   Truck, ClipboardList, Package, Printer, CheckSquare, ShieldCheck, Shield, Phone, RefreshCw, 
   Smartphone, MonitorDown, BellRing, Smartphone as MobileIcon, Trash2, Menu, Edit3, Sun, Moon, 
   ShoppingCart, Wallet, Sparkles, Pin, PinOff, Zap,
-  BadgePlus, Receipt, ArrowLeftRight, ScrollText, ClipboardCheck, Warehouse, BarChart3, 
+  BadgePlus, Receipt, ArrowLeftRight, ArrowRight, ScrollText, ClipboardCheck, Warehouse, BarChart3, 
   CalendarDays, FolderArchive, Banknote, MessagesSquare, Globe, Boxes, Handshake, Headset, UserCog,
   FileCheck2
 } from 'lucide-react';
@@ -728,36 +728,66 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
       
       {/* Profile Modal */}
       {showProfileModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center p-4 animate-fade-in">
-            <div className="glass-panel rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative max-h-[85vh] flex flex-col">
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 flex flex-col items-center justify-center text-white relative shrink-0">
-                    <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 text-white/70 hover:text-white p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20}/></button>
-                    <div className="relative group cursor-pointer mb-2" onClick={() => avatarInputRef.current?.click()}>
-                        <div className="w-16 h-16 rounded-full bg-white/20 border-4 border-white/30 overflow-hidden shadow-lg">
-                            {currentUser.avatar ? <img src={resolveImageUrl(currentUser.avatar)} alt="Profile" className="w-full h-full object-cover" /> : <UserIcon size={32} className="w-full h-full p-3 text-white" />}
-                        </div>
-                        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            {uploadingAvatar ? <Loader2 size={20} className="animate-spin text-white"/> : <Camera size={20} className="text-white"/>}
-                        </div>
-                        <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} disabled={uploadingAvatar} />
-                    </div>
-                    <h3 className="text-md font-black tracking-tight">{currentUser.fullName}</h3>
-                    <p className="text-[10px] font-bold opacity-80">{currentUser.role}</p>
+        <div className="fixed inset-0 bg-white dark:bg-zinc-950 z-[100] flex flex-col animate-fade-in overflow-y-auto">
+            {/* Elegant Header */}
+            <header className="border-b border-gray-150 dark:border-zinc-800 p-4 flex items-center justify-between sticky top-0 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md z-10 shrink-0">
+                <div className="flex items-center gap-3">
+                    <button onClick={() => setShowProfileModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-xl transition-colors text-gray-700 dark:text-gray-300" title="بازگشت">
+                        <ArrowRight size={20}/>
+                    </button>
+                    <span className="font-black text-gray-800 dark:text-white text-base">پروفایل کاربری</span>
                 </div>
-                <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
-                    <form onSubmit={handleUpdateProfile} className="space-y-4 pb-2">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1"><label className="text-xs font-bold text-gray-500">رمز عبور جدید</label><input type="password" value={profileForm.password} onChange={e => setProfileForm({...profileForm, password: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="******"/></div>
-                            <div className="space-y-1"><label className="text-xs font-bold text-gray-500">تکرار رمز</label><input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="******"/></div>
-                        </div>
-                        <div className="space-y-1"><label className="text-xs font-bold text-gray-500">شماره موبایل (واتساپ)</label><input type="tel" value={profileForm.phoneNumber} onChange={e => setProfileForm({...profileForm, phoneNumber: e.target.value})} className="w-full border rounded-lg p-2 text-sm dir-ltr" placeholder="98912..."/></div>
-                        
-                        <div className="space-y-4 pt-4 border-t">
-                            <h4 className="text-xs font-bold text-gray-700 flex items-center gap-2"><Smartphone size={16}/> اولویت نوار پایین موبایل</h4>
-                            <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-[10px] text-blue-700 leading-relaxed mb-2">
-                                ترتیب آیکون‌ها در نوار پایین گوشی را می‌توانید شخصی‌سازی کنید.
+                <div className="text-xs text-gray-500 font-bold hidden sm:block">
+                    مشخصات و شخصی‌سازی نوار ابزار
+                </div>
+            </header>
+
+            {/* Main Content Area */}
+            <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8 md:py-12">
+                <form onSubmit={handleUpdateProfile} className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+                    {/* Left Column: Avatar & User identity */}
+                    <div className="md:col-span-4 flex flex-col items-center p-6 bg-gray-50 dark:bg-zinc-900 rounded-[2rem] border border-gray-100 dark:border-zinc-800/60 shadow-sm">
+                        <div className="relative group cursor-pointer mb-4" onClick={() => avatarInputRef.current?.click()}>
+                            <div className="w-28 h-28 rounded-full bg-white/20 border-4 border-white dark:border-zinc-800 overflow-hidden shadow-xl">
+                                {currentUser.avatar ? <img src={resolveImageUrl(currentUser.avatar)} alt="Profile" className="w-full h-full object-cover" /> : <UserIcon size={48} className="w-full h-full p-5 text-gray-400 bg-gray-200 dark:bg-zinc-800" />}
                             </div>
-                            <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto p-2 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                {uploadingAvatar ? <Loader2 size={24} className="animate-spin text-white"/> : <Camera size={24} className="text-white"/>}
+                            </div>
+                            <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} disabled={uploadingAvatar} />
+                        </div>
+                        <h2 className="text-xl font-black text-gray-800 dark:text-white mb-1">{currentUser.fullName}</h2>
+                        <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold rounded-full text-xs border border-blue-100 dark:border-blue-900/50 mb-4">{currentUser.role}</span>
+                        
+                        <div className="w-full space-y-4 pt-4 border-t border-gray-200 dark:border-zinc-800/60">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400">شماره موبایل (واتساپ)</label>
+                                <input type="tel" value={profileForm.phoneNumber} onChange={e => setProfileForm({...profileForm, phoneNumber: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 text-sm dir-ltr text-center font-bold focus:ring-2 focus:ring-blue-100 outline-none" placeholder="98912..."/>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400">رمز عبور جدید</label>
+                                    <input type="password" value={profileForm.password} onChange={e => setProfileForm({...profileForm, password: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none" placeholder="******"/>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400">تکرار رمز عبور</label>
+                                    <input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none" placeholder="******"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Column: Mobile Navigation Order & Settings */}
+                    <div className="md:col-span-8 space-y-6">
+                        <div className="p-6 bg-gray-50 dark:bg-zinc-900 rounded-[2rem] border border-gray-100 dark:border-zinc-800/60 shadow-sm space-y-4">
+                            <h3 className="text-sm font-black text-gray-800 dark:text-white flex items-center gap-2">
+                                <Smartphone size={18} className="text-blue-500"/>
+                                <span>اولویت نوار پایین موبایل</span>
+                            </h3>
+                            <div className="bg-blue-50/50 dark:bg-blue-950/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/50 text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                                ترتیب آیکون‌ها در نوار پایین موبایل را شخصی‌سازی کنید. با این کار دسترسی شما به بخش‌های پرکاربرد بسیار سریع‌تر خواهد شد.
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto p-3 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-200 dark:border-zinc-800 custom-scrollbar">
                                 {(profileForm.mobileNavOrder?.length ? profileForm.mobileNavOrder : DEFAULT_MOBILE_NAV_ORDER).map((itemId, idx) => {
                                     const navLabel = {
                                         dashboard: 'داشبورد',
@@ -784,9 +814,9 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                                     }[itemId] || itemId;
 
                                     return (
-                                        <div key={itemId} className="flex items-center justify-between bg-white p-1.5 rounded-lg border border-gray-100 shadow-sm">
-                                            <span className="text-[10px] font-bold text-gray-700 truncate">{navLabel}</span>
-                                            <div className="flex gap-1">
+                                        <div key={itemId} className="flex items-center justify-between bg-gray-50 dark:bg-zinc-900 p-3 rounded-xl border border-gray-100 dark:border-zinc-800 shadow-xs">
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{navLabel}</span>
+                                            <div className="flex gap-1.5">
                                                     <button 
                                                         type="button"
                                                         onClick={() => {
@@ -800,10 +830,10 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                                                                 setProfileForm({...profileForm, mobileNavOrder: order});
                                                             }
                                                         }}
-                                                        className="p-1 hover:bg-gray-100 rounded text-gray-500"
+                                                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
                                                         disabled={idx === 0}
                                                     >
-                                                        <RefreshCw size={12} className="rotate-90"/>
+                                                        <RefreshCw size={14} className="rotate-90"/>
                                                     </button>
                                                     <button 
                                                         type="button"
@@ -818,10 +848,10 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                                                                 setProfileForm({...profileForm, mobileNavOrder: order});
                                                             }
                                                         }}
-                                                        className="p-1 hover:bg-gray-100 rounded text-gray-500"
+                                                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
                                                         disabled={idx === (profileForm.mobileNavOrder?.length || 19) - 1}
                                                     >
-                                                        <RefreshCw size={12} className="-rotate-90"/>
+                                                        <RefreshCw size={14} className="-rotate-90"/>
                                                     </button>
                                             </div>
                                         </div>
@@ -829,23 +859,25 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                                 })}
                             </div>
                         </div>
-                        
-                        <div className="flex items-center gap-2 pt-2">
-                            <input 
-                                type="checkbox" 
-                                id="receiveNotifications" 
-                                checked={profileForm.receiveNotifications} 
-                                onChange={e => setProfileForm({...profileForm, receiveNotifications: e.target.checked})} 
-                                className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
-                            />
-                            <label htmlFor="receiveNotifications" className="text-xs font-bold text-gray-700 select-none">دریافت نوتیفیکیشن‌های سیستم</label>
+
+                        <div className="p-6 bg-gray-50 dark:bg-zinc-900 rounded-[2rem] border border-gray-100 dark:border-zinc-800/60 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="receiveNotifications" 
+                                    checked={profileForm.receiveNotifications} 
+                                    onChange={e => setProfileForm({...profileForm, receiveNotifications: e.target.checked})} 
+                                    className="rounded text-blue-600 focus:ring-blue-500 h-4.5 w-4.5 cursor-pointer"
+                                />
+                                <label htmlFor="receiveNotifications" className="text-xs font-black text-gray-700 dark:text-gray-300 select-none cursor-pointer">دریافت نوتیفیکیشن‌های سیستم</label>
+                            </div>
+                            <button type="submit" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-8 rounded-2xl text-xs transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-100 dark:shadow-none">
+                                <Save size={16}/> ذخیره اطلاعات پروفایل
+                            </button>
                         </div>
-                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 mt-4 shadow-md">
-                            <Save size={14}/> ذخیره اطلاعات پروفایل
-                        </button>
-                    </form>
-                </div>
-            </div>
+                    </div>
+                </form>
+            </main>
         </div>
       )}
       {/* Desktop Sidebar Container - Layout slot stays fixed unless pinned */}

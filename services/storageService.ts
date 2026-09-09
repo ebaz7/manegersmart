@@ -657,8 +657,22 @@ export const sendMeetingMinutes = async (meetingId: string): Promise<{ success: 
 import { PurchaseRequest, PurchaseRequestStatus, PartMasterData, PartKardex } from '../types';
 
 export const getPurchaseRequests = async (): Promise<PurchaseRequest[]> => {
-    const res = await apiCall<PurchaseRequest[]>('/purchase-requests');
-    return safeArray<PurchaseRequest>(res);
+    try {
+        const res = await apiCall<PurchaseRequest[]>('/purchase-requests');
+        const safeRes = safeArray<PurchaseRequest>(res);
+        if (safeRes.length > 0) {
+            try {
+                localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(safeRes));
+            } catch {}
+        }
+        return safeRes;
+    } catch (e) {
+        const cached = getLocalData<PurchaseRequest[]>(LS_KEYS.PURCHASE_REQS, []);
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+            return cached;
+        }
+        throw e;
+    }
 };
 
 export const savePurchaseRequest = async (req: PurchaseRequest): Promise<PurchaseRequest[]> => {
@@ -740,17 +754,57 @@ export const getNextPurchaseRequestNumber = async (): Promise<string> => {
 };
 
 // --- PART MASTER DATA & KARDEX ---
+const PARTS_CACHE_KEY = 'app_data_parts';
+
 export const getPartMasterData = async (): Promise<PartMasterData[]> => {
-    const res = await apiCall<PartMasterData[]>('/part-master-data');
-    return safeArray(res);
+    try {
+        const res = await apiCall<PartMasterData[]>('/part-master-data');
+        const safe = safeArray<PartMasterData>(res);
+        if (safe.length > 0) {
+            try {
+                localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(safe));
+            } catch {}
+        }
+        return safe;
+    } catch (e) {
+        const cached = getLocalData<PartMasterData[]>(PARTS_CACHE_KEY, []);
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+            return cached;
+        }
+        throw e;
+    }
 };
 
 export const savePartMasterData = async (part: PartMasterData): Promise<PartMasterData[]> => {
-    return await apiCall<PartMasterData[]>('/part-master-data', 'POST', part);
+    try {
+        const cached = getLocalData<PartMasterData[]>(PARTS_CACHE_KEY, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = [part, ...cached.filter((p: PartMasterData) => p.id !== part.id)];
+            localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(updated));
+        }
+    } catch {}
+    const res = await apiCall<PartMasterData[]>('/part-master-data', 'POST', part);
+    const safe = safeArray<PartMasterData>(res);
+    try {
+        if (safe.length > 0) localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(safe));
+    } catch {}
+    return safe;
 };
 
 export const updatePartMasterData = async (part: PartMasterData): Promise<PartMasterData[]> => {
-    return await apiCall<PartMasterData[]>(`/part-master-data/${part.id}`, 'PUT', part);
+    try {
+        const cached = getLocalData<PartMasterData[]>(PARTS_CACHE_KEY, []);
+        if (cached && Array.isArray(cached)) {
+            const updated = cached.map((p: PartMasterData) => p.id === part.id ? part : p);
+            localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(updated));
+        }
+    } catch {}
+    const res = await apiCall<PartMasterData[]>(`/part-master-data/${part.id}`, 'PUT', part);
+    const safe = safeArray<PartMasterData>(res);
+    try {
+        if (safe.length > 0) localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(safe));
+    } catch {}
+    return safe;
 };
 
 export const deletePartMasterData = async (id: string): Promise<PartMasterData[]> => {

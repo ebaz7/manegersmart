@@ -1,7 +1,8 @@
-import React, { useRef } from 'react';
-import { Printer, X, Download, FileText, CheckCircle2, Copy, Check, Building2, User, Calendar, CreditCard } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Printer, X, Download, FileText, CheckCircle2, Copy, Check, Building2, User, Calendar, CreditCard, MessageSquare, Send } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { formatChequeAmountInWords } from '../../utils/persianNumberToWords';
+import { shareElementToChat, openSendToChat } from '../../services/chatShareService';
 
 export interface A5ChequeData {
     id?: string | number;
@@ -62,6 +63,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
     onRegisterNewNext
 }) => {
     const [copied, setCopied] = React.useState(false);
+    const [sharingToChat, setSharingToChat] = useState(false);
 
     if (!isOpen || !receipt) return null;
 
@@ -77,13 +79,45 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const handleShareToChat = async () => {
+        if (!receipt) return;
+        setSharingToChat(true);
+        try {
+            const el = document.getElementById('a5-cheque-receipt-print-area');
+            const summaryText = `📄 رسید دریافت چک #${receipt.receiptNo || receipt.id}\n👤 طرف حساب: ${receipt.personName} (کد ${receipt.personCode})\n🏷️ شماره پشت‌نمره: ${receipt.poshtNomreh || '-'}\n💳 تعداد چک: ${receipt.cheques.length} فقره\n💰 جمع کل: ${Number(receipt.totalAmount).toLocaleString('fa-IR')} ریال\n📝 بابت: ${receipt.description || '-'}`;
+            if (el) {
+                await shareElementToChat(
+                    el,
+                    `Cheque_Receipt_${receipt.receiptNo || receipt.id}.jpg`,
+                    {
+                        defaultMessage: summaryText,
+                        title: 'ارسال رسید چک به گفتگو'
+                    }
+                );
+            } else {
+                openSendToChat({
+                    defaultMessage: summaryText,
+                    title: 'ارسال رسید چک به گفتگو'
+                });
+            }
+        } catch (err) {
+            console.error('Error sharing receipt to chat:', err);
+            openSendToChat({
+                defaultMessage: `📄 رسید دریافت چک #${receipt.receiptNo || receipt.id}\n👤 طرف حساب: ${receipt.personName}\n💰 جمع کل: ${Number(receipt.totalAmount).toLocaleString('fa-IR')} ریال`,
+                title: 'ارسال رسید چک به گفتگو'
+            });
+        } finally {
+            setSharingToChat(false);
+        }
+    };
+
     const totalAmount = Number(receipt.totalAmount) || 0;
     const amountInWords = formatChequeAmountInWords(totalAmount);
     const receiptDate = receipt.docDateShamsi || toShamsiStr(receipt.createdAt) || toShamsiStr(new Date().toISOString());
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto animate-fade-in">
-            {/* Print CSS specific to A5 Landscape */}
+            {/* Print CSS specific to A5 Landscape - Strictly Theme-Agnostic */}
             <style>{`
                 @page {
                     size: A5 landscape;
@@ -91,11 +125,12 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                 }
                 @media print {
                     html, body {
+                        background-color: #ffffff !important;
                         background: #ffffff !important;
                         color: #000000 !important;
                         margin: 0 !important;
                         padding: 0 !important;
-                        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, sans-serif !important;
                     }
                     /* Hide everything outside print container */
                     body * {
@@ -114,6 +149,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         height: 100vh !important;
                         margin: 0 !important;
                         padding: 4mm 6mm !important;
+                        background-color: #ffffff !important;
                         background: #ffffff !important;
                         color: #000000 !important;
                         box-shadow: none !important;
@@ -122,6 +158,28 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         z-index: 999999 !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
+                    }
+                    #a5-cheque-receipt-print-area table,
+                    #a5-cheque-receipt-print-area th,
+                    #a5-cheque-receipt-print-area td,
+                    #a5-cheque-receipt-print-area div,
+                    #a5-cheque-receipt-print-area span,
+                    #a5-cheque-receipt-print-area p,
+                    #a5-cheque-receipt-print-area h1,
+                    #a5-cheque-receipt-print-area h2,
+                    #a5-cheque-receipt-print-area h3 {
+                        color: #000000 !important;
+                    }
+                    #a5-cheque-receipt-print-area .print-bg-header {
+                        background-color: #f8fafc !important;
+                    }
+                    #a5-cheque-receipt-print-area .print-border-black {
+                        border-color: #000000 !important;
+                    }
+                    #a5-cheque-receipt-print-area .signature-box {
+                        background-color: #ffffff !important;
+                        background: #ffffff !important;
+                        border: 1.5px solid #000000 !important;
                     }
                     .no-print {
                         display: none !important;
@@ -160,6 +218,17 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         >
                             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                             <span>{copied ? 'کپی شد' : 'کپی خلاصه'}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleShareToChat}
+                            disabled={sharingToChat}
+                            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
+                            title="ارسال رسید به گفتگوی درون‌برنامه‌ای"
+                        >
+                            <MessageSquare className="w-4 h-4" />
+                            <span>{sharingToChat ? 'در حال ارسال...' : 'ارسال به گفتگو'}</span>
                         </button>
 
                         <button
@@ -377,43 +446,43 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         </div>
 
                         {/* 4. Official Signature Boxes (4 Symmetrical Pillars for A5 Landscape) */}
-                        <div className="mt-4 pt-2 grid grid-cols-4 gap-2 text-center text-[10px]">
+                        <div className="mt-4 pt-2 grid grid-cols-4 gap-2.5 text-center text-[10px]">
                             {/* Box 1: Depositor / Customer */}
-                            <div className="border border-slate-400 rounded-lg p-2 flex flex-col justify-between h-20 bg-white">
-                                <span className="font-bold text-slate-800">
+                            <div className="signature-box border border-slate-900 rounded-lg p-2 flex flex-col justify-between h-20 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <span className="font-bold text-slate-900 text-[11px]">
                                     امضا و اثرانگشت واگذارکننده
                                 </span>
-                                <span className="text-[9px] text-slate-500">
+                                <span className="text-[9px] text-slate-700 font-medium">
                                     ({receipt.personName || 'طرف‌حساب'})
                                 </span>
                             </div>
 
                             {/* Box 2: Receiver / User */}
-                            <div className="border border-slate-400 rounded-lg p-2 flex flex-col justify-between h-20 bg-white">
-                                <span className="font-bold text-slate-800">
+                            <div className="signature-box border border-slate-900 rounded-lg p-2 flex flex-col justify-between h-20 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <span className="font-bold text-slate-900 text-[11px]">
                                     تحویل‌گیرنده / ثبت‌کننده
                                 </span>
-                                <span className="text-[9px] text-slate-500 font-mono">
+                                <span className="text-[9px] text-slate-700 font-mono">
                                     {receipt.createdByName || 'کاربر سیستم'}
                                 </span>
                             </div>
 
                             {/* Box 3: Accounting / Treasury */}
-                            <div className="border border-slate-400 rounded-lg p-2 flex flex-col justify-between h-20 bg-white">
-                                <span className="font-bold text-slate-800">
+                            <div className="signature-box border border-slate-900 rounded-lg p-2 flex flex-col justify-between h-20 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <span className="font-bold text-slate-900 text-[11px]">
                                     امور مالی و خزانه‌داری
                                 </span>
-                                <span className="text-[9px] text-slate-400">
+                                <span className="text-[9px] text-slate-700">
                                     (تایید وصول و کارتابل)
                                 </span>
                             </div>
 
                             {/* Box 4: Management / CEO */}
-                            <div className="border border-slate-400 rounded-lg p-2 flex flex-col justify-between h-20 bg-white">
-                                <span className="font-bold text-slate-800">
+                            <div className="signature-box border border-slate-900 rounded-lg p-2 flex flex-col justify-between h-20 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <span className="font-bold text-slate-900 text-[11px]">
                                     مدیریت مالی / مدیرعامل
                                 </span>
-                                <span className="text-[9px] text-slate-400">
+                                <span className="text-[9px] text-slate-700">
                                     (مهر و امضای نهایی)
                                 </span>
                             </div>

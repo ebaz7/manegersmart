@@ -256,12 +256,13 @@ export const AccountingReviewModal: React.FC<Props> = ({
 
                         <div>
                             <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                شماره پشت‌نمره *
+                                شماره رسید / پشت‌نمره *
                             </label>
                             <input
                                 type="text"
                                 value={editPoshtNomreh}
                                 onChange={(e) => setEditPoshtNomreh(e.target.value)}
+                                placeholder="۷۶۶"
                                 className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-amber-500"
                             />
                         </div>
@@ -312,9 +313,9 @@ export const AccountingReviewModal: React.FC<Props> = ({
 
                         <div className="space-y-2">
                             {editCheques.map((ch, idx) => (
-                                <div key={ch.id || idx} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-xs">
+                                <div key={ch.id || idx} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-6 gap-2 items-center text-xs">
                                     <div>
-                                        <span className="text-[10px] text-slate-400 block mb-0.5">شماره چک</span>
+                                        <span className="text-[10px] text-slate-400 block mb-0.5 font-bold">شماره چک *</span>
                                         <input
                                             type="text"
                                             value={ch.chequeNumber}
@@ -323,11 +324,11 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                 next[idx].chequeNumber = e.target.value;
                                                 setEditCheques(next);
                                             }}
-                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1 font-mono font-bold"
+                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1.5 font-mono font-black text-blue-600 dark:text-blue-400"
                                         />
                                     </div>
                                     <div>
-                                        <span className="text-[10px] text-slate-400 block mb-0.5">مبلغ (ریال)</span>
+                                        <span className="text-[10px] text-slate-400 block mb-0.5 font-bold">مبلغ (ریال) *</span>
                                         <input
                                             type="text"
                                             value={ch.amount ? Number(ch.amount).toLocaleString('en-US') : ''}
@@ -337,11 +338,11 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                 next[idx].amount = clean ? Number(clean) : '';
                                                 setEditCheques(next);
                                             }}
-                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1 font-mono font-black text-emerald-600"
+                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1.5 font-mono font-black text-emerald-600 dark:text-emerald-400"
                                         />
                                     </div>
                                     <div>
-                                        <span className="text-[10px] text-slate-400 block mb-0.5">تاریخ سررسید</span>
+                                        <span className="text-[10px] text-slate-400 block mb-0.5 font-bold">سررسید *</span>
                                         <input
                                             type="date"
                                             value={ch.dueDate}
@@ -350,11 +351,11 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                 next[idx].dueDate = e.target.value;
                                                 setEditCheques(next);
                                             }}
-                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1 font-mono"
+                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1.5 font-mono font-bold"
                                         />
                                     </div>
                                     <div>
-                                        <span className="text-[10px] text-slate-400 block mb-0.5">نام بانک</span>
+                                        <span className="text-[10px] text-slate-400 block mb-0.5 font-bold">نام بانک *</span>
                                         <input
                                             type="text"
                                             value={ch.bankName}
@@ -363,7 +364,20 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                 next[idx].bankName = e.target.value;
                                                 setEditCheques(next);
                                             }}
-                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1"
+                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1.5 font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block mb-0.5 font-bold">صادرکننده / در وجه</span>
+                                        <input
+                                            type="text"
+                                            value={ch.inNameOf || (editPerson ? editPerson.fullName : '')}
+                                            onChange={(e) => {
+                                                const next = [...editCheques];
+                                                next[idx].inNameOf = e.target.value;
+                                                setEditCheques(next);
+                                            }}
+                                            className="w-full bg-white dark:bg-slate-900 border rounded-lg px-2 py-1.5 font-bold text-slate-900 dark:text-white"
                                         />
                                     </div>
                                     <div className="flex items-center gap-2 justify-end pt-2 sm:pt-0">
@@ -372,6 +386,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                 type="button"
                                                 onClick={() => setEditCheques(prev => prev.filter((_, i) => i !== idx))}
                                                 className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                                                title="حذف برگه"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -382,13 +397,18 @@ export const AccountingReviewModal: React.FC<Props> = ({
                         </div>
 
                         {/* Total Summary */}
-                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
-                            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
+                            <span className="text-xs font-black text-emerald-800 dark:text-emerald-300">
                                 مجموع کل مبالغ چک‌های رسید:
                             </span>
-                            <span className="font-mono font-black text-sm text-emerald-700 dark:text-emerald-300">
-                                {toPersianDigits(editTotalAmount.toLocaleString('fa-IR'))} ریال
-                            </span>
+                            <div className="flex items-baseline gap-2">
+                                <span className="font-mono font-black text-lg text-emerald-700 dark:text-emerald-300">
+                                    {toPersianDigits(editTotalAmount.toLocaleString('fa-IR'))} ریال
+                                </span>
+                                <span className="text-xs font-mono font-bold text-emerald-600 bg-white/80 dark:bg-slate-900/60 px-2 py-0.5 rounded border border-emerald-200/60">
+                                    ({toPersianDigits(Math.floor(editTotalAmount / 10).toLocaleString('fa-IR'))} تومان)
+                                </span>
+                            </div>
                         </div>
                     </div>
 

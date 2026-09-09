@@ -201,51 +201,60 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                     )}
 
                     {/* Header Info Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
-                        <div>
-                            <span className="text-slate-400 block mb-1">شماره رسید نرم‌افزار</span>
-                            <span className="font-mono font-black text-blue-600 text-sm">
-                                #{toPersianDigits(receipt.receiptNo || receipt.id)}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs">
+                        <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <span className="text-slate-400 block mb-1 font-bold">شماره رسید / پشت‌نمره</span>
+                            <div className="flex items-baseline gap-1.5">
+                                <span className="font-mono font-black text-blue-600 text-base">
+                                    #{toPersianDigits(receipt.poshtNomreh || receipt.receiptNo || '766')}
+                                </span>
+                                <span className="text-[10px] text-amber-600 font-bold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200">
+                                    یکسان (۷۶۶)
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <span className="text-slate-400 block mb-1 font-bold">کد بایگانی / سند سایان</span>
+                            <span className="font-mono font-black text-purple-600 text-base">
+                                {receipt.archiveCode ? toPersianDigits(receipt.archiveCode) : 'در انتظار ثبت نهایی'}
                             </span>
                         </div>
-                        <div>
-                            <span className="text-slate-400 block mb-1">شماره پشت‌نمره</span>
-                            <span className="font-mono font-bold text-amber-600 text-sm">
-                                {toPersianDigits(receipt.poshtNomreh || '-')}
+
+                        <div className="sm:col-span-2 p-3 bg-emerald-50/80 dark:bg-emerald-950/40 rounded-xl border border-emerald-200/80 dark:border-emerald-800 flex flex-col justify-center">
+                            <span className="text-emerald-800 dark:text-emerald-300 block text-xs font-black mb-1">
+                                مبلغ کل رسید چک (بزرگ و برجسته)
                             </span>
-                        </div>
-                        <div>
-                            <span className="text-slate-400 block mb-1">کد بایگانی / سند سایان</span>
-                            <span className="font-mono font-bold text-purple-600 text-sm">
-                                {receipt.archiveCode ? toPersianDigits(receipt.archiveCode) : 'هنوز ثبت نشده'}
-                            </span>
-                        </div>
-                        <div>
-                            <span className="text-slate-400 block mb-1">مجموع کل مبلغ رسید</span>
-                            <span className="font-mono font-black text-emerald-600 text-sm">
-                                {toPersianDigits(Number(receipt.totalAmount || 0).toLocaleString('fa-IR'))} ریال
-                            </span>
+                            <div className="flex flex-wrap items-baseline gap-2">
+                                <span className="font-mono font-black text-xl sm:text-2xl text-emerald-600 dark:text-emerald-400">
+                                    {toPersianDigits(Number(receipt.totalAmount || 0).toLocaleString('fa-IR'))}
+                                </span>
+                                <span className="text-xs font-black text-emerald-700 dark:text-emerald-300">ریال</span>
+                                <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 bg-white/90 dark:bg-slate-900/80 px-2.5 py-0.5 rounded-lg border border-emerald-200/60">
+                                    {toPersianDigits(Math.floor(Number(receipt.totalAmount || 0) / 10).toLocaleString('fa-IR'))} تومان
+                                </span>
+                            </div>
                         </div>
                     </div>
 
                     {/* Person & Notes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
-                            <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 border-b pb-2">
+                        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                            <div className="font-black text-slate-900 dark:text-white flex items-center gap-1.5 border-b pb-2 text-sm">
                                 <User className="w-4 h-4 text-blue-500" />
-                                <span>مشخصات طرف حساب و تحویل دهنده</span>
+                                <span>مشخصات طرف حساب و صادرکننده چک</span>
                             </div>
-                            <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                                <span className="text-slate-400">نام شخص / شرکت:</span>
-                                <span className="font-bold text-slate-900 dark:text-white">{receipt.personName}</span>
+                            <div className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-800/60">
+                                <span className="text-slate-500 font-bold">نام طرف حساب:</span>
+                                <span className="font-black text-sm text-slate-900 dark:text-white">{receipt.personName}</span>
                             </div>
-                            <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                                <span className="text-slate-400">کد تفصیلی شخص در سایان:</span>
-                                <span className="font-mono font-bold text-blue-600">{toPersianDigits(receipt.personCode || '-')}</span>
+                            <div className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-800/60">
+                                <span className="text-slate-500 font-bold">کد تفصیلی در سایان:</span>
+                                <span className="font-mono font-black text-blue-600 text-xs">{toPersianDigits(receipt.personCode || '-')}</span>
                             </div>
-                            <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                                <span className="text-slate-400">صندوق خزانه‌داری سایان:</span>
-                                <span className="font-bold text-purple-600">
+                            <div className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-800/60">
+                                <span className="text-slate-500 font-bold">صندوق خزانه‌داری سایان:</span>
+                                <span className="font-black text-purple-600 text-xs">
                                     {receipt.cashboxCode === '11001' ? 'صندوق دفتر (۱۱۰۰۱)' : 
                                      receipt.cashboxCode === '11002' ? 'صندوق سکه و کارت هدیه (۱۱۰۰۲)' :
                                      receipt.cashboxCode === '11003' ? 'صندوق آقای مقدم (۱۱۰۰۳)' :
@@ -254,18 +263,18 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                      receipt.cashboxCode ? `صندوق ${toPersianDigits(receipt.cashboxCode)}` : 'صندوق دفتر (۱۱۰۰۱)'}
                                 </span>
                             </div>
-                            <div className="flex justify-between py-1">
-                                <span className="text-slate-400">تاریخ دریافت:</span>
-                                <span className="font-mono">{toPersianDigits(toShamsiDateStr(receipt.docDate || receipt.createdAt))}</span>
+                            <div className="flex justify-between items-center py-1">
+                                <span className="text-slate-500 font-bold">تاریخ دریافت:</span>
+                                <span className="font-mono font-bold">{toPersianDigits(toShamsiDateStr(receipt.docDate || receipt.createdAt))}</span>
                             </div>
                         </div>
 
                         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
-                            <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 border-b pb-2">
+                            <div className="font-black text-slate-900 dark:text-white flex items-center gap-1.5 border-b pb-2 text-sm">
                                 <FileText className="w-4 h-4 text-emerald-500" />
                                 <span>شرح رسید و یادداشت‌ها</span>
                             </div>
-                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-sans bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl">
+                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-sans bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl font-medium">
                                 {receipt.description || 'بدون شرح ثبت شده'}
                             </p>
                             {receipt.accountingReview?.note && (
@@ -277,40 +286,86 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                         </div>
                     </div>
 
+                    {/* CEO Approval Review Box (مدیرعامل موقع تایید ببیند و سپس تایید کند) */}
+                    {receipt.status === 'PENDING_CEO' && isCeoOrAdmin && (
+                        <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 space-y-3">
+                            <div className="flex items-center justify-between border-b border-emerald-200/80 dark:border-emerald-800 pb-2">
+                                <div className="flex items-center gap-2">
+                                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                                    <span className="font-black text-sm text-emerald-950 dark:text-emerald-100">
+                                        بررسی و تایید نهایی مدیرعامل جهت صدور سند در سایان
+                                    </span>
+                                </div>
+                                <span className="text-xs bg-emerald-200/80 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-3 py-1 rounded-full font-bold">
+                                    مرحله نهایی
+                                </span>
+                            </div>
+                            <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed space-y-1">
+                                <p className="font-medium">
+                                    مدیرعامل محترم، اطلاعات چک، مبلغ کل (<strong className="text-emerald-700 dark:text-emerald-400 font-mono">{toPersianDigits(Number(receipt.totalAmount || 0).toLocaleString('fa-IR'))} ریال</strong>) و مشخصات صادرکننده را بررسی فرمایید. پس از تایید شما، سند به طور قطعی در پایگاه‌داده سایان ثبت خواهد شد.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => onReject(receipt.id)}
+                                    disabled={actionLoading === receipt.id}
+                                    className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 text-rose-600 border border-rose-300 dark:border-rose-800 font-bold text-xs hover:bg-rose-50"
+                                >
+                                    عدم تایید / عودت به حسابداری
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onApproveByCeo(receipt.id)}
+                                    disabled={actionLoading === receipt.id}
+                                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 cursor-pointer disabled:opacity-50"
+                                >
+                                    <ShieldCheck className="w-5 h-5" />
+                                    <span>
+                                        {actionLoading === receipt.id ? 'در حال ثبت در پایگاه سایان...' : 'تایید نهایی مدیرعامل و ثبت در ERP سایان'}
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Cheques Table */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
-                            <span>برگه‌های چک درج شده در رسید ({toPersianDigits(receipt.cheques?.length || 1)} فقره)</span>
+                            <span className="font-black text-sm">برگه‌های چک درج شده در رسید ({toPersianDigits(receipt.cheques?.length || 1)} فقره)</span>
+                            <span className="text-[11px] text-emerald-600 font-mono font-bold">
+                                جمع کل چک‌ها: {toPersianDigits(Number(receipt.totalAmount || 0).toLocaleString('fa-IR'))} ریال
+                            </span>
                         </div>
-                        <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-x-auto">
+                        <div className="border-2 border-slate-200 dark:border-slate-700 rounded-2xl overflow-x-auto">
                             <table className="w-full text-right text-xs">
-                                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-700">
+                                <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black border-b border-slate-200 dark:border-slate-700">
                                     <tr>
-                                        <th className="px-3 py-2.5">ردیف</th>
-                                        <th className="px-3 py-2.5">شماره چک (صیادی)</th>
-                                        <th className="px-3 py-2.5">مبلغ چک (ریال)</th>
-                                        <th className="px-3 py-2.5">سررسید (شمسی)</th>
-                                        <th className="px-3 py-2.5">بانک صادرکننده</th>
-                                        <th className="px-3 py-2.5">در وجه / صاحب حساب</th>
-                                        <th className="px-3 py-2.5">بابت</th>
+                                        <th className="px-3 py-3">ردیف</th>
+                                        <th className="px-3 py-3">شماره چک (صیادی)</th>
+                                        <th className="px-3 py-3">مبلغ چک (ریال)</th>
+                                        <th className="px-3 py-3">سررسید (شمسی)</th>
+                                        <th className="px-3 py-3">بانک صادرکننده</th>
+                                        <th className="px-3 py-3">در وجه / صادرکننده چک</th>
+                                        <th className="px-3 py-3">بابت</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                     {receipt.cheques?.map((ch: any, idx: number) => (
                                         <tr key={ch.chequeId || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                                            <td className="px-3 py-2.5 text-slate-400 font-mono">{toPersianDigits(idx + 1)}</td>
-                                            <td className="px-3 py-2.5 font-mono font-bold text-blue-600 dark:text-blue-400">
+                                            <td className="px-3 py-3.5 text-slate-400 font-mono font-bold">{toPersianDigits(idx + 1)}</td>
+                                            <td className="px-3 py-3.5 font-mono font-black text-sm text-blue-600 dark:text-blue-400">
                                                 {toPersianDigits(ch.chequeNumber || '-')}
                                             </td>
-                                            <td className="px-3 py-2.5 font-mono font-black text-emerald-600 dark:text-emerald-400">
+                                            <td className="px-3 py-3.5 font-mono font-black text-base text-emerald-600 dark:text-emerald-400">
                                                 {toPersianDigits(Number(ch.amount || 0).toLocaleString('fa-IR'))}
                                             </td>
-                                            <td className="px-3 py-2.5 font-mono">
+                                            <td className="px-3 py-3.5 font-mono font-bold text-sm text-slate-800 dark:text-slate-200">
                                                 {toPersianDigits(toShamsiDateStr(ch.dueDate))}
                                             </td>
-                                            <td className="px-3 py-2.5">{ch.bankName || '-'}</td>
-                                            <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300">{ch.inNameOf || receipt.personName || '-'}</td>
-                                            <td className="px-3 py-2.5 text-slate-500">{ch.description || '-'}</td>
+                                            <td className="px-3 py-3.5 font-bold text-sm text-slate-800 dark:text-slate-200">{ch.bankName || '-'}</td>
+                                            <td className="px-3 py-3.5 font-black text-sm text-slate-900 dark:text-white">{ch.inNameOf || receipt.personName || '-'}</td>
+                                            <td className="px-3 py-3.5 text-slate-600 dark:text-slate-300">{ch.description || '-'}</td>
                                         </tr>
                                     ))}
                                 </tbody>

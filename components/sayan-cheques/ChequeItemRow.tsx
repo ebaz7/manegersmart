@@ -199,26 +199,36 @@ export const ChequeItemRow: React.FC<Props> = ({
 
     return (
         <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3 relative group">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
-                <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-xs font-black font-mono flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
+            <div className="flex flex-wrap items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5 gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-sm font-black font-mono flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
                         {toPersianDigits(index + 1)}
                     </span>
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <span className="text-sm font-black text-slate-900 dark:text-slate-100">
                         برگه چک شماره {toPersianDigits(item.chequeNumber || (index + 1))}
                     </span>
+                    {item.amount ? (
+                        <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                            {toPersianDigits(Number(item.amount).toLocaleString('fa-IR'))} ریال
+                        </span>
+                    ) : null}
+                    {item.inNameOf ? (
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
+                            صادرکننده: {item.inNameOf}
+                        </span>
+                    ) : null}
                 </div>
 
                 <div className="flex items-center gap-1.5">
                     {/* Quick Shamsi Month Buttons */}
-                    <div className="hidden sm:flex items-center gap-1 text-[10px]">
+                    <div className="hidden sm:flex items-center gap-1 text-[11px]">
                         <span className="text-slate-400 ml-1">سررسید سریع:</span>
                         {[1, 2, 3, 4, 6].map(m => (
                             <button
                                 key={m}
                                 type="button"
                                 onClick={() => handleQuickAddMonths(m)}
-                                className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+                                className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 font-bold transition-colors"
                             >
                                 {toPersianDigits(m)} ماهه
                             </button>
@@ -239,10 +249,10 @@ export const ChequeItemRow: React.FC<Props> = ({
             </div>
 
             {/* Inputs Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                 {/* 1. Cheque Number */}
                 <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
                         شماره چک (صیادی) *
                     </label>
                     <input
@@ -257,14 +267,19 @@ export const ChequeItemRow: React.FC<Props> = ({
                             }
                         }}
                         placeholder="مثال: ۱۲۳۴۵۶۷۸"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                     />
                 </div>
 
                 {/* 2. Amount */}
-                <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        مبلغ چک (ریال) *
+                <div className="lg:col-span-1">
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1 flex items-center justify-between">
+                        <span>مبلغ چک (ریال) *</span>
+                        {item.amount ? (
+                            <span className="text-[10px] font-mono text-emerald-600 font-bold">
+                                {toPersianDigits(Math.floor(Number(item.amount) / 10).toLocaleString('fa-IR'))} تومان
+                            </span>
+                        ) : null}
                     </label>
                     <input
                         id={`cheque-${index}-amount`}
@@ -281,13 +296,13 @@ export const ChequeItemRow: React.FC<Props> = ({
                             }
                         }}
                         placeholder="مبلغ به ریال"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-black text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-emerald-200 dark:border-emerald-900/60 rounded-xl px-3 py-2.5 text-base font-mono font-black text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors shadow-xs"
                     />
                 </div>
 
                 {/* 3. Due Date (Shamsi) */}
                 <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
                         تاریخ سررسید (شمسی) *
                     </label>
                     <div className="relative flex items-center">
@@ -303,9 +318,9 @@ export const ChequeItemRow: React.FC<Props> = ({
                                 }
                             }}
                             placeholder="۱۴۰۵/۰۶/۱۸"
-                            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2 text-xs font-mono font-bold outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                            className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2.5 text-sm font-mono font-black text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                         />
-                        <div className="absolute left-2 top-1.5 z-10">
+                        <div className="absolute left-2 top-2 z-10">
                             <DatePicker
                                 calendar={persian}
                                 locale={persian_fa}
@@ -325,7 +340,7 @@ export const ChequeItemRow: React.FC<Props> = ({
                                         className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors"
                                         title="انتخاب از تقویم"
                                     >
-                                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                                        <Calendar className="w-4 h-4 text-emerald-600" />
                                     </button>
                                 )}
                                 calendarPosition="bottom-right"
@@ -336,7 +351,7 @@ export const ChequeItemRow: React.FC<Props> = ({
 
                 {/* 4. Bank Name with Autocomplete */}
                 <div className="relative" ref={bankDropdownRef}>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
                         نام بانک *
                     </label>
                     <div className="relative">
@@ -355,8 +370,8 @@ export const ChequeItemRow: React.FC<Props> = ({
                                 setHighlightedBankIdx(0);
                             }}
                             onKeyDown={handleBankKeyDown}
-                            placeholder="نام بانک (تایپ جهت جستجو)"
-                            className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                            placeholder="نام بانک"
+                            className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                         />
                         <button
                             type="button"
@@ -365,9 +380,9 @@ export const ChequeItemRow: React.FC<Props> = ({
                                 bankInputRef.current?.focus();
                                 bankInputRef.current?.select();
                             }}
-                            className="absolute left-2 top-2.5 text-slate-400 hover:text-slate-600"
+                            className="absolute left-2 top-3 text-slate-400 hover:text-slate-600"
                         >
-                            <ChevronDown className="w-3.5 h-3.5" />
+                            <ChevronDown className="w-4 h-4" />
                         </button>
                     </div>
 
@@ -393,10 +408,10 @@ export const ChequeItemRow: React.FC<Props> = ({
                     )}
                 </div>
 
-                {/* 5. In Name Of (صاحب حساب / در وجه) */}
+                {/* 5. In Name Of (صاحب حساب / در وجه / صادرکننده چک) */}
                 <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        صاحب چک / در وجه
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
+                        صاحب حساب / در وجه (صادرکننده)
                     </label>
                     <input
                         id={`cheque-${index}-inNameOf`}
@@ -410,13 +425,13 @@ export const ChequeItemRow: React.FC<Props> = ({
                             }
                         }}
                         placeholder="نام صادرکننده چک"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                     />
                 </div>
 
                 {/* 6. Description / Note for row */}
                 <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    <label className="block text-xs font-black text-slate-800 dark:text-slate-200 mb-1">
                         بابت / توضیحات چک
                     </label>
                     <input
@@ -431,7 +446,7 @@ export const ChequeItemRow: React.FC<Props> = ({
                             }
                         }}
                         placeholder="مثال: قسط ۲ فاکتور ۴۰۵"
-                        className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                     />
                 </div>
             </div>

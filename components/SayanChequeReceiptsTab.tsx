@@ -67,6 +67,8 @@ interface ChequeReceiptRecord {
     };
     sayanDocNo?: number;
     sayanArchiveCode?: number;
+    sayanError?: string;
+    sayanRegisteredAt?: string;
     createdAt?: string;
     createdByName?: string;
 }
@@ -1038,21 +1040,37 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                         </div>
 
                         {/* Summary & Discrepancy Bar */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                            <div className="flex items-center gap-4">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+                            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                                 <div>
-                                    <span className="text-slate-400 block mb-0.5">تعداد برگ چک:</span>
-                                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                    <span className="text-slate-500 dark:text-slate-400 block mb-0.5 font-bold">تعداد برگ چک:</span>
+                                    <span className="font-mono font-black text-base text-slate-900 dark:text-white">
                                         {toPersianDigits(chequeRows.length)} برگ
                                     </span>
                                 </div>
-                                <div className="h-6 w-px bg-slate-200 dark:bg-slate-700" />
+                                <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
                                 <div>
-                                    <span className="text-slate-400 block mb-0.5">مجموع مبالغ چک‌ها:</span>
-                                    <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
-                                        {toPersianDigits(sumChequesAmount.toLocaleString('fa-IR'))} ریال
-                                    </span>
+                                    <span className="text-slate-500 dark:text-slate-400 block mb-0.5 font-bold">مجموع مبالغ کل چک‌ها:</span>
+                                    <div className="flex items-baseline gap-2">
+                                        <span className="font-mono font-black text-xl text-emerald-600 dark:text-emerald-400">
+                                            {toPersianDigits(sumChequesAmount.toLocaleString('fa-IR'))} ریال
+                                        </span>
+                                        <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                            ({toPersianDigits(Math.floor(sumChequesAmount / 10).toLocaleString('fa-IR'))} تومان)
+                                        </span>
+                                    </div>
                                 </div>
+                                {selectedPerson && (
+                                    <>
+                                        <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+                                        <div>
+                                            <span className="text-slate-500 dark:text-slate-400 block mb-0.5 font-bold">طرف حساب / صادرکننده:</span>
+                                            <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                                                {selectedPerson.fullName}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
                             {targetTotalAmount !== '' && (

@@ -209,7 +209,7 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
             if (remainingDays < 0) {
                 const pastDays = Math.abs(remainingDays);
                 expiryStatus = {
-                    text: `${pastDays} روز از مهلت گذشته (منقضی شده)`,
+                    text: 'تمام شده',
                     isExpired: true,
                     days: pastDays,
                     totalDays: totalValidityDays

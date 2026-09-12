@@ -1755,6 +1755,40 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         return true;
     });
 
+    const groupedMessagesByDay = useMemo(() => {
+        const groups: { dateKey: string; title: string; messages: ChatMessage[] }[] = [];
+        const getHumanDateTitle = (ts: number) => {
+            const now = new Date();
+            const todayKey = now.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+            const yest = new Date(Date.now() - 86400000);
+            const yestKey = yest.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+            const d = new Date(ts);
+            const dKey = d.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+            
+            if (dKey === todayKey) return 'امروز';
+            if (dKey === yestKey) return 'دیروز';
+            return d.toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        };
+
+        filteredMessages.forEach((msg) => {
+            const msgTimestamp = parseTimestamp(msg.timestamp);
+            const msgDate = new Date(msgTimestamp);
+            const msgDateKey = msgDate.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+            
+            let existingGroup = groups.find(g => g.dateKey === msgDateKey);
+            if (!existingGroup) {
+                existingGroup = {
+                    dateKey: msgDateKey,
+                    title: getHumanDateTitle(msgTimestamp),
+                    messages: []
+                };
+                groups.push(existingGroup);
+            }
+            existingGroup.messages.push(msg);
+        });
+        return groups;
+    }, [filteredMessages]);
+
     const renderMessageWithMentions = (text: string) => {
         if (!text) return null;
         const regex = /@([a-zA-Z0-9_\.\-\u0600-\u06FF]+)/g;
@@ -2272,60 +2306,38 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                     onDragOver={handleDragOver}
                                     onDrop={handleDrop}
                                 >
-                            {filteredMessages.map((msg: ChatMessage, idx: number) => {
-                                const isMe = msg.senderUsername === currentUser.username;
-                                const isSystemMsg = msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم' || activeChannel.type === 'system';
-                                const isSelected = selectedMessages.has(msg.id);
-                                const isHighlighted = highlightedMessageId === msg.id;
-
-                                const bubbleStyles = isHighlighted 
-                                    ? `bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-400 dark:border-amber-500 text-amber-950 dark:text-amber-100 ring-4 ring-amber-300/60 dark:ring-amber-600/60 scale-[1.02] shadow-md transition-all duration-350 ${
-                                        isSystemMsg ? 'rounded-2xl w-full max-w-[92%] md:max-w-[85%]' : 
-                                        isMe ? 'rounded-xl rounded-tr-none max-w-[75%] md:max-w-[70%]' : 
-                                        'rounded-xl rounded-tl-none max-w-[75%] md:max-w-[70%]'
-                                      }`
-                                    : isSystemMsg 
-                                        ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm transition-all duration-350'
-                                        : isMe 
-                                            ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] dark:bg-[#1a2f16] dark:text-[#eeffde] rounded-xl rounded-tr-none shadow-sm transition-all duration-350'
-                                            : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm transition-all duration-350';
-                                
-                                // Calculate Date Separator
-                                const msgTimestamp = parseTimestamp(msg.timestamp);
-                                const msgDate = new Date(msgTimestamp);
-                                const msgDateKey = msgDate.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-                                
-                                const prevMsg = idx > 0 ? filteredMessages[idx - 1] : null;
-                                const prevTimestamp = prevMsg ? parseTimestamp(prevMsg.timestamp) : 0;
-                                const prevDate = prevMsg ? new Date(prevTimestamp) : null;
-                                const prevDateKey = prevDate ? prevDate.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' }) : null;
-                                
-                                const showDateSeparator = !prevDateKey || msgDateKey !== prevDateKey;
-                                
-                                const getHumanDateTitle = (ts: number) => {
-                                    const now = new Date();
-                                    const todayKey = now.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-                                    const yest = new Date(Date.now() - 86400000);
-                                    const yestKey = yest.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-                                    const d = new Date(ts);
-                                    const dKey = d.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-                                    
-                                    if (dKey === todayKey) return 'امروز';
-                                    if (dKey === yestKey) return 'دیروز';
-                                    return d.toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-                                };
-
+                            {groupedMessagesByDay.map((group) => {
                                 return (
-                                    <React.Fragment key={msg.id}>
-                                        {showDateSeparator && (
-                                            <div className="flex justify-center my-2 select-none pointer-events-none">
-                                                <span className="px-3 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-slate-200/90 dark:bg-zinc-800/90 backdrop-blur-md rounded-full shadow-xs border border-slate-300/50 dark:border-zinc-700/50">
-                                                    {getHumanDateTitle(msgTimestamp)}
-                                                </span>
-                                            </div>
-                                        )}
-                                        <div 
-                                            id={`msg-${msg.id}`}
+                                    <div key={group.dateKey} className="w-full relative flex flex-col gap-2">
+                                        {/* Sticky Date Separator per Day Container */}
+                                        <div className="flex justify-center my-2 select-none pointer-events-none sticky top-1 z-10">
+                                            <span className="px-3 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-slate-200/90 dark:bg-zinc-800/90 backdrop-blur-md rounded-full shadow-xs border border-slate-300/50 dark:border-zinc-700/50">
+                                                {group.title}
+                                            </span>
+                                        </div>
+                                        
+                                        {group.messages.map((msg: ChatMessage) => {
+                                            const isMe = msg.senderUsername === currentUser.username;
+                                            const isSystemMsg = msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم' || activeChannel.type === 'system';
+                                            const isSelected = selectedMessages.has(msg.id);
+                                            const isHighlighted = highlightedMessageId === msg.id;
+
+                                            const bubbleStyles = isHighlighted 
+                                                ? `bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-400 dark:border-amber-500 text-amber-950 dark:text-amber-100 ring-4 ring-amber-300/60 dark:ring-amber-600/60 scale-[1.02] shadow-md transition-all duration-350 ${
+                                                    isSystemMsg ? 'rounded-2xl w-full max-w-[92%] md:max-w-[85%]' : 
+                                                    isMe ? 'rounded-xl rounded-tr-none max-w-[75%] md:max-w-[70%]' : 
+                                                    'rounded-xl rounded-tl-none max-w-[75%] md:max-w-[70%]'
+                                                  }`
+                                                : isSystemMsg 
+                                                    ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm transition-all duration-350'
+                                                    : isMe 
+                                                        ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] dark:bg-[#1a2f16] dark:text-[#eeffde] rounded-xl rounded-tr-none shadow-sm transition-all duration-350'
+                                                        : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm transition-all duration-350';
+                                            
+                                            return (
+                                                <div 
+                                                    key={msg.id}
+                                                    id={`msg-${msg.id}`}
                                             className={`flex w-full mb-1 group ${isSystemMsg ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'} items-end gap-2 ${selectionMode ? 'cursor-pointer' : ''}`}
                                             onClick={() => { if(selectionMode) toggleSelection(msg.id); }}
                                             onContextMenu={(e) => { e.preventDefault(); if(!selectionMode) setContextMenuMsg({msg, x: e.clientX, y: e.clientY}); }}
@@ -2609,8 +2621,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                  {(msg.attachment || msg.audioUrl) && <button onClick={() => handleNativeShare(msg)} className="p-1.5 glass-panel rounded-full text-orange-600 shadow-sm hover:scale-110" title="اشتراک"><Share2 size={12}/></button>}
                                             </div>
                                         )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    </React.Fragment>
                                 );
                             })}
                             <div ref={messagesEndRef} />

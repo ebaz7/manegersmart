@@ -582,9 +582,10 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
             const data = await res.json();
             if (data.success) {
-                const createdReceipt = data.receipt || {
-                    id: data.id || data.receiptNo || String(Date.now()),
-                    receiptNo: data.receiptNo || data.id,
+                const createdReceipt = {
+                    ...(data.receipt || {}),
+                    id: data.receipt?.id || data.id || data.receiptNo || String(Date.now()),
+                    receiptNo: data.receipt?.receiptNo || data.receiptNo || data.id,
                     poshtNomreh: payload.poshtNomreh,
                     personCode: payload.personCode,
                     personName: payload.personName,
@@ -595,13 +596,14 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     docDateShamsi: docDateShamsi,
                     createdAt: new Date().toISOString(),
                     cheques: payload.cheques,
-                    status: 'PENDING_ACCOUNTING',
+                    attachments: (data.receipt?.attachments && data.receipt.attachments.length > 0) ? data.receipt.attachments : payload.attachments,
+                    status: data.receipt?.status || 'PENDING_ACCOUNTING',
                     createdByName: currentUser?.name || 'ثبت‌کننده'
                 };
 
-                setSuccessMessage(`رسید دریافت چک با شماره #${toPersianDigits(data.receiptNo || data.id)} ثبت شد و به کارتابل حسابداری ارسال گردید.`);
+                setSuccessMessage(`رسید دریافت چک با شماره #${toPersianDigits(createdReceipt.receiptNo || createdReceipt.id)} ثبت شد و به همراه پیوست‌ها آماده چاپ گردید.`);
 
-                // Immediately open the A5 print & inspection modal
+                // Immediately open the A5 print & inspection modal with attachments
                 setPrintReceipt(createdReceipt);
                 setIsPrintModalOpen(true);
 

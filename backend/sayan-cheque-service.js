@@ -679,7 +679,7 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
             record.totalAmount = record.cheques.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
         }
         if (Array.isArray(updatePayload.attachments)) {
-            record.attachments = updatePayload.attachments;
+            record.attachments = updatePayload.attachments.map(persistAttachment).filter(Boolean);
         }
     }
 

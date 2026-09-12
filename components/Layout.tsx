@@ -600,8 +600,13 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
       perms.canAccessSayanReports === true;
 
     const canSeeSayanOps = currentUser.role === UserRole.ADMIN || 
-      canSeeSayan || 
       perms.canAccessSayanRegistrations === true || 
+      perms.canSayanPreInvoices === true || 
+      perms.canSayanRegisterCheque === true || 
+      perms.canSayanEditReceipt === true || 
+      perms.canSayanDeleteReceipt === true || 
+      perms.canSayanApproveAccounting === true || 
+      perms.canSayanApproveCeo === true || 
       perms.canAccessSayanPendingDocs === true;
 
     const canSeeChequeReceipts = currentUser.role === UserRole.ADMIN || perms.canAccessChequeReceipts === true;

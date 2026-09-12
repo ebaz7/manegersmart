@@ -23,6 +23,7 @@ interface Props {
     isFinancialOrAdmin?: boolean;
     isCeoOrAdmin?: boolean;
     canDeleteReceipt?: boolean;
+    canEditReceipt?: boolean;
 }
 
 const toPersianDigits = (num: string | number | undefined | null): string => {
@@ -57,7 +58,8 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
     actionLoading,
     isFinancialOrAdmin: propsIsFinancialOrAdmin,
     isCeoOrAdmin: propsIsCeoOrAdmin,
-    canDeleteReceipt: propsCanDeleteReceipt
+    canDeleteReceipt: propsCanDeleteReceipt,
+    canEditReceipt: propsCanEditReceipt
 }) => {
     const isFinancialOrAdmin = propsIsFinancialOrAdmin !== undefined 
         ? propsIsFinancialOrAdmin 
@@ -67,6 +69,9 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
         : (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === 'MANAGER' || currentUser.roles?.includes('ceo') || currentUser.roles?.includes('admin'));
     const canDeleteReceipt = propsCanDeleteReceipt !== undefined
         ? propsCanDeleteReceipt
+        : isFinancialOrAdmin;
+    const canEditReceipt = propsCanEditReceipt !== undefined
+        ? propsCanEditReceipt
         : isFinancialOrAdmin;
 
     const detailContentRef = useRef<HTMLDivElement>(null);
@@ -520,19 +525,21 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                 >
                                     رد / بازگشت
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onOpenAccountingReview(receipt)}
-                                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-                                >
-                                    <Edit3 className="w-4 h-4" />
-                                    <span>ویرایش و تایید حسابداری</span>
-                                </button>
+                                {canEditReceipt && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOpenAccountingReview(receipt)}
+                                        className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                                    >
+                                        <Edit3 className="w-4 h-4" />
+                                        <span>ویرایش و تایید حسابداری</span>
+                                    </button>
+                                )}
                             </>
                         )}
 
-                        {/* Edit button for Accounting/Admin on pending/failed receipts */}
-                        {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && isFinancialOrAdmin && (
+                        {/* Edit button for authorized users on pending/failed receipts */}
+                        {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && canEditReceipt && (
                             <button
                                 type="button"
                                 onClick={() => onOpenAccountingReview(receipt)}

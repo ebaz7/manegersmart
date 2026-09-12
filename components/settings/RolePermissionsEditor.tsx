@@ -144,9 +144,10 @@ const PERMISSION_GROUPS = [
             { id: 'canAccessSayanRegistrations', label: 'دسترسی کلی به ماژول ثبت‌های سایان ERP' },
             { id: 'canSayanPreInvoices', label: 'ثبت پیش‌فاکتورهای خرید در سایان (تبدیل اسناد ۵۳ به ۵۷)' },
             { id: 'canSayanRegisterCheque', label: 'ثبت رسید چک سایان (ورود اطلاعات و بارگذاری رسید جدید)' },
-            { id: 'canSayanApproveAccounting', label: 'تایید مرحله اول (ویرایش و تایید حسابداری چک سایان)' },
-            { id: 'canSayanApproveCeo', label: 'تایید مرحله نهایی (تایید مدیرعامل و ثبت خودکار در ERP سایان)' },
-            { id: 'canSayanDeleteReceipt', label: 'حذف کامل رسید یا بازگردانی (عدم تایید ثبت سایان)' }
+            { id: 'canSayanEditReceipt', label: 'ویرایش اطلاعات، مبالغ و اقلام رسید چک سایان' },
+            { id: 'canSayanDeleteReceipt', label: 'حذف کامل رسید دریافت چک سایان' },
+            { id: 'canSayanApproveAccounting', label: 'تایید مرحله اول (تایید مالی / حسابداری چک سایان)' },
+            { id: 'canSayanApproveCeo', label: 'تایید مرحله نهایی (تایید مدیرعامل و ثبت خودکار در ERP سایان)' }
         ] 
     },
     { 

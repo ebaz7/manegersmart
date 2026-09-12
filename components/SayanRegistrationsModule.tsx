@@ -108,17 +108,28 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
 
     const canSayanRegisterCheque = currentUser?.role === UserRole.ADMIN || perms.canSayanRegisterCheque === true;
     const canSayanPreInvoices = currentUser?.role === UserRole.ADMIN || perms.canSayanPreInvoices === true;
-    const canAccessSayanRegistrations = currentUser?.role === UserRole.ADMIN || perms.canAccessSayanRegistrations === true || canSayanPreInvoices || canSayanRegisterCheque;
+    const canAccessChequeReceiptsTab = currentUser?.role === UserRole.ADMIN || 
+        perms.canAccessChequeReceipts === true || 
+        canSayanRegisterCheque || 
+        perms.canSayanEditReceipt === true || 
+        perms.canSayanDeleteReceipt === true || 
+        perms.canSayanApproveAccounting === true || 
+        perms.canSayanApproveCeo === true;
+
+    const canAccessSayanRegistrations = currentUser?.role === UserRole.ADMIN || 
+        perms.canAccessSayanRegistrations === true || 
+        canSayanPreInvoices || 
+        canAccessChequeReceiptsTab;
 
     const initialTab = useMemo(() => {
         if (canSayanPreInvoices) {
             return 'PURCHASE_PREINVOICES';
         }
-        if (canSayanRegisterCheque) {
+        if (canAccessChequeReceiptsTab) {
             return 'CHEQUE_RECEIPTS';
         }
         return 'FUTURE_DOCS';
-    }, [canSayanPreInvoices, canSayanRegisterCheque]);
+    }, [canSayanPreInvoices, canAccessChequeReceiptsTab]);
 
     const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>(initialTab);
 
@@ -129,7 +140,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
     useEffect(() => {
         const handleSubTabEvent = (e: any) => {
             if (e.detail === 'CHEQUE_RECEIPTS' || e.detail === 'CHEQUE' || e.detail === 'RECEIPTS') {
-                if (canSayanRegisterCheque) {
+                if (canAccessChequeReceiptsTab) {
                     setMainSubTab('CHEQUE_RECEIPTS');
                 }
             } else if (e.detail === 'PURCHASE_PREINVOICES') {
@@ -140,7 +151,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
         };
         window.addEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
         return () => window.removeEventListener('SAYAN_SUB_TAB_CHANGE', handleSubTabEvent);
-    }, [canSayanRegisterCheque, canAccessSayanRegistrations]);
+    }, [canAccessChequeReceiptsTab, canSayanPreInvoices]);
 
     // State for Purchase Pre-Invoices automation
     const [selectedFiscalYear, setSelectedFiscalYear] = useState<'4' | '3'>('4');
@@ -543,6 +554,24 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
         setOverrideVendorName(doc.detectedVendor?.personName || '');
     };
 
+    if (!canAccessSayanRegistrations) {
+        return (
+            <div className="w-full flex flex-col flex-1 items-center justify-center p-8 text-center space-y-4">
+                <div className="w-16 h-16 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mx-auto border border-rose-100 dark:border-rose-900">
+                    <Database className="w-8 h-8" />
+                </div>
+                <div className="max-w-md mx-auto">
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                        عدم دسترسی به بخش ثبت‌های سایان
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                        شما دسترسی لازم برای مشاهده یا ثبت اسناد در ماژول ثبت‌های سایان را ندارید. لطفاً با مدیر سیستم تماس بگیرید.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="w-full flex flex-col flex-1 min-h-0 space-y-4 pb-20 animate-fade-in select-text">
             
@@ -583,7 +612,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                             <span>ثبت پیش‌فاکتورهای درخواست خرید</span>
                         </button>
                     )}
-                    {canSayanRegisterCheque && (
+                    {canAccessChequeReceiptsTab && (
                         <button
                             type="button"
                             onClick={() => setMainSubTab('CHEQUE_RECEIPTS')}
@@ -613,7 +642,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
             </div>
 
             {/* TAB 2: Cheque Receipts Module */}
-            {mainSubTab === 'CHEQUE_RECEIPTS' && canSayanRegisterCheque && (
+            {mainSubTab === 'CHEQUE_RECEIPTS' && canAccessChequeReceiptsTab && (
                 <SayanChequeReceiptsTab currentUser={currentUser} settings={settings} />
             )}
 

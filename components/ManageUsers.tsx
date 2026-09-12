@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, UserRole, SystemSettings } from '../types';
 import { getUsers, saveUser, updateUser, deleteUser } from '../services/authService';
 import { getSettings, uploadFile } from '../services/storageService'; 
-import { UserPlus, Trash2, Shield, User as UserIcon, Download, Pencil, X, Save, Container, Camera, Send, Phone, BellRing, Info, Package, ShoppingCart } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User as UserIcon, Download, Pencil, X, Save, Container, Camera, Send, Phone, BellRing, Info, Package, ShoppingCart, FileText, FileCheck2, FileSpreadsheet, Banknote, ShieldCheck } from 'lucide-react';
 import { generateUUID } from '../constants';
 import { apiCall } from '../services/apiService';
 
@@ -21,6 +21,14 @@ const ManageUsers: React.FC = () => {
     canManageSales: false, 
     canManagePurchase: false,
     canManageParts: false,
+    canManageProformas: false,
+    canAccessSayanRegistrations: false,
+    canSayanPreInvoices: false,
+    canSayanRegisterCheque: false,
+    canSayanEditReceipt: false,
+    canSayanDeleteReceipt: false,
+    canSayanApproveAccounting: false,
+    canSayanApproveCeo: false,
     receiveNotifications: true, 
     canAccessSecretariat: false,
     secretariatAllowedCompanies: [] as string[],
@@ -83,6 +91,14 @@ const ManageUsers: React.FC = () => {
           canManageSales: false, 
           canManagePurchase: false,
           canManageParts: false,
+          canManageProformas: false,
+          canAccessSayanRegistrations: false,
+          canSayanPreInvoices: false,
+          canSayanRegisterCheque: false,
+          canSayanEditReceipt: false,
+          canSayanDeleteReceipt: false,
+          canSayanApproveAccounting: false,
+          canSayanApproveCeo: false,
           receiveNotifications: true, 
           canAccessSecretariat: false,
           canManageSecretariatSettings: false,
@@ -108,6 +124,14 @@ const ManageUsers: React.FC = () => {
           canManageSales: user.canManageSales || false, 
           canManagePurchase: user.canManagePurchase || false,
           canManageParts: user.canManageParts || false,
+          canManageProformas: user.canManageProformas || false,
+          canAccessSayanRegistrations: user.canAccessSayanRegistrations || false,
+          canSayanPreInvoices: user.canSayanPreInvoices || false,
+          canSayanRegisterCheque: user.canSayanRegisterCheque || false,
+          canSayanEditReceipt: user.canSayanEditReceipt || false,
+          canSayanDeleteReceipt: user.canSayanDeleteReceipt || false,
+          canSayanApproveAccounting: user.canSayanApproveAccounting || false,
+          canSayanApproveCeo: user.canSayanApproveCeo || false,
           receiveNotifications: user.receiveNotifications !== false, 
           canAccessSecretariat: user.canAccessSecretariat || false,
           canManageSecretariatSettings: user.canManageSecretariatSettings || false,
@@ -133,6 +157,14 @@ const ManageUsers: React.FC = () => {
           canManageSales: false, 
           canManagePurchase: false,
           canManageParts: false,
+          canManageProformas: false,
+          canAccessSayanRegistrations: false,
+          canSayanPreInvoices: false,
+          canSayanRegisterCheque: false,
+          canSayanEditReceipt: false,
+          canSayanDeleteReceipt: false,
+          canSayanApproveAccounting: false,
+          canSayanApproveCeo: false,
           receiveNotifications: true, 
           canAccessSecretariat: false,
           secretariatAllowedCompanies: [],
@@ -353,6 +385,48 @@ const ManageUsers: React.FC = () => {
                   <input type="checkbox" checked={formData.canManageParts} onChange={e => setFormData({...formData, canManageParts: e.target.checked})} className="w-4 h-4 text-amber-600" />
                   <span>تعریف و کدینگ کالا (درخواست خرید / انبار)</span>
               </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700 bg-indigo-50 px-2 py-1.5 rounded cursor-pointer border border-indigo-200">
+                  <input type="checkbox" checked={formData.canManageProformas} onChange={e => setFormData({...formData, canManageProformas: e.target.checked})} className="w-4 h-4 text-indigo-600" />
+                  <span>ثبت پیش‌فاکتور (در ماژول درخواست خرید)</span>
+              </label>
+
+              {/* Sayan Specific Permissions Section */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 mt-1">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block border-b border-slate-200 dark:border-slate-700 pb-1">
+                      دسترسی‌های اختصاصی ماژول ثبت‌های سایان ERP:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-slate-200 dark:border-slate-700">
+                          <input type="checkbox" checked={formData.canAccessSayanRegistrations} onChange={e => setFormData({...formData, canAccessSayanRegistrations: e.target.checked})} className="w-4 h-4 text-indigo-600" />
+                          <span>دسترسی کلی ثبت‌های سایان</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 rounded cursor-pointer border border-amber-200 dark:border-amber-900/50">
+                          <input type="checkbox" checked={formData.canSayanPreInvoices} onChange={e => setFormData({...formData, canSayanPreInvoices: e.target.checked})} className="w-4 h-4 text-amber-600" />
+                          <span>ثبت پیش‌فاکتور خرید سایان (۵۳ به ۵۷)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1.5 rounded cursor-pointer border border-emerald-200 dark:border-emerald-900/50">
+                          <input type="checkbox" checked={formData.canSayanRegisterCheque} onChange={e => setFormData({...formData, canSayanRegisterCheque: e.target.checked})} className="w-4 h-4 text-emerald-600" />
+                          <span>ثبت رسید چک جدید سایان</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-2 py-1.5 rounded cursor-pointer border border-blue-200 dark:border-blue-900/50">
+                          <input type="checkbox" checked={formData.canSayanEditReceipt} onChange={e => setFormData({...formData, canSayanEditReceipt: e.target.checked})} className="w-4 h-4 text-blue-600" />
+                          <span>ویرایش رسید چک سایان</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-rose-800 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 px-2 py-1.5 rounded cursor-pointer border border-rose-200 dark:border-rose-900/50">
+                          <input type="checkbox" checked={formData.canSayanDeleteReceipt} onChange={e => setFormData({...formData, canSayanDeleteReceipt: e.target.checked})} className="w-4 h-4 text-rose-600" />
+                          <span>حذف رسید چک سایان</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40 px-2 py-1.5 rounded cursor-pointer border border-teal-200 dark:border-teal-900/50">
+                          <input type="checkbox" checked={formData.canSayanApproveAccounting} onChange={e => setFormData({...formData, canSayanApproveAccounting: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                          <span>تایید حسابداری چک سایان</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-2 py-1.5 rounded cursor-pointer border border-purple-200 dark:border-purple-900/50 sm:col-span-2">
+                          <input type="checkbox" checked={formData.canSayanApproveCeo} onChange={e => setFormData({...formData, canSayanApproveCeo: e.target.checked})} className="w-4 h-4 text-purple-600" />
+                          <span>تایید مدیرعامل و ثبت نهایی چک در سایان</span>
+                      </label>
+                  </div>
+              </div>
+
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-green-50 px-2 py-1.5 rounded cursor-pointer border border-green-200">
                   <input type="checkbox" checked={formData.receiveNotifications} onChange={e => setFormData({...formData, receiveNotifications: e.target.checked})} className="w-4 h-4 text-green-600" />
                   <span>دریافت پیام‌های اطلاع‌رسانی</span>
@@ -405,7 +479,23 @@ const ManageUsers: React.FC = () => {
         <div className="p-6 border-b border-gray-100"><h2 className="text-lg font-bold text-gray-800">لیست کاربران سیستم</h2></div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-right"><thead className="bg-gray-5 text-gray-600"><tr><th className="px-6 py-3">تصویر</th><th className="px-6 py-3">نام و نام خانوادگی</th><th className="px-6 py-3">نام کاربری</th><th className="px-6 py-3">شماره تماس</th><th className="px-6 py-3">نقش‌ها</th><th className="px-6 py-3">دسترسی‌ها</th><th className="px-6 py-3 text-center">عملیات</th></tr></thead>
-            <tbody className="divide-y divide-gray-100">{users.map((user) => (<tr key={user.id} className={`hover:bg-gray-50 transition-colors ${editingId === user.id ? 'bg-amber-50' : ''}`}><td className="px-6 py-4"><div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={20}/></div>}</div></td><td className="px-6 py-4 flex items-center gap-2">{user.fullName}</td><td className="px-6 py-4 font-mono text-gray-500">{user.username}</td><td className="px-6 py-4 font-mono text-gray-500" dir="ltr">{user.phoneNumber || '-'}</td><td className="px-6 py-4"><div className="flex flex-wrap gap-1">{(user.roles && user.roles.length > 0 ? user.roles : [user.role]).map((r, i) => (<span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${r === UserRole.ADMIN ? 'bg-purple-100/70 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>{r === UserRole.ADMIN && <Shield size={10} />}{getRoleLabel(r)}</span>))}</div></td><td className="px-6 py-4 flex gap-1 flex-wrap">{user.canManageTrade && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Container size={10} /> بازرگانی</span>)}{user.canManageSales && (<span className="flex items-center gap-1 text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> فروش</span>)}{user.canManagePurchase && (<span className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded w-fit"><ShoppingCart size={10} /> خرید</span>)}{user.canManageParts && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> کدینگ کالا</span>)}{user.receiveNotifications !== false && (<span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded w-fit"><BellRing size={10} /> اعلان‌ها</span>)}{user.canAccessSecretariat && (<span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> دبیرخانه</span>)}{user.canManageSecretariatSettings && (<span className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> مدیریت دبیرخانه</span>)}</td><td className="px-6 py-4 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => handleEditClick(user)} className="text-amber-500 hover:text-amber-700 p-1 hover:bg-amber-50 rounded transition-colors" title="ویرایش / تغییر رمز"><Pencil size={16} /></button>{user.username !== 'admin' && (<button onClick={() => handleDeleteUser(user.id)} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors" title="حذف کاربر"><Trash2 size={16} /></button>)}</div></td></tr>))}</tbody>
+            <tbody className="divide-y divide-gray-100">{users.map((user) => (<tr key={user.id} className={`hover:bg-gray-50 transition-colors ${editingId === user.id ? 'bg-amber-50' : ''}`}><td className="px-6 py-4"><div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-400"><UserIcon size={20}/></div>}</div></td><td className="px-6 py-4 flex items-center gap-2">{user.fullName}</td><td className="px-6 py-4 font-mono text-gray-500">{user.username}</td><td className="px-6 py-4 font-mono text-gray-500" dir="ltr">{user.phoneNumber || '-'}</td><td className="px-6 py-4"><div className="flex flex-wrap gap-1">{(user.roles && user.roles.length > 0 ? user.roles : [user.role]).map((r, i) => (<span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border ${r === UserRole.ADMIN ? 'bg-purple-100/70 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-700 border-gray-200'}`}>{r === UserRole.ADMIN && <Shield size={10} />}{getRoleLabel(r)}</span>))}</div></td><td className="px-6 py-4 flex gap-1 flex-wrap">
+  {user.canManageTrade && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Container size={10} /> بازرگانی</span>)}
+  {user.canManageSales && (<span className="flex items-center gap-1 text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> فروش</span>)}
+  {user.canManagePurchase && (<span className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded w-fit"><ShoppingCart size={10} /> خرید</span>)}
+  {user.canManageParts && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><Package size={10} /> کدینگ کالا</span>)}
+  {user.canManageProformas && (<span className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded w-fit"><FileText size={10} /> پیش‌فاکتور خرید</span>)}
+  {user.canAccessSayanRegistrations && (<span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded w-fit"><FileCheck2 size={10} /> ثبت‌های سایان</span>)}
+  {user.canSayanPreInvoices && (<span className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded w-fit"><FileSpreadsheet size={10} /> پیش‌فاکتور سایان</span>)}
+  {user.canSayanRegisterCheque && (<span className="flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded w-fit"><Banknote size={10} /> ثبت چک سایان</span>)}
+  {user.canSayanEditReceipt && (<span className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded w-fit"><Pencil size={10} /> ویرایش چک سایان</span>)}
+  {user.canSayanDeleteReceipt && (<span className="flex items-center gap-1 text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded w-fit"><Trash2 size={10} /> حذف چک سایان</span>)}
+  {user.canSayanApproveAccounting && (<span className="flex items-center gap-1 text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> تایید حسابداری چک</span>)}
+  {user.canSayanApproveCeo && (<span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded w-fit"><ShieldCheck size={10} /> تایید مدیرعامل چک</span>)}
+  {user.receiveNotifications !== false && (<span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded w-fit"><BellRing size={10} /> اعلان‌ها</span>)}
+  {user.canAccessSecretariat && (<span className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> دبیرخانه</span>)}
+  {user.canManageSecretariatSettings && (<span className="flex items-center gap-1 text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded w-fit"><Shield size={10} /> مدیریت دبیرخانه</span>)}
+</td><td className="px-6 py-4 text-center"><div className="flex items-center justify-center gap-2"><button onClick={() => handleEditClick(user)} className="text-amber-500 hover:text-amber-700 p-1 hover:bg-amber-50 rounded transition-colors" title="ویرایش / تغییر رمز"><Pencil size={16} /></button>{user.username !== 'admin' && (<button onClick={() => handleDeleteUser(user.id)} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors" title="حذف کاربر"><Trash2 size={16} /></button>)}</div></td></tr>))}</tbody>
           </table>
         </div>
       </div>

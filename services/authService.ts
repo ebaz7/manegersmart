@@ -59,7 +59,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
                 canViewCustomerBalances: true, canImportCustomerBalances: true,
                 canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
                 canAccessSayanRegistrations: true, canSayanPreInvoices: true,
-                canSayanRegisterCheque: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
+                canSayanRegisterCheque: true, canSayanEditReceipt: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
                 canAccessChequeReceipts: true
             };
         }
@@ -93,7 +93,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             canViewCustomerBalances: true, canImportCustomerBalances: true,
             canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
             canAccessSayanRegistrations: true, canSayanPreInvoices: true,
-            canSayanRegisterCheque: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
+            canSayanRegisterCheque: true, canSayanEditReceipt: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
             canAccessChequeReceipts: true,
             // Purchase-specific permissions hardwired for administrator:
             canView: true, canCreate: true, canApproveTechnical: true, canApproveFactory: true, canApproveCEO: true,
@@ -117,7 +117,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewCustomerBalances: false, canImportCustomerBalances: false,
         canViewSayan: false, canViewSayanTraz: false, canViewSayanSales: false, canViewSayanProduction: false, canViewSayanProdReturns: false, canViewSayanCheques: false, canViewSayanRemittances: false, canViewSayanWarehouseOverview: false, canViewSayanWarehouseWidget: false,
         canAccessSayanRegistrations: false, canSayanPreInvoices: false,
-        canSayanRegisterCheque: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanDeleteReceipt: false,
+        canSayanRegisterCheque: false, canSayanEditReceipt: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanDeleteReceipt: false,
         canAccessChequeReceipts: false
     };
 
@@ -235,6 +235,21 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         if (!settings?.rolePermissions?.[userRole]?.canSayanRegisterCheque) {
             perms.canSayanRegisterCheque = false;
         }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanEditReceipt) {
+            perms.canSayanEditReceipt = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanDeleteReceipt) {
+            perms.canSayanDeleteReceipt = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanApproveAccounting) {
+            perms.canSayanApproveAccounting = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanApproveCeo) {
+            perms.canSayanApproveCeo = false;
+        }
+        if (!settings?.purchaseRolePermissions?.[userRole]?.canManageProformas && !settings?.rolePermissions?.[userRole]?.canManageProformas) {
+            perms.canManageProformas = false;
+        }
     }
 
     console.log(`DEBUG: Final permissions for ${userRole}:`, perms);
@@ -262,18 +277,56 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // 5. USER SPECIFIC OVERRIDES
-    if (userObject?.canManageTrade) {
-        perms.canManageTrade = true;
-    }
-    if (userObject?.canManageSales) {
-        perms.canManageSales = true;
-    }
-    if (userObject?.canManagePurchase) {
-        perms.canManagePurchase = true;
-        perms.canView = true;
-    }
-    if (userObject?.canManageParts) {
-        perms.canManageParts = true;
+    if (userObject) {
+        if (userObject.canManageTrade !== undefined) {
+            perms.canManageTrade = userObject.canManageTrade;
+        }
+        if (userObject.canManageSales !== undefined) {
+            perms.canManageSales = userObject.canManageSales;
+        }
+        if (userObject.canManagePurchase !== undefined) {
+            perms.canManagePurchase = userObject.canManagePurchase;
+            if (userObject.canManagePurchase) perms.canView = true;
+        }
+        if (userObject.canManageParts !== undefined) {
+            perms.canManageParts = userObject.canManageParts;
+        }
+        if (userObject.canManageProformas !== undefined) {
+            perms.canManageProformas = userObject.canManageProformas;
+        }
+        if (userObject.canSelectProforma !== undefined) {
+            perms.canSelectProforma = userObject.canSelectProforma;
+        }
+        if (userObject.canAccessSayanRegistrations !== undefined) {
+            perms.canAccessSayanRegistrations = userObject.canAccessSayanRegistrations;
+        }
+        if (userObject.canSayanPreInvoices !== undefined) {
+            perms.canSayanPreInvoices = userObject.canSayanPreInvoices;
+        }
+        if (userObject.canSayanRegisterCheque !== undefined) {
+            perms.canSayanRegisterCheque = userObject.canSayanRegisterCheque;
+        }
+        if (userObject.canSayanEditReceipt !== undefined) {
+            perms.canSayanEditReceipt = userObject.canSayanEditReceipt;
+        }
+        if (userObject.canSayanDeleteReceipt !== undefined) {
+            perms.canSayanDeleteReceipt = userObject.canSayanDeleteReceipt;
+        }
+        if (userObject.canSayanApproveAccounting !== undefined) {
+            perms.canSayanApproveAccounting = userObject.canSayanApproveAccounting;
+        }
+        if (userObject.canSayanApproveCeo !== undefined) {
+            perms.canSayanApproveCeo = userObject.canSayanApproveCeo;
+        }
+        if (userObject.canAccessChequeReceipts !== undefined) {
+            perms.canAccessChequeReceipts = userObject.canAccessChequeReceipts;
+        }
+        if (userObject.canAccessSecretariat !== undefined) {
+            perms.canAccessSecretariat = userObject.canAccessSecretariat;
+        }
+        if (userObject.canManageSecretariatSettings !== undefined) {
+            perms.canManageSecretariatSettings = userObject.canManageSecretariatSettings;
+        }
     }
 
     return perms;

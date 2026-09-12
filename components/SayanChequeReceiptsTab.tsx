@@ -126,6 +126,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         
         return {
             canSayanRegisterCheque: isAdmin || perms.canSayanRegisterCheque !== false, // default to true if not explicitly restricted
+            canSayanEditReceipt: isAdmin || perms.canSayanEditReceipt === true || (perms.canSayanEditReceipt === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial'))),
             canSayanApproveAccounting: isAdmin || perms.canSayanApproveAccounting === true || (perms.canSayanApproveAccounting === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial'))),
             canSayanApproveCeo: isAdmin || perms.canSayanApproveCeo === true || (perms.canSayanApproveCeo === undefined && (currentUser?.role === UserRole.CEO || currentUser?.role === 'CEO' || currentUser?.role === 'MANAGER' || currentUser?.roles?.includes('ceo'))),
             canSayanDeleteReceipt: isAdmin || perms.canSayanDeleteReceipt === true || (perms.canSayanDeleteReceipt === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial')))
@@ -135,6 +136,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const isFinancialOrAdmin = resolvedPermissions.canSayanApproveAccounting;
     const isCeoOrAdmin = resolvedPermissions.canSayanApproveCeo;
     const canDeleteReceipt = resolvedPermissions.canSayanDeleteReceipt;
+    const canEditReceipt = resolvedPermissions.canSayanEditReceipt;
     const canRegisterReceipt = resolvedPermissions.canSayanRegisterCheque;
 
     // Redirect to Cartable if registration is not allowed
@@ -1375,7 +1377,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                 <span>مشاهده جزئیات</span>
                                             </button>
 
-                                            {isFinancialOrAdmin && (
+                                            {canEditReceipt && (
                                                 <button
                                                     type="button"
                                                     onClick={() => setReviewingReceipt(rec)}
@@ -1476,7 +1478,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
                                                 <div className="flex items-center gap-1.5">
                                                     {/* Delete Draft Option if failed or pending */}
-                                                    {isFinancialOrAdmin && (
+                                                    {canDeleteReceipt && (
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeleteReceipt(rec.id)}
@@ -1487,8 +1489,8 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                         </button>
                                                     )}
 
-                                                    {/* Edit option for financial/admin to fix the fields */}
-                                                    {isFinancialOrAdmin && (
+                                                    {/* Edit option for authorized users to fix the fields */}
+                                                    {canEditReceipt && (
                                                         <button
                                                             type="button"
                                                             onClick={() => setReviewingReceipt(rec)}
@@ -1748,6 +1750,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     isFinancialOrAdmin={isFinancialOrAdmin}
                     isCeoOrAdmin={isCeoOrAdmin}
                     canDeleteReceipt={canDeleteReceipt}
+                    canEditReceipt={canEditReceipt}
                 />
             )}
 

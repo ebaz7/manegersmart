@@ -1766,26 +1766,23 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                 {/* Printable receipt card */}
                 <div id="cheque-receipt-printable-card" className="bg-white text-gray-900 p-8 rounded-2xl border-2 border-gray-300 shadow-sm max-w-4xl mx-auto printable-area relative overflow-hidden">
                   
-                  {/* Digital stamps overlay for print */}
-                  <div className="absolute top-24 left-6 flex flex-col gap-3 opacity-80 rotate-6 hidden-screen pointer-events-none">
+                  {/* Digital stamps overlay for print - compact & non-intrusive */}
+                  <div className="absolute top-3 left-6 flex flex-row gap-1.5 opacity-90 hidden-screen pointer-events-none z-10">
                     {selectedReceipt.salesManagerApprovedBy && (
-                      <div className="border-2 border-dashed border-amber-600 text-amber-600 p-2 rounded-lg text-center font-bold text-[9px] bg-white/90">
-                        تایید مدیر فروش
-                        <div className="font-mono mt-0.5">{selectedReceipt.salesManagerApprovedBy}</div>
-                        <div className="text-[8px] mt-0.5">سیستم یکپارچه</div>
+                      <div className="border border-dashed border-amber-600 text-amber-700 px-1.5 py-0.5 rounded text-center font-bold text-[8px] bg-white/95 shadow-xs">
+                        <span>تایید مدیر فروش</span>
+                        <div className="font-mono text-[7.5px] leading-tight">{selectedReceipt.salesManagerApprovedBy}</div>
                       </div>
                     )}
                     {selectedReceipt.ceoApprovedBy && (
-                      <div className="border-2 border-dashed border-indigo-600 text-indigo-600 p-2 rounded-lg text-center font-black text-[9px] bg-white/90">
-                        امضای مدیر عامل
-                        <div className="font-mono mt-0.5">{selectedReceipt.ceoApprovedBy}</div>
-                        <div className="text-[8px] mt-0.5">مهر تایید شد</div>
+                      <div className="border border-dashed border-indigo-600 text-indigo-700 px-1.5 py-0.5 rounded text-center font-black text-[8px] bg-white/95 shadow-xs">
+                        <span>امضای مدیر عامل</span>
+                        <div className="font-mono text-[7.5px] leading-tight">{selectedReceipt.ceoApprovedBy}</div>
                       </div>
                     )}
                     {selectedReceipt.status === 'archived' && (
-                      <div className="border-2 border-dashed border-blue-600 text-blue-600 p-2 rounded-lg text-center font-bold text-[9px] bg-white/90">
-                        بایگانی خزانه صیاد
-                        <div className="text-[8px] mt-0.5">دریافت و بایگانی شد</div>
+                      <div className="border border-dashed border-blue-600 text-blue-700 px-1.5 py-0.5 rounded text-center font-bold text-[8px] bg-white/95 shadow-xs">
+                        <span>بایگانی خزانه صیاد</span>
                       </div>
                     )}
                   </div>
@@ -1875,26 +1872,25 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                     </table>
                   </div>
 
-                  {/* Signatures Area */}
-                  <div className="grid grid-cols-3 gap-6 mt-12 pt-8 border-t border-gray-200 text-center text-[11px]">
-                    <div>
-                      <div className="font-bold text-gray-500 mb-8">مهر و امضای تحویل‌دهنده</div>
-                      <div className="text-gray-800 font-black">{selectedReceipt.customerName}</div>
-                      <div className="border-b border-gray-300 w-24 mx-auto mt-4"></div>
+                  {/* Signatures & Stamps Area - Compact & Space Efficient */}
+                  <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-gray-200 text-center text-[10px]">
+                    <div className="border border-gray-200 rounded-lg p-2 bg-gray-50/60">
+                      <div className="font-bold text-gray-500 text-[9px] mb-1">مهر و امضای تحویل‌دهنده</div>
+                      <div className="text-gray-800 font-black text-[10px] truncate">{selectedReceipt.customerName}</div>
+                      <div className="border-b border-dashed border-gray-300 w-16 mx-auto mt-1.5"></div>
                     </div>
-                    <div>
-                      <div className="font-bold text-gray-500 mb-8">ثبت کننده سیستم</div>
-                      <div className="font-bold text-gray-800">{selectedReceipt.createdBy}</div>
-                      <div className="text-[9px] text-gray-400 mt-1">{new Date(selectedReceipt.createdAt).toLocaleDateString('fa-IR')}</div>
-                      <div className="border-b border-gray-300 w-24 mx-auto mt-4"></div>
+                    <div className="border border-gray-200 rounded-lg p-2 bg-gray-50/60">
+                      <div className="font-bold text-gray-500 text-[9px] mb-1">ثبت کننده سیستم</div>
+                      <div className="font-bold text-gray-800 text-[10px] truncate">{selectedReceipt.createdBy}</div>
+                      <div className="text-[8px] text-gray-400 mt-0.5">{new Date(selectedReceipt.createdAt).toLocaleDateString('fa-IR')}</div>
                     </div>
-                    <div>
-                      <div className="font-bold text-gray-500 mb-8">تاییدات و امضا مراجع</div>
-                      <div className="space-y-1 font-semibold text-gray-700">
-                        {selectedReceipt.salesManagerApprovedBy && <div>مدیر فروش: {selectedReceipt.salesManagerApprovedBy}</div>}
-                        {selectedReceipt.ceoApprovedBy && <div>مدیر عامل: {selectedReceipt.ceoApprovedBy}</div>}
+                    <div className="border border-gray-200 rounded-lg p-2 bg-gray-50/60">
+                      <div className="font-bold text-gray-500 text-[9px] mb-1">تاییدات و امضای مراجع</div>
+                      <div className="space-y-0.5 font-bold text-gray-700 text-[9px]">
+                        {selectedReceipt.salesManagerApprovedBy && <div className="text-amber-700">مدیر فروش: {selectedReceipt.salesManagerApprovedBy}</div>}
+                        {selectedReceipt.ceoApprovedBy && <div className="text-indigo-700">مدیر عامل: {selectedReceipt.ceoApprovedBy}</div>}
+                        {!selectedReceipt.salesManagerApprovedBy && !selectedReceipt.ceoApprovedBy && <div className="text-gray-400 text-[8.5px]">در انتظار تایید</div>}
                       </div>
-                      <div className="border-b border-gray-300 w-24 mx-auto mt-4"></div>
                     </div>
                   </div>
                 </div>

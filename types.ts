@@ -43,6 +43,15 @@ export interface User {
   canAccessSayanDailySales?: boolean;
   canAccessSayanCompareSales?: boolean;
   canAccessSayanRegistrations?: boolean;
+  canSayanPreInvoices?: boolean;
+  canSayanRegisterCheque?: boolean;
+  canSayanEditReceipt?: boolean;
+  canSayanApproveAccounting?: boolean;
+  canSayanApproveCeo?: boolean;
+  canSayanDeleteReceipt?: boolean;
+  canAccessChequeReceipts?: boolean;
+  canManageProformas?: boolean;
+  canSelectProforma?: boolean;
   canViewSayan?: boolean;
   canViewSayanTraz?: boolean;
   canViewSayanSales?: boolean;
@@ -194,6 +203,7 @@ export interface RolePermissions {
   canAccessSayanRegistrations?: boolean;
   canSayanPreInvoices?: boolean;
   canSayanRegisterCheque?: boolean;
+  canSayanEditReceipt?: boolean;
   canSayanApproveAccounting?: boolean;
   canSayanApproveCeo?: boolean;
   canSayanDeleteReceipt?: boolean;

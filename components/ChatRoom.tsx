@@ -2318,7 +2318,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                 return (
                                     <React.Fragment key={msg.id}>
                                         {showDateSeparator && (
-                                            <div className="flex justify-center my-2 select-none pointer-events-none sticky top-1 z-10">
+                                            <div className="flex justify-center my-2 select-none pointer-events-none">
                                                 <span className="px-3 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-slate-200/90 dark:bg-zinc-800/90 backdrop-blur-md rounded-full shadow-xs border border-slate-300/50 dark:border-zinc-700/50">
                                                     {getHumanDateTitle(msgTimestamp)}
                                                 </span>

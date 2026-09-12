@@ -1764,7 +1764,7 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                 </div>
 
                 {/* Printable receipt card */}
-                <div id="cheque-receipt-printable-card" className="bg-white text-gray-900 p-8 rounded-2xl border-2 border-gray-300 shadow-sm max-w-4xl mx-auto printable-content relative overflow-hidden">
+                <div id="cheque-receipt-printable-card" className="bg-white text-gray-900 p-8 rounded-2xl border-2 border-gray-300 shadow-sm max-w-4xl mx-auto printable-area relative overflow-hidden">
                   
                   {/* Digital stamps overlay for print - compact & non-intrusive */}
                   <div className="absolute top-3 left-6 flex flex-row gap-1.5 opacity-90 hidden-screen pointer-events-none z-10">
@@ -1845,25 +1845,30 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                             <td className="border border-gray-300 p-2 font-mono tracking-wider">{c.sayyadId}</td>
                             <td className="border border-gray-300 p-2">{c.bankName}</td>
                             <td className="border border-gray-300 p-2 text-center font-mono">{c.dueDate}</td>
-                            <td className="border border-gray-300 p-2 text-center no-print">
-                              <select
-                                value={c.chequeStatus || 'box'}
-                                onChange={(e) => handleUpdateChequeStatus(selectedReceipt.id, c.id, e.target.value as any)}
-                                className={`px-2 py-1 rounded text-[10px] font-bold outline-none border ${
-                                  (c.chequeStatus || 'box') === 'box'
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                    : (c.chequeStatus) === 'cashed'
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : (c.chequeStatus) === 'deposited'
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : 'bg-gray-100 text-gray-700 border-gray-200'
-                                }`}
-                              >
-                                <option value="box">صندوق</option>
-                                <option value="cashed">وصول شده</option>
-                                <option value="deposited">به حساب خوابانده شده</option>
-                                <option value="spent">خرج شده</option>
-                              </select>
+                            <td className="border border-gray-300 p-2 text-center">
+                              <span className="hidden print:inline text-[9px] font-bold">
+                                {c.chequeStatus === 'cashed' ? 'وصول شده' : c.chequeStatus === 'deposited' ? 'به حساب خوابانده' : c.chequeStatus === 'spent' ? 'خرج شده' : 'صندوق'}
+                              </span>
+                              <div className="no-print">
+                                <select
+                                  value={c.chequeStatus || 'box'}
+                                  onChange={(e) => handleUpdateChequeStatus(selectedReceipt.id, c.id, e.target.value as any)}
+                                  className={`px-2 py-1 rounded text-[10px] font-bold outline-none border ${
+                                    (c.chequeStatus || 'box') === 'box'
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : (c.chequeStatus) === 'cashed'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : (c.chequeStatus) === 'deposited'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-gray-100 text-gray-700 border-gray-200'
+                                  }`}
+                                >
+                                  <option value="box">صندوق</option>
+                                  <option value="cashed">وصول شده</option>
+                                  <option value="deposited">به حساب خوابانده شده</option>
+                                  <option value="spent">خرج شده</option>
+                                </select>
+                              </div>
                             </td>
                             <td className="border border-gray-300 p-2 text-left font-bold font-mono">{formatCurrency(c.amount).replace(' ریال', '')}</td>
                           </tr>

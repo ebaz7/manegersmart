@@ -121,7 +121,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
             <style>{`
                 @page {
                     size: A5 landscape;
-                    margin: 0;
+                    margin: 3mm;
                 }
                 
                 /* Guarantee that the print area looks identical on screen in all themes (light/dark/etc.) */
@@ -129,7 +129,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                     background-color: #ffffff !important;
                     background: #ffffff !important;
                     color: #000000 !important;
-                    border: 2px solid #000000 !important;
+                    border: 1.5px solid #000000 !important;
                 }
                 #a5-cheque-receipt-print-area * {
                     color: #000000 !important;
@@ -143,7 +143,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                     border-color: #000000 !important;
                 }
                 #a5-cheque-receipt-print-area table {
-                    border: 1.5px solid #000000 !important;
+                    border: 1px solid #000000 !important;
                     border-collapse: collapse !important;
                     background-color: #ffffff !important;
                     width: 100% !important;
@@ -184,7 +184,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                 @media print {
                     @page {
                         size: A5 landscape;
-                        margin: 0;
+                        margin: 3mm;
                     }
                     html, body {
                         background-color: #ffffff !important;
@@ -192,12 +192,23 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         color: #000000 !important;
                         margin: 0 !important;
                         padding: 0 !important;
-                        width: 210mm !important;
-                        height: 148mm !important;
+                        width: 100% !important;
+                        height: 100% !important;
+                        max-height: 100% !important;
                         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, sans-serif !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                         overflow: hidden !important;
+                    }
+                    /* Reset wrappers so no parent shadows/borders create extra pages or lines */
+                    .fixed, .relative, [class*="backdrop-blur"] {
+                        position: static !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: transparent !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        overflow: visible !important;
                     }
                     /* Hide everything outside print container */
                     body * {
@@ -208,22 +219,23 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         visibility: visible !important;
                     }
                     #a5-cheque-receipt-print-area {
-                        position: absolute !important;
-                        left: 2mm !important;
-                        top: 2mm !important;
-                        width: 206mm !important;
-                        height: 144mm !important;
-                        max-width: 206mm !important;
-                        max-height: 144mm !important;
-                        min-height: 144mm !important;
+                        position: relative !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        height: auto !important;
+                        max-height: 138mm !important;
+                        min-height: 0 !important;
+                        aspect-ratio: auto !important;
                         margin: 0 !important;
-                        padding: 2.5mm 3.5mm !important;
+                        padding: 2mm 3mm !important;
                         background-color: #ffffff !important;
                         background: #ffffff !important;
                         color: #000000 !important;
                         box-shadow: none !important;
-                        border: 1.5px solid #000000 !important;
-                        border-radius: 4px !important;
+                        border: 1px solid #000000 !important;
+                        border-radius: 0 !important;
                         box-sizing: border-box !important;
                         z-index: 999999 !important;
                         -webkit-print-color-adjust: exact !important;

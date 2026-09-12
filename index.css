@@ -1210,7 +1210,8 @@ td {
   }
   .printable-content, .printable-content *,
   .printable-area, .printable-area *,
-  #cheque-receipt-printable-card, #cheque-receipt-printable-card * {
+  #cheque-receipt-printable-card, #cheque-receipt-printable-card *,
+  #a5-cheque-receipt-print-area, #a5-cheque-receipt-print-area * {
     visibility: visible !important;
   }
   .printable-content,
@@ -1232,7 +1233,8 @@ td {
   }
   .printable-content tr,
   .printable-area tr,
-  #cheque-receipt-printable-card tr {
+  #cheque-receipt-printable-card tr,
+  #a5-cheque-receipt-print-area tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }

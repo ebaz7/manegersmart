@@ -1859,6 +1859,23 @@ app.post(['/api/sayan/cheque-receipts', '/api/sayan/cheque-receipts/draft'], asy
     }
 });
 
+// 4.5. Pure Edit Cheque Receipt in current stage (Never advances stage)
+app.put('/api/sayan/cheque-receipts/:id', async (req, res) => {
+    try {
+        const receiptId = req.params.id;
+        const currentUser = req.body?.currentUser || req.user || { id: req.body?.reviewerId, name: req.body?.reviewerName || 'کاربر' };
+        const updatePayload = req.body;
+        if (!receiptId) {
+            return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
+        }
+        const updated = await sayanChequeService.updateChequeReceipt(receiptId, updatePayload, currentUser);
+        res.json({ success: true, receipt: updated, message: 'تغییرات رسید در همین مرحله با موفقیت ذخیره گردید.' });
+    } catch (err) {
+        console.error("Error updating cheque receipt:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // 5. Stage 1: Accounting Staff Review, In-flight Edit & Approval
 app.all(['/api/sayan/cheque-receipts/accounting-approve', '/api/sayan/cheque-receipts/:id/accounting-review', '/api/sayan/cheque-receipts/:id/accounting-approve'], async (req, res) => {
     try {
@@ -1866,7 +1883,7 @@ app.all(['/api/sayan/cheque-receipts/accounting-approve', '/api/sayan/cheque-rec
         const currentUser = req.body?.currentUser || req.user || { id: req.body?.reviewerId, name: req.body?.reviewerName || 'کارشناس حسابداری' };
         const note = req.body?.note || req.body?.accountingNote || '';
         const updatePayload = req.body?.updatePayload || (req.body?.cheques ? req.body : null);
-        const approveForCEO = req.body?.approveForCEO !== false; // if false, save as draft without forwarding to CEO
+        const approveForCEO = req.body?.approveForCEO === true; // Only advance to CEO if explicitly true!
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
@@ -6556,6 +6573,302 @@ app.delete('/api/meetings/:id', (req, res) => {
     saveDb(db);
     res.json(db.meetings);
 });
+
+// --- COMPREHENSIVE GLOBAL SEARCH ENDPOINT (Ctrl+K) ---
+const handleSearchEverything = (req, res) => {
+    try {
+        const query = (req.query.query || '').trim();
+        const userId = req.query.userId || req.headers['x-user-id'];
+        const role = req.query.role || req.headers['x-user-role'];
+
+        if (!query || query.length < 2) {
+            return res.json({ results: [] });
+        }
+
+        const normalizeStr = (str) => {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .toLowerCase()
+                .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                .replace(/[\u200c]/g, ' ')
+                .replace(/[\u064B-\u065F]/g, '')
+                .replace(/[ي]/g, 'ی')
+                .replace(/[ك]/g, 'ک')
+                .replace(/[آأإٱ]/g, 'ا')
+                .replace(/[ة]/g, 'ه')
+                .replace(/[۰]/g, '0').replace(/[۱]/g, '1').replace(/[۲]/g, '2').replace(/[۳]/g, '3').replace(/[۴]/g, '4')
+                .replace(/[۵]/g, '5').replace(/[۶]/g, '6').replace(/[۷]/g, '7').replace(/[۸]/g, '8').replace(/[۹]/g, '9')
+                .replace(/[٠]/g, '0').replace(/[١]/g, '1').replace(/[٢]/g, '2').replace(/[٣]/g, '3').replace(/[٤]/g, '4')
+                .replace(/[٥]/g, '5').replace(/[٦]/g, '6').replace(/[٧]/g, '7').replace(/[٨]/g, '8').replace(/[٩]/g, '9')
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
+
+        const normQuery = normalizeStr(query);
+        const queryTokens = normQuery.split(' ').filter(Boolean);
+
+        const matchesQuery = (text) => {
+            if (!text) return false;
+            const normText = normalizeStr(text);
+            return queryTokens.every(token => normText.includes(token));
+        };
+
+        const db = getDb();
+        const results = [];
+
+        // Check user & permissions
+        let currentUser = null;
+        if (userId && Array.isArray(db.users)) {
+            currentUser = db.users.find(u => u.id === userId || u.username === userId);
+        }
+
+        const userRole = (currentUser?.role || role || 'user').toLowerCase();
+        const userRoles = Array.isArray(currentUser?.roles) ? currentUser.roles.map(r => r.toLowerCase()) : [userRole];
+        const isAdmin = userRoles.includes('admin') || userRoles.includes('superadmin') || userRoles.includes('ceo') || userRoles.includes('director') || userRole === 'admin';
+        const isFinancial = isAdmin || userRoles.includes('financial') || userRoles.includes('accountant') || userRoles.includes('manager');
+        const isCommercial = isAdmin || userRoles.includes('commercial') || currentUser?.canManageTrade === true;
+        const isWarehouse = isAdmin || userRoles.includes('warehouse') || userRoles.includes('warehouse_keeper') || userRoles.includes('factory_manager');
+        const isSecurity = isAdmin || userRoles.includes('security') || userRoles.includes('security_head') || userRoles.includes('security_guard');
+
+        // 1. Trade Records (بازرگانی و ثبت سفارش)
+        if ((isCommercial || isAdmin || isFinancial) && Array.isArray(db.tradeRecords)) {
+            db.tradeRecords.forEach(r => {
+                const parts = [
+                    r.fileNumber, r.proformaNumber, r.orderNumber, r.registrationNumber,
+                    r.goodsName, r.sellerName, r.company, r.commodityGroup, r.mainCurrency,
+                    r.operatingBank, r.currencyAllocationType, r.allocationCurrencyRank
+                ];
+
+                if (Array.isArray(r.items)) {
+                    r.items.forEach(it => { parts.push(it.name, it.hsCode, it.part); });
+                }
+
+                if (r.greenLeafData) {
+                    if (Array.isArray(r.greenLeafData.duties)) {
+                        r.greenLeafData.duties.forEach(d => parts.push(`کوتاژ ${d.cottageNumber || ''}`, d.bank, d.part));
+                    }
+                    if (Array.isArray(r.greenLeafData.guarantees)) {
+                        r.greenLeafData.guarantees.forEach(g => parts.push(g.guaranteeNumber, g.sepamNumber, g.chequeNumber, g.chequeBank));
+                    }
+                    if (Array.isArray(r.greenLeafData.taxes)) {
+                        r.greenLeafData.taxes.forEach(t => parts.push(t.taxNumber, t.part));
+                    }
+                    if (Array.isArray(r.greenLeafData.roadTolls)) {
+                        r.greenLeafData.roadTolls.forEach(rt => parts.push(rt.tollNumber, rt.part));
+                    }
+                }
+
+                if (Array.isArray(r.shippingDocuments)) {
+                    r.shippingDocuments.forEach(doc => {
+                        parts.push(doc.documentNumber, doc.type, doc.vesselName, doc.portOfLoading, doc.portOfDischarge, doc.description);
+                        if (Array.isArray(doc.invoiceItems)) doc.invoiceItems.forEach(i => parts.push(i.name, i.part));
+                        if (Array.isArray(doc.packingItems)) doc.packingItems.forEach(p => parts.push(p.description, p.part));
+                    });
+                }
+
+                if (r.clearanceData) {
+                    if (Array.isArray(r.clearanceData.receipts)) {
+                        r.clearanceData.receipts.forEach(rcp => parts.push(`قبض انبار ${rcp.receiptNumber || ''}`, rcp.warehouseName));
+                    }
+                }
+
+                if (r.insuranceData) {
+                    parts.push(r.insuranceData.policyNumber, r.insuranceData.company, r.insuranceData.agencyName, r.insuranceData.agencyCode);
+                }
+
+                if (r.currencyPurchaseData && Array.isArray(r.currencyPurchaseData.tranches)) {
+                    r.currencyPurchaseData.tranches.forEach(tr => {
+                        parts.push(tr.brokerName, tr.trackingCode, tr.dealNumber, tr.bankName, tr.description);
+                    });
+                }
+
+                if (Array.isArray(r.comments)) {
+                    r.comments.forEach(c => parts.push(c.text, c.author));
+                }
+
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    // Extract extra highlight text
+                    let extraInfo = '';
+                    if (r.greenLeafData?.duties?.[0]?.cottageNumber) {
+                        extraInfo += ` | کوتاژ: ${r.greenLeafData.duties[0].cottageNumber}`;
+                    }
+                    if (r.registrationNumber) {
+                        extraInfo += ` | ثبت سفارش: ${r.registrationNumber}`;
+                    }
+
+                    results.push({
+                        type: 'trade',
+                        id: r.id,
+                        title: `بازرگانی: ${r.goodsName || 'پرونده'} (${r.fileNumber || 'بدون پرونده'})`,
+                        subtitle: `شرکت: ${r.company || '---'} | فروشنده: ${r.sellerName || '---'}${extraInfo}`,
+                        data: { recordId: r.id, fileNumber: r.fileNumber, tab: 'timeline' },
+                        url: 'trade'
+                    });
+                }
+            });
+        }
+
+        // 2. Payment Orders (دستور پرداخت‌ها)
+        if ((isFinancial || isAdmin) && Array.isArray(db.orders)) {
+            db.orders.forEach(o => {
+                const parts = [
+                    o.trackingNumber, o.beneficiary, o.company, o.description,
+                    o.bankAccount, o.paymentMethod, o.invoiceNumber, o.status,
+                    o.creatorName, o.approvedBy, o.notes
+                ];
+                if (o.chequeDetails) {
+                    parts.push(o.chequeDetails.chequeNumber, o.chequeDetails.sayadNumber, o.chequeDetails.bankName, o.chequeDetails.dueDate);
+                }
+
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    results.push({
+                        type: 'payment_order',
+                        id: o.id,
+                        title: `دستور پرداخت #${o.trackingNumber || ''} - ${o.beneficiary || ''}`,
+                        subtitle: `مبلغ: ${Number(o.amount || 0).toLocaleString('fa-IR')} ریال | شرکت: ${o.company || '---'} | بابت: ${o.description || '---'}`,
+                        data: { orderId: o.id, trackingNumber: o.trackingNumber },
+                        url: 'manage'
+                    });
+                }
+            });
+        }
+
+        // 3. Exit Permits & Invoices (مجوزهای خروج و فاکتورها)
+        if ((isWarehouse || isSecurity || isAdmin || isFinancial) && Array.isArray(db.exitPermits)) {
+            db.exitPermits.forEach(p => {
+                const parts = [
+                    p.permitNumber, p.invoiceNumber, p.buyerName, p.receiverName,
+                    p.driverName, p.plateNumber, p.destination, p.company,
+                    p.type, p.description, p.notes
+                ];
+                if (Array.isArray(p.items)) {
+                    p.items.forEach(it => parts.push(it.name, it.code, it.description));
+                }
+
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    const isInvoice = !!p.invoiceNumber;
+                    results.push({
+                        type: 'exit_permit',
+                        id: p.id,
+                        title: isInvoice ? `فاکتور #${p.invoiceNumber} - ${p.buyerName || p.receiverName || ''}` : `مجوز خروج #${p.permitNumber || ''} - ${p.buyerName || p.receiverName || ''}`,
+                        subtitle: `راننده: ${p.driverName || '---'} | پلاک: ${p.plateNumber || '---'} | مقصد: ${p.destination || '---'}`,
+                        data: { permitId: p.id, permitNumber: p.permitNumber, invoiceNumber: p.invoiceNumber },
+                        url: isInvoice ? 'manage-invoices' : 'manage-exit'
+                    });
+                }
+            });
+        }
+
+        // 4. Cheque Receipts (رسیدهای دریافت چک صیادی)
+        if ((isFinancial || isAdmin) && Array.isArray(db.chequeReceipts)) {
+            db.chequeReceipts.forEach(c => {
+                const parts = [
+                    c.receiptNumber, c.customerName, c.drawerName, c.sayanCode,
+                    c.sayadNumber, c.chequeNumber, c.bankName, c.branchName,
+                    c.description, c.notes, c.dueDate
+                ];
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    results.push({
+                        type: 'cheque_receipt',
+                        id: c.id,
+                        title: `رسید چک #${c.receiptNumber || ''} - ${c.customerName || c.drawerName || ''}`,
+                        subtitle: `صیادی: ${c.sayadNumber || c.chequeNumber || '---'} | سررسید: ${c.dueDate || '---'} | مبلغ: ${Number(c.amount || 0).toLocaleString('fa-IR')} ریال`,
+                        data: { receiptId: c.id, receiptNumber: c.receiptNumber },
+                        url: 'sayan-operations'
+                    });
+                }
+            });
+        }
+
+        // 5. Warehouse Items (کالاها و انبار)
+        if ((isWarehouse || isAdmin) && Array.isArray(db.warehouseItems)) {
+            db.warehouseItems.forEach(w => {
+                const parts = [w.name, w.code, w.category, w.warehouseName, w.unit, w.notes, w.supplier, w.partNumber];
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    results.push({
+                        type: 'warehouse_item',
+                        id: w.id,
+                        title: `کالای انبار: ${w.name} (کد: ${w.code || '---'})`,
+                        subtitle: `موجودی: ${Number(w.balance || w.quantity || 0).toLocaleString('fa-IR')} ${w.unit || 'عدد'} | انبار: ${w.warehouseName || 'مرکزی'}`,
+                        data: { itemId: w.id, itemCode: w.code },
+                        url: 'warehouse'
+                    });
+                }
+            });
+        }
+
+        // 6. Meetings (جلسات و مصوبات)
+        if (Array.isArray(db.meetings)) {
+            db.meetings.forEach(m => {
+                const parts = [m.meetingNumber, m.title, m.date, m.location, m.agenda, m.decisions, m.secretary];
+                if (Array.isArray(m.attendees)) {
+                    m.attendees.forEach(a => parts.push(typeof a === 'string' ? a : a.name));
+                }
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    results.push({
+                        type: 'meeting',
+                        id: m.id,
+                        title: `جلسه #${m.meetingNumber || ''} - ${m.title || ''}`,
+                        subtitle: `تاریخ: ${m.date || '---'} | مکان: ${m.location || '---'} | دبیر: ${m.secretary || '---'}`,
+                        data: { meetingId: m.id },
+                        url: 'meetings'
+                    });
+                }
+            });
+        }
+
+        // 7. Users (کاربران سیستم)
+        if (isAdmin && Array.isArray(db.users)) {
+            db.users.forEach(u => {
+                const parts = [u.fullName, u.username, u.role, u.mobile, u.email, u.department];
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    results.push({
+                        type: 'user',
+                        id: u.id,
+                        title: `کاربر: ${u.fullName || u.username} (${u.role || 'کاربر'})`,
+                        subtitle: `نام کاربری: ${u.username} | موبایل: ${u.mobile || u.phone || '---'}`,
+                        data: { userId: u.id },
+                        url: 'users'
+                    });
+                }
+            });
+        }
+
+        // 8. Customer Balances (مانده حساب مشتریان)
+        if ((isFinancial || isAdmin) && Array.isArray(db.customerBalances)) {
+            db.customerBalances.forEach(cb => {
+                const parts = [cb.customerName, cb.name, cb.detailedCode, cb.phone, cb.address, cb.managerName];
+                const searchableText = parts.filter(Boolean).join(' ');
+                if (matchesQuery(searchableText)) {
+                    results.push({
+                        type: 'customer_balance',
+                        id: cb.id,
+                        title: `طرف حساب: ${cb.customerName || cb.name} (کد: ${cb.detailedCode || '---'})`,
+                        subtitle: `مانده: ${Number(cb.balance || 0).toLocaleString('fa-IR')} ریال | تلفن: ${cb.phone || '---'}`,
+                        data: { customerId: cb.id },
+                        url: 'balances'
+                    });
+                }
+            });
+        }
+
+        // Cap results to 40 items for swift responsive display
+        return res.json({ results: results.slice(0, 40) });
+    } catch (e) {
+        console.error('Search error:', e);
+        return res.status(500).json({ results: [], error: e.message });
+    }
+};
+
+app.get('/api/search-everything', handleSearchEverything);
+app.get('/search-everything', handleSearchEverything);
 
 // Dedicated Payment Orders Endpoints with Automated Notifications
 app.get('/api/orders', (req, res) => {

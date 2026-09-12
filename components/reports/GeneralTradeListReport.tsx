@@ -23,6 +23,7 @@ import { generatePdf } from '../../utils/pdfGenerator';
 import { sendNotification } from '../../services/notificationService';
 import { apiCall } from '../../services/apiService';
 import { shareElementToChat } from '../../services/chatShareService';
+import { matchesTradeRecord } from '../../utils/tradeSearch';
 
 interface Props {
     records: TradeRecord[];
@@ -133,28 +134,9 @@ export const GeneralTradeListReport: React.FC<Props> = ({
     // Filter & Sort Logic
     const filteredRecords = useMemo(() => {
         return records.filter(r => {
-            // Text Search
+            // Text Search across all parameters (Cottage, File, Order, Proforma, Items, HS, Shipping, Guarantees, etc.)
             if (searchTerm.trim()) {
-                const term = searchTerm.trim().toLowerCase();
-                const goods = (r.goodsName || '').toLowerCase();
-                const company = (r.company || '').toLowerCase();
-                const seller = (r.sellerName || '').toLowerCase();
-                const orderNo = (r.orderNumber || '').toLowerCase();
-                const regNo = (r.registrationNumber || '').toLowerCase();
-                const fileNo = (r.fileNumber || '').toLowerCase();
-                const proformaNo = (r.proformaNumber || '').toLowerCase();
-                const commentsText = (r.comments || []).map(c => c.text.toLowerCase()).join(' ');
-
-                const match = goods.includes(term) ||
-                    company.includes(term) ||
-                    seller.includes(term) ||
-                    orderNo.includes(term) ||
-                    regNo.includes(term) ||
-                    fileNo.includes(term) ||
-                    proformaNo.includes(term) ||
-                    commentsText.includes(term);
-
-                if (!match) return false;
+                if (!matchesTradeRecord(r, searchTerm)) return false;
             }
 
             // Company Filter

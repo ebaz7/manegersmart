@@ -685,21 +685,76 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
 
     if (approveForCEO) {
         record.status = 'PENDING_CEO';
+        record.accountingReview = {
+            id: currentUser?.id || 'ACCOUNTANT',
+            name: currentUser?.fullName || currentUser?.name || 'کارمند حسابداری',
+            role: currentUser?.role || 'FINANCIAL',
+            note: note || 'تایید و بررسی اولیه توسط حسابداری انجام شد.',
+            reviewedAt: new Date().toISOString()
+        };
     } else {
-        if (record.status !== 'PENDING_CEO') {
-            record.status = 'PENDING_ACCOUNTING';
+        // Pure edit: DO NOT advance status/stage! Keep current status exactly as is
+        if (note) {
+            if (!record.accountingReview) record.accountingReview = {};
+            record.accountingReview.note = note;
+            record.accountingReview.lastEditedBy = currentUser?.fullName || currentUser?.name || 'کارشناس حسابداری';
+            record.accountingReview.lastEditedAt = new Date().toISOString();
         }
     }
 
-    record.accountingReview = {
-        id: currentUser?.id || 'ACCOUNTANT',
-        name: currentUser?.fullName || currentUser?.name || 'کارمند حسابداری',
-        role: currentUser?.role || 'FINANCIAL',
-        note: note || 'تایید و بررسی اولیه توسط حسابداری انجام شد.',
-        reviewedAt: new Date().toISOString()
-    };
     record.rejectionReason = null;
     record.updatedAt = new Date().toISOString();
+
+    saveDb();
+    return record;
+};
+
+/**
+ * Pure Update: Edits receipt details, cheques, and attachments within its CURRENT STAGE (without changing status)
+ */
+export const updateChequeReceipt = async (receiptId, updatePayload, currentUser) => {
+    const db = getDb();
+    if (!db.sayan_cheque_receipts) db.sayan_cheque_receipts = [];
+
+    const record = db.sayan_cheque_receipts.find(r => r.id === receiptId);
+    if (!record) {
+        throw new Error(`رسید با شناسه ${receiptId} یافت نشد.`);
+    }
+
+    if (updatePayload.personCode) record.personCode = String(updatePayload.personCode).trim();
+    if (updatePayload.personName) record.personName = String(updatePayload.personName).trim();
+    if (updatePayload.cashboxCode) record.cashboxCode = String(updatePayload.cashboxCode).trim();
+    if (updatePayload.description !== undefined) record.description = String(updatePayload.description).trim();
+    if (updatePayload.poshtNomreh) record.poshtNomreh = String(updatePayload.poshtNomreh).trim();
+    if (updatePayload.docDate) record.docDate = updatePayload.docDate;
+    if (Array.isArray(updatePayload.cheques) && updatePayload.cheques.length > 0) {
+        record.cheques = updatePayload.cheques.map((ch, idx) => ({
+            id: ch.id || crypto.randomUUID(),
+            chequeNumber: String(ch.chequeNumber || '').trim(),
+            amount: Number(ch.amount) || 0,
+            dueDate: ch.dueDate || '',
+            bankName: String(ch.bankName || '').trim(),
+            inNameOf: String(ch.inNameOf || '').trim(),
+            accountNo: String(ch.accountNo || '').trim(),
+            poshtNomreh: String(record.poshtNomreh || ch.poshtNomreh || '').trim(),
+            description: String(ch.description || '').trim(),
+            rowSeq: idx + 1
+        }));
+        record.totalAmount = record.cheques.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    }
+    if (Array.isArray(updatePayload.attachments)) {
+        record.attachments = updatePayload.attachments.map(persistAttachment).filter(Boolean);
+    }
+    if (updatePayload.accountingNote || updatePayload.note) {
+        if (!record.accountingReview) record.accountingReview = {};
+        record.accountingReview.note = updatePayload.accountingNote || updatePayload.note;
+        record.accountingReview.lastEditedBy = currentUser?.fullName || currentUser?.name || 'کاربر';
+        record.accountingReview.lastEditedAt = new Date().toISOString();
+    }
+
+    record.lastEditedBy = currentUser ? { id: currentUser.id, name: currentUser.fullName || currentUser.name } : null;
+    record.updatedAt = new Date().toISOString();
+    // Crucial: record.status is NOT changed. It stays strictly at its current stage!
 
     saveDb();
     return record;

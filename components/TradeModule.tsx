@@ -25,6 +25,7 @@ import { GeneralTradeListReport } from './reports/GeneralTradeListReport';
 import { FileViewerModal } from './FileViewerModal';
 import { SendToChatModal } from './SendToChatModal';
 import { TradeDatePicker } from './TradeDatePicker';
+import { matchesTradeRecord, getTradeRecordMatchHighlights, normalizeSearchText } from '../utils/tradeSearch';
 
 interface TradeModuleProps {
     currentUser: User;
@@ -512,6 +513,34 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             setRecords([]);
         }
     };
+
+    // Listen for custom navigation / open events from Global Search or cross-module links
+    useEffect(() => {
+        const handleOpenTradeRecord = (e: any) => {
+            const detail = e.detail;
+            if (!detail) return;
+            const targetId = detail.recordId || detail.id;
+            const targetTab = detail.tab || 'timeline';
+            const targetSearch = detail.searchTerm;
+            if (targetSearch) {
+                setSearchTerm(targetSearch);
+            }
+            if (targetId) {
+                const found = records.find(r => r.id === targetId || r.fileNumber === targetId || r.registrationNumber === targetId || r.orderNumber === targetId || r.proformaNumber === targetId);
+                if (found) {
+                    setSelectedRecord(found);
+                    setViewMode('details');
+                    setActiveTab(targetTab);
+                }
+            }
+        };
+        window.addEventListener('OPEN_TRADE_RECORD' as any, handleOpenTradeRecord);
+        window.addEventListener('NAVIGATE_TRADE_RECORD' as any, handleOpenTradeRecord);
+        return () => {
+            window.removeEventListener('OPEN_TRADE_RECORD' as any, handleOpenTradeRecord);
+            window.removeEventListener('NAVIGATE_TRADE_RECORD' as any, handleOpenTradeRecord);
+        };
+    }, [records]);
 
     const goRoot = () => { setNavLevel('ROOT'); setSelectedCompany(null); setSelectedGroup(null); setSearchTerm(''); };
     const goCompany = (company: string) => { setSelectedCompany(company); setNavLevel('COMPANY'); setSelectedGroup(null); setSearchTerm(''); };
@@ -2162,12 +2191,15 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const safeSettings = settings || { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [], defaultCompany: '', bankNames: [], operatingBankNames: [], commodityGroups: [], rolePermissions: {}, savedContacts: [], warehouseSequences: {}, companyNotifications: {}, insuranceCompanies: [] };
 
         const currentList = Array.isArray(records) ? records : [];
+        const searchedList = reportSearchTerm.trim()
+            ? currentList.filter(r => matchesTradeRecord(r, reportSearchTerm))
+            : currentList;
 
         switch (activeReport) {
             case 'general':
                 return (
                     <GeneralTradeListReport 
-                        records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)}
+                        records={searchedList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)}
                         currentUser={currentUser}
                         settings={safeSettings}
                         onUpdateRecord={async (updated) => {
@@ -2185,11 +2217,11 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     />
                 );
             case 'allocation_queue':
-                return <AllocationReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} onUpdateRecord={async (r, u) => { const updated = {...r, ...u}; await updateTradeRecord(updated); setRecords(prev => prev.map(rec => rec.id === updated.id ? updated : rec)); }} settings={safeSettings} />;
+                return <AllocationReport records={searchedList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} onUpdateRecord={async (r, u) => { const updated = {...r, ...u}; await updateTradeRecord(updated); setRecords(prev => prev.map(rec => rec.id === updated.id ? updated : rec)); }} settings={safeSettings} />;
             case 'currency':
                 return (
                     <CurrencyReport 
-                        records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} 
+                        records={searchedList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} 
                         onSelectTranche={(recordId, trancheId) => {
                             const rec = records.find(r => r.id === recordId);
                             if (rec) {
@@ -2207,11 +2239,11 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     />
                 );
             case 'company_performance':
-                return <CompanyPerformanceReport records={currentList} />;
+                return <CompanyPerformanceReport records={searchedList} />;
             case 'insurance_ledger':
-                return <InsuranceLedgerReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} settings={safeSettings} />; 
+                return <InsuranceLedgerReport records={searchedList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} settings={safeSettings} />; 
             case 'guarantee':
-                return <GuaranteeReport records={currentList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} />;
+                return <GuaranteeReport records={searchedList.filter(r => !reportFilterCompany || r.company === reportFilterCompany)} />;
             default:
                 return <div className="p-8 text-center text-gray-500">گزارش در حال تکمیل است...</div>;
         }
@@ -4539,14 +4571,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     safeRecords
                         .filter(r => {
                             const isSearching = searchTerm.trim() !== '';
-                            const matchSearch = !isSearching || 
-                                r.goodsName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                r.fileNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                (r.proformaNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                (r.sellerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                (r.orderNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                (r.registrationNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                r.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                            const matchSearch = !isSearching || matchesTradeRecord(r, searchTerm);
 
                             if (!matchSearch) return false;
 
@@ -4560,7 +4585,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                    ((r.company || 'بدون شرکت') === selectedCompany) && 
                                    ((r.commodityGroup || 'سایر') === selectedGroup);
                         })
-                        .map(record => (
+                        .map(record => {
+                            const matchHighlights = searchTerm.trim() !== '' ? getTradeRecordMatchHighlights(record, searchTerm) : [];
+                            return (
                             <div key={record.id} onClick={() => { setSelectedRecord(record); setViewMode('details'); setActiveTab('timeline'); }} className="glass-panel p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4 border-l-transparent hover:border-l-blue-500 relative">
                                 {/* ACTIONS: COPY & DELETE BUTTONS - Moved to Right to avoid status overlap */}
                                 <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
@@ -4597,8 +4624,25 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">شماره پرونده:</span> <span className="font-mono text-gray-700 dark:text-gray-200 font-bold">{record.fileNumber || '---'}</span></div>
                                     {record.proformaNumber && <div className="flex items-center gap-1"><FolderOpen size={12} /> پروفرم: <span className="font-mono text-gray-700 dark:text-gray-200 font-bold">{record.proformaNumber}</span></div>}
                                     {record.orderNumber && <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">سفارش:</span> <span className="font-mono text-gray-700 dark:text-gray-300 font-semibold">{record.orderNumber}</span></div>}
+                                    {record.registrationNumber && <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">ثبت سفارش:</span> <span className="font-mono text-blue-700 dark:text-blue-300 font-semibold">{record.registrationNumber}</span></div>}
                                     <div className="flex items-center gap-1"><Building2 size={12} /> فروشنده: <span className="text-gray-700 dark:text-gray-300">{record.sellerName}</span></div>
                                     <div className="flex items-center gap-1"><History size={12} /> شروع: <span>{new Date(record.startDate).toLocaleDateString('fa-IR')}</span></div>
+                                    
+                                    {/* Match Badges / Highlights */}
+                                    {matchHighlights.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5 pt-1.5 border-t border-blue-100 dark:border-blue-900/40">
+                                            {matchHighlights.slice(0, 3).map((hl, idx) => (
+                                                <span key={idx} className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/80 px-2 py-0.5 rounded-md font-medium">
+                                                    <span className="opacity-75">{hl.label}:</span>
+                                                    <span className="font-bold font-mono">{hl.value}</span>
+                                                </span>
+                                            ))}
+                                            {matchHighlights.length > 3 && (
+                                                <span className="text-[10px] text-blue-600 self-center">+{matchHighlights.length - 3} مورد دیگر</span>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {searchTerm.trim() !== '' && (
                                         <div className="text-[10px] text-blue-600 bg-blue-50/60 p-1 rounded-md mt-1">
                                             <span>{record.company || 'بدون شرکت'}</span> • <span>گروه {record.commodityGroup || 'سایر'}</span>
@@ -4618,7 +4662,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     </div>
                                 )}
                             </div>
-                        ))
+                        );
+                    })
                 )}
             </div>
             

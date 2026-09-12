@@ -1466,7 +1466,9 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
             <SearchModal 
                 isOpen={isSearchOpen} 
                 onClose={() => setIsSearchOpen(false)} 
-                onNavigate={(tab) => {
+                currentUser={currentUser}
+                settings={propSettings}
+                onNavigate={(tab, data) => {
                     setActiveTab(tab);
                     setIsSearchOpen(false);
                 }} 

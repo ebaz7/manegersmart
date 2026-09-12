@@ -530,9 +530,10 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                         type="button"
                                         onClick={() => onOpenAccountingReview(receipt)}
                                         className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                                        title="ویرایش مشخصات، اقلام و مدارک پیوست در همین مرحله"
                                     >
                                         <Edit3 className="w-4 h-4" />
-                                        <span>ویرایش و تایید حسابداری</span>
+                                        <span>ویرایش اطلاعات و مدارک رسید</span>
                                     </button>
                                 )}
                             </>

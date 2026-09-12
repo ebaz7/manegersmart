@@ -6108,7 +6108,7 @@ app.put('/api/chat/:id', (req, res) => {
     const db = getDb(); 
     const idx = db.messages.findIndex(m => m.id === req.params.id); 
     if(idx > -1) { 
-        db.messages[idx] = { ...db.messages[idx], ...req.body, timestamp: db.messages[idx].timestamp }; 
+        db.messages[idx] = { ...db.messages[idx], ...req.body, timestamp: db.messages[idx].timestamp }; 
         saveDb(db); 
         res.json(db.messages); 
     } else res.status(404).send('Not Found'); 

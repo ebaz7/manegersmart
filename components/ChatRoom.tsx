@@ -21,7 +21,7 @@ import { Filesystem } from '@capacitor/filesystem';
 import { sendNotification, clearAllActiveNotifications } from '../services/notificationService';
 import { playTaskAlarmSound } from '../services/soundService';
 import { downloadAndOpenFile, checkFileExists } from '../services/fileService';
-import { resolveImageUrl, apiCall } from '../services/apiService';
+import { resolveImageUrl, apiCall, getServerTime } from '../services/apiService';
 
 interface ChatRoomProps { 
     currentUser: User | null; 
@@ -172,13 +172,42 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         } catch { return {}; }
     });
     
-    // Merge remote and local pending messages
+    const parseTimestamp = (timestamp: any): number => {
+        if (!timestamp) return 0;
+        if (typeof timestamp === 'number') return isNaN(timestamp) ? 0 : timestamp;
+        if (typeof timestamp === 'string') {
+            const parsedNum = Number(timestamp);
+            if (!isNaN(parsedNum) && parsedNum > 1000000000) return parsedNum;
+            const parsedDate = new Date(timestamp).getTime();
+            return isNaN(parsedDate) ? 0 : parsedDate;
+        }
+        return 0;
+    };
+
+    const isUserOnline = (u: User | undefined | null): boolean => {
+        if (!u || !u.lastSeen) return false;
+        const lastSeenMs = parseTimestamp(u.lastSeen);
+        if (!lastSeenMs) return false;
+        // Active within last 2.5 minutes (150,000ms), accounting for any remaining clock drift using Math.abs and getServerTime
+        return Math.abs(getServerTime() - lastSeenMs) < 150000;
+    };
+
+    // Merge remote and local pending messages with strict timestamp normalization and chronological sorting
     const displayMessages = useMemo(() => {
         const safeMessages = Array.isArray(messages) ? messages : [];
         const safePending = Array.isArray(pendingMessages) ? pendingMessages : [];
         const remoteIds = new Set(safeMessages.map(m => m.id));
         const filteredPending = safePending.filter(pm => !remoteIds.has(pm.id));
-        return [...safeMessages, ...filteredPending].sort((a, b) => a.timestamp - b.timestamp);
+        
+        return [...safeMessages, ...filteredPending].map(m => ({
+            ...m,
+            timestamp: parseTimestamp(m.timestamp || (m as any).createdAt || (m as any).date) || Date.now()
+        })).sort((a, b) => {
+            if (a.timestamp !== b.timestamp) {
+                return a.timestamp - b.timestamp;
+            }
+            return (a.id || '').localeCompare(b.id || '');
+        });
     }, [messages, pendingMessages]);
 
     const [users, setUsers] = useState<User[]>(() => {
@@ -349,6 +378,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
     const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+
+    const scrollToMessage = (replyMsgId: string) => {
+        if (!replyMsgId) return;
+        const element = document.getElementById(`msg-${replyMsgId}`);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setHighlightedMessageId(replyMsgId);
+            setTimeout(() => {
+                setHighlightedMessageId(null);
+            }, 2000); // Highlight for 2 seconds
+        } else {
+            alert('پیام مورد نظر یافت نشد (احتمالاً پاک شده یا لود نشده است)');
+        }
+    };
+
     const [isUploading, setIsUploading] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
@@ -499,6 +544,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         return () => clearInterval(interval);
     }, []);
 
+    // Live Presence Heartbeat while inside ChatRoom
+    useEffect(() => {
+        if (!currentUser?.username) return;
+        const sendChatHeartbeat = () => {
+            const activeChatPayload = activeChannel ? { type: activeChannel.type, id: activeChannel.id } : null;
+            apiCall('/heartbeat', 'POST', { username: currentUser.username, activeChat: activeChatPayload }).catch(() => {});
+        };
+        sendChatHeartbeat();
+        const interval = setInterval(sendChatHeartbeat, 15000);
+        return () => clearInterval(interval);
+    }, [currentUser?.username, activeChannel?.type, activeChannel?.id]);
+
     useEffect(() => {
         // Auto scroll with timeout to ensure rendering is done (Fix for Desktop)
         if (activeChannel && !showInnerSearch) {
@@ -641,21 +698,25 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         }
     };
 
-    const formatLastSeen = (timestamp: number | undefined) => {
-        if (!timestamp) return 'نامشخص';
-        const now = Date.now();
-        const diff = now - timestamp;
+    const formatLastSeen = (timestamp: any) => {
+        const ms = parseTimestamp(timestamp);
+        if (!ms) return 'نامشخص';
+        const now = getServerTime();
+        const diff = now - ms;
         
         if (diff < 60000) return 'همین الان';
-        if (diff < 3600000) return `لحظاتی پیش (${Math.floor(diff/60000)} دقیقه)`;
+        if (diff < 3600000) return `لحظاتی پیش (${Math.max(1, Math.floor(diff/60000))} دقیقه پیش)`;
         
-        const date = new Date(timestamp);
+        const date = new Date(ms);
         if (diff < 86400000) {
             return `امروز ساعت ${date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}`;
         }
+        if (diff < 172800000) {
+            return `دیروز ساعت ${date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}`;
+        }
         
-        // Over 24 hours: Shamsi Date + Time
-        const shamsiDate = date.toLocaleDateString('fa-IR-u-nu-latn');
+        // Over 48 hours: Shamsi Date + Time
+        const shamsiDate = date.toLocaleDateString('fa-IR');
         const shamsiTime = date.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
         return `${shamsiDate} ساعت ${shamsiTime}`;
     };
@@ -880,11 +941,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             safeUsers.forEach(u => {
                 if (currentUsername && u.username?.toLowerCase() === currentU) return;
                 const last = getLastMessage(u.username, 'private');
-                const isOnline = u.lastSeen ? (Date.now() - u.lastSeen) < 5 * 60 * 1000 : false;
+                const isOnline = isUserOnline(u);
                 
                 list.push({
                     type: 'private', id: u.username, name: u.fullName || u.username,
-                    avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: u.lastSeen,
+                    avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: parseTimestamp(u.lastSeen),
                     lastMsg: last, unread: getUnreadCount(u.username, 'private')
                 });
             });
@@ -952,11 +1013,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             safeUsers.forEach(u => {
                 if (currentUsername && u.username?.toLowerCase() === currentU) return;
                 const last = getLastMessage(u.username, 'private');
-                const isOnline = u.lastSeen ? (Date.now() - u.lastSeen) < 5 * 60 * 1000 : false;
+                const isOnline = isUserOnline(u);
                 
                 list.push({
                     type: 'private', id: u.username, name: u.fullName || u.username,
-                    avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: u.lastSeen,
+                    avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: parseTimestamp(u.lastSeen),
                     lastMsg: last, unread: getUnreadCount(u.username, 'private')
                 });
             });
@@ -1925,13 +1986,30 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                          activeChannel.type === 'group' ? groups.find(g=>g.id===activeChannel.id)?.name :
                                          activeChannel.type === 'task_group' ? taskGroups.find(g=>g.id===activeChannel.id)?.name : 'کانال عمومی'}
                                     </h3>
-                                    <span className="text-[10px] text-blue-500 truncate leading-none mt-0.5">
-                                        {activeChannel.type === 'system' ? 'مرکز دریافت اعلانات کارتابل و پیام‌های خودکار' :
-                                         activeChannel.type === 'private' ? (
-                                            users.find(u=>u.username?.toLowerCase()===activeChannel.id?.toLowerCase())?.lastSeen && (Date.now() - (users.find(u=>u.username?.toLowerCase()===activeChannel.id?.toLowerCase())?.lastSeen || 0) < 300000) ? 'آنلاین' : 
-                                            `آخرین بازدید ${formatLastSeen(users.find(u=>u.username?.toLowerCase()===activeChannel.id?.toLowerCase())?.lastSeen)}`
-                                        ) : activeChannel.type === 'task_group' ? 'گروه تسک' : 'اطلاعات گروه'}
-                                    </span>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                        {activeChannel.type === 'system' ? (
+                                            <span className="text-[10px] text-blue-500 font-medium truncate">مرکز دریافت اعلانات کارتابل و پیام‌های خودکار</span>
+                                        ) : activeChannel.type === 'private' ? (() => {
+                                            const targetUser = users.find(u => u.username?.toLowerCase() === activeChannel.id?.toLowerCase());
+                                            const isOnline = isUserOnline(targetUser);
+                                            return isOnline ? (
+                                                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                    آنلاین
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                                    آخرین بازدید {formatLastSeen(targetUser?.lastSeen)}
+                                                </span>
+                                            );
+                                        })() : activeChannel.type === 'task_group' ? (
+                                            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">گروه تسک و ماموریت</span>
+                                        ) : (
+                                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                                {groups.find(g => g.id === activeChannel.id)?.members?.length || 0} عضو
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -2194,18 +2272,64 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                     onDragOver={handleDragOver}
                                     onDrop={handleDrop}
                                 >
-                            {filteredMessages.map((msg: ChatMessage) => {
+                            {filteredMessages.map((msg: ChatMessage, idx: number) => {
                                 const isMe = msg.senderUsername === currentUser.username;
                                 const isSystemMsg = msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم' || activeChannel.type === 'system';
                                 const isSelected = selectedMessages.has(msg.id);
+                                const isHighlighted = highlightedMessageId === msg.id;
+
+                                const bubbleStyles = isHighlighted 
+                                    ? `bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-400 dark:border-amber-500 text-amber-950 dark:text-amber-100 ring-4 ring-amber-300/60 dark:ring-amber-600/60 scale-[1.02] shadow-md transition-all duration-350 ${
+                                        isSystemMsg ? 'rounded-2xl w-full max-w-[92%] md:max-w-[85%]' : 
+                                        isMe ? 'rounded-xl rounded-tr-none max-w-[75%] md:max-w-[70%]' : 
+                                        'rounded-xl rounded-tl-none max-w-[75%] md:max-w-[70%]'
+                                      }`
+                                    : isSystemMsg 
+                                        ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm transition-all duration-350'
+                                        : isMe 
+                                            ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] dark:bg-[#1a2f16] dark:text-[#eeffde] rounded-xl rounded-tr-none shadow-sm transition-all duration-350'
+                                            : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm transition-all duration-350';
                                 
+                                // Calculate Date Separator
+                                const msgTimestamp = parseTimestamp(msg.timestamp);
+                                const msgDate = new Date(msgTimestamp);
+                                const msgDateKey = msgDate.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+                                
+                                const prevMsg = idx > 0 ? filteredMessages[idx - 1] : null;
+                                const prevTimestamp = prevMsg ? parseTimestamp(prevMsg.timestamp) : 0;
+                                const prevDate = prevMsg ? new Date(prevTimestamp) : null;
+                                const prevDateKey = prevDate ? prevDate.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' }) : null;
+                                
+                                const showDateSeparator = !prevDateKey || msgDateKey !== prevDateKey;
+                                
+                                const getHumanDateTitle = (ts: number) => {
+                                    const now = new Date();
+                                    const todayKey = now.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+                                    const yest = new Date(Date.now() - 86400000);
+                                    const yestKey = yest.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+                                    const d = new Date(ts);
+                                    const dKey = d.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+                                    
+                                    if (dKey === todayKey) return 'امروز';
+                                    if (dKey === yestKey) return 'دیروز';
+                                    return d.toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                                };
+
                                 return (
-                                    <div 
-                                        key={msg.id} 
-                                        className={`flex w-full mb-1 group ${isSystemMsg ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'} items-end gap-2 ${selectionMode ? 'cursor-pointer' : ''}`}
-                                        onClick={() => { if(selectionMode) toggleSelection(msg.id); }}
-                                        onContextMenu={(e) => { e.preventDefault(); if(!selectionMode) setContextMenuMsg({msg, x: e.clientX, y: e.clientY}); }}
-                                    >
+                                    <React.Fragment key={msg.id}>
+                                        {showDateSeparator && (
+                                            <div className="flex justify-center my-2 select-none pointer-events-none sticky top-1 z-10">
+                                                <span className="px-3 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-slate-200/90 dark:bg-zinc-800/90 backdrop-blur-md rounded-full shadow-xs border border-slate-300/50 dark:border-zinc-700/50">
+                                                    {getHumanDateTitle(msgTimestamp)}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div 
+                                            id={`msg-${msg.id}`}
+                                            className={`flex w-full mb-1 group ${isSystemMsg ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'} items-end gap-2 ${selectionMode ? 'cursor-pointer' : ''}`}
+                                            onClick={() => { if(selectionMode) toggleSelection(msg.id); }}
+                                            onContextMenu={(e) => { e.preventDefault(); if(!selectionMode) setContextMenuMsg({msg, x: e.clientX, y: e.clientY}); }}
+                                        >
                                         {/* Actions Button - LEFT for ME, RIGHT for OTHER */}
                                         {isMe && !isSystemMsg && (
                                             <div className="flex flex-col gap-1 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -2222,7 +2346,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                             </div>
                                         )}
                                         
-                                        <div className={`relative ${isSystemMsg ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm' : isMe ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] rounded-xl rounded-tr-none shadow-sm' : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm'} px-3.5 py-2.5 text-sm transition-colors ${isSelected ? 'ring-2 ring-blue-400' : ''}`}>
+                                        <div className={`relative ${bubbleStyles} px-3.5 py-2.5 text-sm ${isSelected ? 'ring-2 ring-blue-400' : ''}`}>
                                             
                                             {/* System Message Header */}
                                             {isSystemMsg && (
@@ -2244,9 +2368,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
                                             {/* Reply Header */}
                                             {msg.replyTo && (
-                                                <div className={`mb-1 px-2 py-0.5 rounded border-r-2 text-[10px] bg-opacity-10 cursor-pointer ${isMe ? 'bg-green-600 border-green-600' : 'bg-blue-600 border-blue-600'}`}>
+                                                <div 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        scrollToMessage(msg.replyTo.id);
+                                                    }}
+                                                    className={`mb-1 px-2 py-1 rounded border-r-4 text-[10px] bg-black/5 dark:bg-white/5 cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10 ${isMe ? 'border-green-600' : 'border-blue-600'}`}
+                                                    title="برای رفتن به پیام کلیک کنید"
+                                                >
                                                     <div className="font-bold opacity-80">{msg.replyTo.sender}</div>
-                                                    <div className="truncate opacity-70">{msg.replyTo.message.substring(0, 30)}...</div>
+                                                    <div className="truncate opacity-70">{msg.replyTo.message ? msg.replyTo.message.substring(0, 30) : 'فایل/پیوست'}...</div>
                                                 </div>
                                             )}
 
@@ -2479,6 +2610,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                             </div>
                                         )}
                                     </div>
+                                    </React.Fragment>
                                 );
                             })}
                             <div ref={messagesEndRef} />

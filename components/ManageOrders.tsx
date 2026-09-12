@@ -85,6 +85,37 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       }
   }, [statusFilter]);
 
+  // Listen for custom navigation / open events from Global Search or cross-module links
+  useEffect(() => {
+      const handleOpenPaymentOrder = (e: any) => {
+          const detail = e.detail;
+          if (!detail) return;
+          const targetId = detail.orderId || detail.id || detail.trackingNumber;
+          const targetSearch = detail.searchTerm;
+          if (targetSearch) {
+              setSearchTerm(targetSearch);
+          }
+          if (targetId) {
+              const allList = Array.isArray(localOrders) ? localOrders : [];
+              const found = allList.find(o => o.id === targetId || o.trackingNumber === targetId || String(o.trackingNumber) === String(targetId));
+              if (found) {
+                  if (found.status === OrderStatus.APPROVED_CEO || found.status === OrderStatus.REVOKED) {
+                      setActiveTab('archive');
+                  } else {
+                      setActiveTab('current');
+                  }
+                  setViewOrder(found);
+              }
+          }
+      };
+      window.addEventListener('OPEN_PAYMENT_ORDER' as any, handleOpenPaymentOrder);
+      window.addEventListener('NAVIGATE_PAYMENT_ORDER' as any, handleOpenPaymentOrder);
+      return () => {
+          window.removeEventListener('OPEN_PAYMENT_ORDER' as any, handleOpenPaymentOrder);
+          window.removeEventListener('NAVIGATE_PAYMENT_ORDER' as any, handleOpenPaymentOrder);
+      };
+  }, [localOrders]);
+
   const permissions = getRolePermissions(currentUser.role, settings || null);
   const availableCompanies = settings?.companies?.map(c => c.name) || settings?.companyNames || [];
 

@@ -815,6 +815,51 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
 
     useEffect(() => { loadData(); }, [financialYear]);
     useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
+
+    // Listen for custom navigation / open events from Global Search or cross-module links
+    useEffect(() => {
+        const handleOpenWarehouseItem = (e: any) => {
+            const detail = e.detail;
+            if (!detail) return;
+            setActiveTab('items');
+            const targetId = detail.itemId || detail.id || detail.itemCode;
+            if (targetId && items.length > 0) {
+                const found = items.find(i => i.id === targetId || i.code === targetId || String(i.code) === String(targetId));
+                if (found) {
+                    setEditingItem(found);
+                }
+            }
+        };
+
+        const handleOpenWarehouseTx = (e: any) => {
+            const detail = e.detail;
+            if (!detail) return;
+            const targetId = detail.txId || detail.id || detail.number;
+            const targetType = detail.type; // 'IN' or 'OUT'
+            if (targetType === 'IN') {
+                setActiveTab('entry_archive');
+            } else {
+                setActiveTab('archive');
+            }
+            if (targetId && allTransactions.length > 0) {
+                const found = allTransactions.find(t => t.id === targetId || t.number === targetId || String(t.number) === String(targetId));
+                if (found) {
+                    if (found.type === 'OUT') {
+                        setViewBijak(found);
+                    } else {
+                        setEditingReceipt(found);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('OPEN_WAREHOUSE_ITEM' as any, handleOpenWarehouseItem);
+        window.addEventListener('OPEN_WAREHOUSE_TX' as any, handleOpenWarehouseTx);
+        return () => {
+            window.removeEventListener('OPEN_WAREHOUSE_ITEM' as any, handleOpenWarehouseItem);
+            window.removeEventListener('OPEN_WAREHOUSE_TX' as any, handleOpenWarehouseTx);
+        };
+    }, [items, allTransactions]);
     
     // Trigger update on company change
     useEffect(() => { 

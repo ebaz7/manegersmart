@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TradeRecord, TradeStage } from '../types';
 import { TradeDatePicker } from './TradeDatePicker';
 import FormattedNumberInput from './FormattedNumberInput';
-import { formatCurrency, formatNumberString, calculateDaysDiff } from '../constants';
+import { formatCurrency, formatNumberString, calculateDaysDiff, calculateDaysBetween, parsePersianDate } from '../constants';
 import { 
     Clock, 
     CheckCircle2, 
@@ -186,20 +186,49 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
         }
     };
 
-    // Calculate queue waiting days
+    // Calculate queue waiting days (from queueDate to today)
     const queueDays = form.queueDate ? calculateDaysDiff(form.queueDate) : null;
 
-    // Calculate expiry days remaining
-    let expiryStatus: { text: string; isExpired: boolean; days: number } | null = null;
+    // Calculate total duration (from registered allocationDate to expiry deadline)
+    const totalValidityDays = (form.allocationDate && form.allocationExpiry) 
+        ? calculateDaysBetween(form.allocationDate, form.allocationExpiry) 
+        : null;
+
+    // Calculate expiry days remaining compared to TODAY
+    let expiryStatus: { text: string; isExpired: boolean; days: number; totalDays: number | null } | null = null;
     if (form.allocationExpiry) {
-        // approximate comparison
-        const diff = calculateDaysDiff(form.allocationExpiry);
-        // Note: calculateDaysDiff computes (now - date). If positive, date is in past; if negative, future.
-        if (diff > 0) {
-            expiryStatus = { text: `${diff} روز از مهلت گذشته (منقضی شده)`, isExpired: true, days: diff };
-        } else {
-            const remaining = Math.abs(diff);
-            expiryStatus = { text: `${remaining} روز تا انقضای تخصیص`, isExpired: false, days: remaining };
+        const expiryDate = parsePersianDate(form.allocationExpiry);
+        if (expiryDate) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            expiryDate.setHours(0, 0, 0, 0);
+            
+            const diffTime = expiryDate.getTime() - today.getTime();
+            const remainingDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+            if (remainingDays < 0) {
+                const pastDays = Math.abs(remainingDays);
+                expiryStatus = {
+                    text: `${pastDays} روز از مهلت گذشته (منقضی شده)`,
+                    isExpired: true,
+                    days: pastDays,
+                    totalDays: totalValidityDays
+                };
+            } else if (remainingDays === 0) {
+                expiryStatus = {
+                    text: 'امروز آخرین روز مهلت تخصیص است',
+                    isExpired: false,
+                    days: 0,
+                    totalDays: totalValidityDays
+                };
+            } else {
+                expiryStatus = {
+                    text: `${remainingDays} روز تا انقضای تخصیص`,
+                    isExpired: false,
+                    days: remainingDays,
+                    totalDays: totalValidityDays
+                };
+            }
         }
     }
 
@@ -438,18 +467,33 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
 
                         {/* Expiry Badge */}
                         {expiryStatus && (
-                            <div className={`p-2.5 rounded-xl text-xs flex items-center justify-between border ${
+                            <div className={`p-2.5 rounded-xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border transition-all ${
                                 expiryStatus.isExpired 
                                     ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200' 
-                                    : 'bg-emerald-100/70 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                                    : expiryStatus.days <= 5 
+                                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                                    : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
                             }`}>
-                                <span className="font-bold flex items-center gap-1">
-                                    {expiryStatus.isExpired ? <AlertTriangle size={14} className="text-rose-600"/> : <CheckCircle2 size={14} className="text-emerald-600"/>}
-                                    وضعیت انقضا:
+                                <span className="font-bold flex items-center gap-1.5 shrink-0">
+                                    {expiryStatus.isExpired ? (
+                                        <AlertTriangle size={15} className="text-rose-600 shrink-0"/>
+                                    ) : expiryStatus.days <= 5 ? (
+                                        <Clock size={15} className="text-amber-600 shrink-0"/>
+                                    ) : (
+                                        <CheckCircle2 size={15} className="text-emerald-600 shrink-0"/>
+                                    )}
+                                    <span>وضعیت انقضا:</span>
                                 </span>
-                                <span className="font-mono font-bold">
-                                    {expiryStatus.text}
-                                </span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {expiryStatus.totalDays !== null && expiryStatus.totalDays > 0 && (
+                                        <span className="bg-white/80 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md text-[11px] font-bold border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300">
+                                            مهلت کل: {expiryStatus.totalDays} روز
+                                        </span>
+                                    )}
+                                    <span className="font-mono font-black text-xs sm:text-sm">
+                                        {expiryStatus.text}
+                                    </span>
+                                </div>
                             </div>
                         )}
                     </div>

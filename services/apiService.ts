@@ -6,6 +6,9 @@ import { Capacitor } from '@capacitor/core';
 // تنظیمات آدرس سرور
 let DEFAULT_SERVER_URL = 'https://dlkam.ir'; 
 
+export let serverTimeOffset = 0;
+export const getServerTime = (): number => Date.now() + serverTimeOffset;
+
 export const getServerHost = () => {
     // Check if we are running strictly in the Cloud Run/AI Studio preview environment in the browser
     const isDevEnvironment = !Capacitor.isNativePlatform() && (
@@ -170,6 +173,15 @@ export const apiCall = async <T>(
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
+
+            // Sync server and client clocks using standard response 'date' header
+            const serverDateStr = response.headers.get('date');
+            if (serverDateStr) {
+                const serverTime = new Date(serverDateStr).getTime();
+                if (!isNaN(serverTime)) {
+                    serverTimeOffset = serverTime - Date.now();
+                }
+            }
 
             const contentType = response.headers.get("content-type");
             const isJson = contentType && contentType.includes("application/json");

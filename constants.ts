@@ -169,11 +169,26 @@ export const jalaliToGregorian = (j_y: number, j_m: number, j_d: number): Date =
   return new Date(gy, gm, g_day_no + 1);
 };
 
+export const normalizeDateDigits = (str: string): string => {
+  if (!str) return '';
+  const persianDigits = [/۰/g, /۱/g, /۲/g, /۳/g, /۴/g, /۵/g, /۶/g, /۷/g, /۸/g, /۹/g];
+  const arabicDigits = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
+  let result = str.toString().trim();
+  for (let i = 0; i < 10; i++) {
+    result = result.replace(persianDigits[i], i.toString()).replace(arabicDigits[i], i.toString());
+  }
+  return result;
+};
+
 export const parsePersianDate = (dateStr: string): Date | null => {
-    if (!dateStr) return null;
-    const parts = dateStr.includes('/') ? dateStr.split('/') : dateStr.split('-');
-    const [y, m, d] = parts.map(Number);
-    if (!y || !m || !d) return null;
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const cleanStr = normalizeDateDigits(dateStr);
+    const parts = cleanStr.includes('/') ? cleanStr.split('/') : cleanStr.split('-');
+    if (parts.length < 3) return null;
+    const y = parseInt(parts[0].trim(), 10);
+    const m = parseInt(parts[1].trim(), 10);
+    const d = parseInt(parts[2].trim(), 10);
+    if (!y || !m || !d || isNaN(y) || isNaN(m) || isNaN(d)) return null;
     if (y < 1900) {
         return jalaliToGregorian(y, m, d);
     }
@@ -278,8 +293,17 @@ export const calculateDaysDiff = (startDateStr: string, endDateStr?: string): nu
     start.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
     const diffTime = end.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 ? diffDays : 0;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
+export const calculateDaysBetween = (startDateStr: string, endDateStr: string): number | null => {
+    const start = parsePersianDate(startDateStr);
+    const end = parsePersianDate(endDateStr);
+    if (!start || !end) return null;
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    const diffTime = end.getTime() - start.getTime();
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
 };
 
 // --- NUMBER TO WORD CONVERTER ---

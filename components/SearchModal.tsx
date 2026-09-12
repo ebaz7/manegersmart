@@ -111,16 +111,26 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         onNavigate(result.url, result.data);
         onClose();
 
-        // Deep-link triggers
-        if (result.type === 'trade') {
-            window.dispatchEvent(new CustomEvent('OPEN_TRADE_RECORD', { detail: result.data }));
-        } else if (result.type === 'payment_order') {
-            window.dispatchEvent(new CustomEvent('OPEN_PAYMENT_ORDER', { detail: result.data }));
-        } else if (result.type === 'exit_permit') {
-            window.dispatchEvent(new CustomEvent('OPEN_EXIT_PERMIT', { detail: result.data }));
-        } else if (result.type === 'cheque_receipt') {
-            window.dispatchEvent(new CustomEvent('OPEN_CHEQUE_RECEIPT', { detail: result.data }));
-        }
+        // Deep-link triggers - dispatch immediately and also with small timeouts in case module is mounting
+        const dispatchEvents = () => {
+            if (result.type === 'trade') {
+                window.dispatchEvent(new CustomEvent('OPEN_TRADE_RECORD', { detail: result.data }));
+            } else if (result.type === 'payment_order') {
+                window.dispatchEvent(new CustomEvent('OPEN_PAYMENT_ORDER', { detail: result.data }));
+            } else if (result.type === 'exit_permit') {
+                window.dispatchEvent(new CustomEvent('OPEN_EXIT_PERMIT', { detail: result.data }));
+            } else if (result.type === 'cheque_receipt') {
+                window.dispatchEvent(new CustomEvent('OPEN_CHEQUE_RECEIPT', { detail: result.data }));
+            } else if (result.type === 'warehouse_item') {
+                window.dispatchEvent(new CustomEvent('OPEN_WAREHOUSE_ITEM', { detail: result.data }));
+            } else if (result.type === 'warehouse_tx') {
+                window.dispatchEvent(new CustomEvent('OPEN_WAREHOUSE_TX', { detail: result.data }));
+            }
+        };
+
+        dispatchEvents();
+        setTimeout(dispatchEvents, 80);
+        setTimeout(dispatchEvents, 250);
     };
 
     const getTypeDetails = (type: string) => {

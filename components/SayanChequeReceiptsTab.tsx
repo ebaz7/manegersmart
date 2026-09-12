@@ -255,6 +255,40 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         return () => clearInterval(interval);
     }, [fiscalYear]);
 
+    // Listen for custom navigation / open events from Global Search
+    useEffect(() => {
+        const handleOpenChequeReceipt = (e: any) => {
+            const detail = e.detail;
+            if (!detail) return;
+            const targetId = detail.receiptId || detail.id || detail.receiptNumber;
+            const targetSearch = detail.searchTerm;
+            setActiveSubTab('ARCHIVE');
+            if (targetSearch) {
+                setSearchTerm(targetSearch);
+            }
+            if (targetId) {
+                const found = receiptsList.find(r => 
+                    r.id === targetId || 
+                    r.receiptNo === targetId || 
+                    String(r.receiptNo) === String(targetId) ||
+                    r.poshtNomreh === targetId ||
+                    String(r.poshtNomreh) === String(targetId)
+                );
+                if (found) {
+                    setSelectedDetailReceipt(found);
+                } else if (!targetSearch) {
+                    setSearchTerm(String(targetId));
+                }
+            }
+        };
+        window.addEventListener('OPEN_CHEQUE_RECEIPT' as any, handleOpenChequeReceipt);
+        window.addEventListener('NAVIGATE_CHEQUE_RECEIPT' as any, handleOpenChequeReceipt);
+        return () => {
+            window.removeEventListener('OPEN_CHEQUE_RECEIPT' as any, handleOpenChequeReceipt);
+            window.removeEventListener('NAVIGATE_CHEQUE_RECEIPT' as any, handleOpenChequeReceipt);
+        };
+    }, [receiptsList]);
+
     // Person Search
     const fetchPersons = async (q: string) => {
         setSearchingPersons(true);

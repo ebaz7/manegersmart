@@ -97,6 +97,37 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         }
     }, [statusFilter]);
 
+    // Listen for custom navigation / open events from Global Search or cross-module links
+    useEffect(() => {
+        const handleOpenExitPermit = (e: any) => {
+            const detail = e.detail;
+            if (!detail) return;
+            const targetId = detail.permitId || detail.id || detail.permitNumber;
+            const targetSearch = detail.searchTerm;
+            if (targetSearch) {
+                setSearchTerm(targetSearch);
+            }
+            if (targetId) {
+                const found = permits.find(p => 
+                    p.id === targetId || 
+                    p.permitNumber === targetId || 
+                    String(p.permitNumber) === String(targetId) ||
+                    p.sayanRemittanceNumber === targetId ||
+                    p.sayanArchiveCode === targetId
+                );
+                if (found) {
+                    setViewPermit(found);
+                }
+            }
+        };
+        window.addEventListener('OPEN_EXIT_PERMIT' as any, handleOpenExitPermit);
+        window.addEventListener('NAVIGATE_EXIT_PERMIT' as any, handleOpenExitPermit);
+        return () => {
+            window.removeEventListener('OPEN_EXIT_PERMIT' as any, handleOpenExitPermit);
+            window.removeEventListener('NAVIGATE_EXIT_PERMIT' as any, handleOpenExitPermit);
+        };
+    }, [permits]);
+
     useEffect(() => {
         if (viewPermit || editPermit || warehouseFinalize || securityFinalize) {
             window.scrollTo({ top: 0, behavior: 'instant' });

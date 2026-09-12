@@ -5249,7 +5249,18 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
 
 app.get('/api/users', (req, res) => {
     const db = getDb();
-    res.json(db.users || []);
+    const users = (db.users || []).map(u => {
+        let lastSeenNum = u.lastSeen;
+        if (typeof lastSeenNum === 'string') {
+            const parsed = new Date(lastSeenNum).getTime();
+            lastSeenNum = isNaN(parsed) ? (Number(lastSeenNum) || undefined) : parsed;
+        }
+        return {
+            ...u,
+            lastSeen: lastSeenNum
+        };
+    });
+    res.json(users);
 });
 
 app.post('/api/users', (req, res) => { 
@@ -5331,20 +5342,25 @@ app.post('/api/login', (req, res) => {
 
 // HEARTBEAT FOR LAST SEEN
 app.post('/api/heartbeat', (req, res) => {
-    const { username } = req.body;
+    const { username, activeChat } = req.body;
     if (!username) return res.status(400).send('Missing username');
     
     const db = getDb();
-    const user = db.users.find(u => u.username === username);
+    const user = (db.users || []).find(u => u.username?.toLowerCase() === username.toLowerCase());
     if (user) {
-        user.lastSeen = new Date().toISOString();
+        const nowMs = Date.now();
+        user.lastSeen = nowMs;
+        user.lastSeenIso = new Date(nowMs).toISOString();
+        if (activeChat !== undefined) {
+            user.activeChat = activeChat;
+        }
         
         // Keep active subscription timestamps fresh
         if (db.subscriptions) {
             let subUpdated = false;
             db.subscriptions.forEach(s => {
-                if (s.username === username) {
-                    s.updatedAt = Date.now();
+                if (s.username?.toLowerCase() === username.toLowerCase()) {
+                    s.updatedAt = nowMs;
                     subUpdated = true;
                 }
             });
@@ -5352,7 +5368,7 @@ app.post('/api/heartbeat', (req, res) => {
         
         saveDb(db);
     }
-    res.json({ success: true });
+    res.json({ success: true, lastSeen: Date.now() });
 });
 
 // WEB PUSH SUBSCRIPTION ENDPOINTS
@@ -5746,7 +5762,26 @@ app.post('/api/notifications/add', async (req, res) => {
 
 // 8. CHAT & COMMUNICATION
 app.get('/api/chat', (req, res) => {
-    res.json(getDb().messages || []);
+    const db = getDb();
+    const msgs = (db.messages || []).map(m => {
+        let ts = m.timestamp;
+        if (!ts) {
+            ts = m.createdAt ? new Date(m.createdAt).getTime() : Date.now();
+        } else if (typeof ts === 'string') {
+            const num = Number(ts);
+            if (!isNaN(num) && num > 1000000000) {
+                ts = num;
+            } else {
+                const parsed = new Date(ts).getTime();
+                ts = isNaN(parsed) ? Date.now() : parsed;
+            }
+        }
+        return {
+            ...m,
+            timestamp: typeof ts === 'number' && !isNaN(ts) ? ts : Date.now()
+        };
+    });
+    res.json(msgs);
 });
 
 app.post('/api/chat/read-batch', (req, res) => {
@@ -5862,6 +5897,24 @@ app.post('/api/chat', async (req, res) => {
     const db = getDb(); 
     const msg = req.body;
     if(!db.messages) db.messages=[]; 
+
+    // Always override with the server's authoritative timestamp to prevent client clock skew out-of-order bugs
+    const ts = Date.now();
+    msg.timestamp = ts;
+
+    // Update sender's lastSeen timestamp and activeChat
+    if (msg.senderUsername) {
+        const senderUser = (db.users || []).find(u => u.username?.toLowerCase() === msg.senderUsername.toLowerCase());
+        if (senderUser) {
+            senderUser.lastSeen = ts;
+            senderUser.lastSeenIso = new Date(ts).toISOString();
+            if (msg.recipient) {
+                senderUser.activeChat = { type: 'private', id: msg.recipient };
+            } else if (msg.groupId) {
+                senderUser.activeChat = { type: 'group', id: msg.groupId };
+            }
+        }
+    }
 
     // Instantly append and resave database
     db.messages.push(msg); 
@@ -6055,7 +6108,7 @@ app.put('/api/chat/:id', (req, res) => {
     const db = getDb(); 
     const idx = db.messages.findIndex(m => m.id === req.params.id); 
     if(idx > -1) { 
-        db.messages[idx] = { ...db.messages[idx], ...req.body }; 
+        db.messages[idx] = { ...db.messages[idx], ...req.body, timestamp: db.messages[idx].timestamp }; 
         saveDb(db); 
         res.json(db.messages); 
     } else res.status(404).send('Not Found'); 

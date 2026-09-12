@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { User, TradeRecord, TradeStage, TradeItem, SystemSettings, InsuranceEndorsement, CurrencyPurchaseData, TradeTransaction, CurrencyTranche, CurrencyDelivery, TradeStageData, ShippingDocument, ShippingDocType, DocStatus, InvoiceItem, InspectionData, InspectionPayment, InspectionCertificate, ClearanceData, WarehouseReceipt, ClearancePayment, GreenLeafData, GreenLeafCustomsDuty, GreenLeafGuarantee, GreenLeafTax, GreenLeafRoadToll, InternalShippingData, ShippingPayment, AgentData, AgentPayment, PackingItem, UserRole, GuaranteeCheque } from '../types';
 import { getTradeRecords, saveTradeRecord, updateTradeRecord, deleteTradeRecord, getSettings, uploadFile } from '../services/storageService';
 import { getUsers } from '../services/authService';
-import { generateUUID, formatCurrency, formatNumberString, deformatNumberString, parsePersianDate, formatDate, calculateDaysDiff, getStatusLabel } from '../constants';
+import { generateUUID, formatCurrency, formatNumberString, deformatNumberString, parsePersianDate, formatDate, calculateDaysDiff, calculateDaysBetween, getStatusLabel } from '../constants';
 import FormattedNumberInput from './FormattedNumberInput';
 import { Container, Plus, Search, CheckCircle2, Save, Trash2, X, Package, ArrowRight, History, Banknote, Coins, Wallet, FileSpreadsheet, Shield, LayoutDashboard, Printer, FileDown, Paperclip, Building2, FolderOpen, Home, Calculator, FileText, Microscope, ListFilter, Warehouse, Calendar as CalendarIcon, PieChart, BarChart, Clock, Leaf, Scale, ShieldCheck, Percent, Truck, CheckSquare, Square, ToggleLeft, ToggleRight, DollarSign, UserCheck, Check, Archive, AlertCircle, RefreshCw, Box, Loader2, Share2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, CalendarDays, Info, ArrowLeftRight, ArrowRightLeft, Edit2, Edit, Undo2, Eye, EyeOff, Copy } from 'lucide-react';
 import { apiCall, LS_KEYS, getLocalData } from '../services/apiService';
@@ -526,7 +526,15 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 setSearchTerm(targetSearch);
             }
             if (targetId) {
-                const found = records.find(r => r.id === targetId || r.fileNumber === targetId || r.registrationNumber === targetId || r.orderNumber === targetId || r.proformaNumber === targetId);
+                const found = records.find(r => 
+                    r.id === targetId || 
+                    r.fileNumber === targetId || 
+                    r.registrationNumber === targetId || 
+                    r.orderNumber === targetId || 
+                    r.proformaNumber === targetId ||
+                    (r.greenLeafData?.duties && r.greenLeafData.duties.some(d => d.cottageNumber === targetId)) ||
+                    (r.shippingDocuments && r.shippingDocuments.some(s => s.documentNumber === targetId))
+                );
                 if (found) {
                     setSelectedRecord(found);
                     setViewMode('details');

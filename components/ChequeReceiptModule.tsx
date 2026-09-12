@@ -1764,7 +1764,7 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                 </div>
 
                 {/* Printable receipt card */}
-                <div id="cheque-receipt-printable-card" className="bg-white text-gray-900 p-8 rounded-2xl border-2 border-gray-300 shadow-sm max-w-4xl mx-auto printable-area relative overflow-hidden">
+                <div id="cheque-receipt-printable-card" className="bg-white text-gray-900 p-8 rounded-2xl border-2 border-gray-300 shadow-sm max-w-4xl mx-auto printable-content relative overflow-hidden">
                   
                   {/* Digital stamps overlay for print - compact & non-intrusive */}
                   <div className="absolute top-3 left-6 flex flex-row gap-1.5 opacity-90 hidden-screen pointer-events-none z-10">

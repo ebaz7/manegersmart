@@ -1208,19 +1208,33 @@ td {
     margin: 0 !important;
     padding: 0 !important;
   }
-  .printable-content, .printable-content * {
+  .printable-content, .printable-content *,
+  .printable-area, .printable-area *,
+  #cheque-receipt-printable-card, #cheque-receipt-printable-card * {
     visibility: visible !important;
   }
-  .printable-content {
+  .printable-content,
+  .printable-area,
+  #cheque-receipt-printable-card {
     position: relative !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
     height: auto !important;
-    min-height: 100vh !important;
+    min-height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .printable-content tr,
+  .printable-area tr,
+  #cheque-receipt-printable-card tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
   .no-print, .hidden-print-export { 
     display: none !important; 

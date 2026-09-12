@@ -19,6 +19,7 @@ import PrintShippingDoc from './print/PrintShippingDoc';
 import InsuranceLedgerReport from './reports/InsuranceLedgerReport';
 import GuaranteeReport from './reports/GuaranteeReport';
 import InsuranceTab from './InsuranceTab';
+import AllocationTab, { AllocationFormData } from './AllocationTab';
 import CurrencyGuaranteeSection from './trade/CurrencyGuaranteeSection';
 import { GeneralTradeListReport } from './reports/GeneralTradeListReport';
 import { FileViewerModal } from './FileViewerModal';
@@ -83,7 +84,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferForm, setTransferForm] = useState({ targetCommodityGroup: '', newFileNumber: '', newGoodsName: '', newSellerName: '', description: '' });
     
-    const [activeTab, setActiveTab] = useState<'timeline' | 'proforma' | 'insurance' | 'currency_purchase' | 'shipping_docs' | 'inspection' | 'clearance_docs' | 'green_leaf' | 'internal_shipping' | 'agent_fees' | 'final_calculation'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'proforma' | 'insurance' | 'allocation' | 'currency_purchase' | 'shipping_docs' | 'inspection' | 'clearance_docs' | 'green_leaf' | 'internal_shipping' | 'agent_fees' | 'final_calculation'>('timeline');
     
     const [showEditMetadataModal, setShowEditMetadataModal] = useState(false);
     const [editMetadataForm, setEditMetadataForm] = useState<Partial<TradeRecord>>({});
@@ -883,6 +884,79 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setSelectedRecord(updatedRecord); 
         setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
+
+    const handleSaveAllocation = async (formData: AllocationFormData) => {
+        if (!selectedRecord) return;
+        const updatedRecord: TradeRecord = { ...selectedRecord };
+
+        // 1. ALLOCATION_QUEUE stage
+        if (!updatedRecord.stages[TradeStage.ALLOCATION_QUEUE]) {
+            updatedRecord.stages[TradeStage.ALLOCATION_QUEUE] = getStageData(updatedRecord, TradeStage.ALLOCATION_QUEUE);
+        }
+        updatedRecord.stages[TradeStage.ALLOCATION_QUEUE] = {
+            ...updatedRecord.stages[TradeStage.ALLOCATION_QUEUE],
+            queueDate: formData.queueDate,
+            isCompleted: Boolean(formData.isQueueCompleted),
+            costRial: formData.costRial || 0,
+            costCurrency: formData.costCurrency || 0,
+            currencyType: formData.currencyType || updatedRecord.mainCurrency,
+            description: formData.description || '',
+            attachments: formData.attachments || [],
+            updatedAt: Date.now(),
+            updatedBy: currentUser.fullName
+        };
+
+        // 2. ALLOCATION_APPROVED stage
+        if (!updatedRecord.stages[TradeStage.ALLOCATION_APPROVED]) {
+            updatedRecord.stages[TradeStage.ALLOCATION_APPROVED] = getStageData(updatedRecord, TradeStage.ALLOCATION_APPROVED);
+        }
+        updatedRecord.stages[TradeStage.ALLOCATION_APPROVED] = {
+            ...updatedRecord.stages[TradeStage.ALLOCATION_APPROVED],
+            allocationCode: formData.allocationCode,
+            allocationDate: formData.allocationDate,
+            allocationExpiry: formData.allocationExpiry,
+            isCompleted: Boolean(formData.isAllocated),
+            costRial: formData.costRial || 0,
+            costCurrency: formData.costCurrency || 0,
+            currencyType: formData.currencyType || updatedRecord.mainCurrency,
+            description: formData.description || '',
+            attachments: formData.attachments || [],
+            updatedAt: Date.now(),
+            updatedBy: currentUser.fullName
+        };
+
+        // 3. Update currencyPurchaseData for reports and other modules
+        if (!updatedRecord.currencyPurchaseData) {
+            updatedRecord.currencyPurchaseData = {
+                payments: [],
+                purchasedAmount: 0,
+                purchasedCurrencyType: updatedRecord.mainCurrency || 'EUR'
+            };
+        }
+        updatedRecord.currencyPurchaseData = {
+            ...updatedRecord.currencyPurchaseData,
+            queueEntryDate: formData.queueDate || updatedRecord.currencyPurchaseData.queueEntryDate,
+            allocationDate: formData.allocationDate || updatedRecord.currencyPurchaseData.allocationDate,
+            allocationExpiryDate: formData.allocationExpiry || updatedRecord.currencyPurchaseData.allocationExpiryDate,
+            allocationCode: formData.allocationCode || updatedRecord.currencyPurchaseData.allocationCode
+        };
+
+        // 4. Update currency origin & rank & priority
+        if (formData.currencyAllocationType) {
+            updatedRecord.currencyAllocationType = formData.currencyAllocationType;
+        }
+        if (formData.allocationCurrencyRank) {
+            updatedRecord.allocationCurrencyRank = formData.allocationCurrencyRank;
+        }
+        if (formData.isPriority !== undefined) {
+            updatedRecord.isPriority = formData.isPriority;
+        }
+
+        await updateTradeRecord(updatedRecord);
+        setSelectedRecord(updatedRecord);
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+    };
+
     const handleEditInspectionCertificate = (c: InspectionCertificate) => {
         setEditingInspectionCertificateId(c.id);
         setNewInspectionCertificate({
@@ -1970,9 +2044,43 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setViewMode('dashboard');
         loadRecords();
     };
-    const handleStageClick = (stage: TradeStage) => { const data = getStageData(selectedRecord, stage); setEditingStage(stage); setStageFormData(data); };
+    const handleStageClick = (stage: TradeStage) => { 
+        if (stage === TradeStage.ALLOCATION_QUEUE || stage === TradeStage.ALLOCATION_APPROVED) {
+            setActiveTab('allocation');
+            return;
+        }
+        const data = getStageData(selectedRecord, stage); 
+        setEditingStage(stage); 
+        setStageFormData(data); 
+    };
     const handleStageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingStageFile(true); const reader = new FileReader(); reader.onload = async (ev) => { const base64 = ev.target?.result as string; try { const result = await uploadFile(file.name, base64); setStageFormData(prev => ({ ...prev, attachments: [...(prev.attachments || []), { fileName: result.fileName, url: result.url }] })); } catch (error) { alert('خطا در آپلود'); } finally { setUploadingStageFile(false); } }; reader.readAsDataURL(file); e.target.value = ''; };
-    const handleSaveStage = async () => { if (!selectedRecord || !editingStage) return; const updatedRecord = { ...selectedRecord }; updatedRecord.stages[editingStage] = { ...getStageData(selectedRecord, editingStage), ...stageFormData, updatedAt: Date.now(), updatedBy: currentUser.fullName }; if (editingStage === TradeStage.ALLOCATION_QUEUE && stageFormData.queueDate) { updatedRecord.stages[TradeStage.ALLOCATION_QUEUE].queueDate = stageFormData.queueDate; } if (editingStage === TradeStage.ALLOCATION_APPROVED) { updatedRecord.stages[TradeStage.ALLOCATION_APPROVED].allocationDate = stageFormData.allocationDate; updatedRecord.stages[TradeStage.ALLOCATION_APPROVED].allocationCode = stageFormData.allocationCode; updatedRecord.stages[TradeStage.ALLOCATION_APPROVED].allocationExpiry = stageFormData.allocationExpiry; } await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); setEditingStage(null); };
+    const handleSaveStage = async () => { 
+        if (!selectedRecord || !editingStage) return; 
+        const updatedRecord = { ...selectedRecord }; 
+        updatedRecord.stages[editingStage] = { ...getStageData(selectedRecord, editingStage), ...stageFormData, updatedAt: Date.now(), updatedBy: currentUser.fullName }; 
+        if (editingStage === TradeStage.ALLOCATION_QUEUE && stageFormData.queueDate) { 
+            updatedRecord.stages[TradeStage.ALLOCATION_QUEUE].queueDate = stageFormData.queueDate; 
+            if (!updatedRecord.currencyPurchaseData) {
+                updatedRecord.currencyPurchaseData = { payments: [], purchasedAmount: 0, purchasedCurrencyType: updatedRecord.mainCurrency || 'EUR' };
+            }
+            updatedRecord.currencyPurchaseData.queueEntryDate = stageFormData.queueDate;
+        } 
+        if (editingStage === TradeStage.ALLOCATION_APPROVED) { 
+            updatedRecord.stages[TradeStage.ALLOCATION_APPROVED].allocationDate = stageFormData.allocationDate; 
+            updatedRecord.stages[TradeStage.ALLOCATION_APPROVED].allocationCode = stageFormData.allocationCode; 
+            updatedRecord.stages[TradeStage.ALLOCATION_APPROVED].allocationExpiry = stageFormData.allocationExpiry; 
+            if (!updatedRecord.currencyPurchaseData) {
+                updatedRecord.currencyPurchaseData = { payments: [], purchasedAmount: 0, purchasedCurrencyType: updatedRecord.mainCurrency || 'EUR' };
+            }
+            updatedRecord.currencyPurchaseData.allocationDate = stageFormData.allocationDate;
+            updatedRecord.currencyPurchaseData.allocationCode = stageFormData.allocationCode;
+            updatedRecord.currencyPurchaseData.allocationExpiryDate = stageFormData.allocationExpiry;
+        } 
+        await updateTradeRecord(updatedRecord); 
+        setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        setEditingStage(null); 
+    };
     const toggleCommitment = async () => { if (!selectedRecord) return; const updatedRecord = { ...selectedRecord, isCommitmentFulfilled: !selectedRecord.isCommitmentFulfilled }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); setSelectedRecord(updatedRecord); };
     const handleArchiveRecord = async () => { if (!selectedRecord) return; if (!confirm('آیا از انتقال این پرونده به بایگانی (ترخیص شده) اطمینان دارید؟')) return; const updatedRecord = { ...selectedRecord, isArchived: true, status: 'Completed' as const }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); alert('پرونده با موفقیت بایگانی شد.'); setViewMode('dashboard'); loadRecords(); };
     const handleUnarchiveRecord = async () => { if (!selectedRecord) return; if (!confirm('آیا از بازگرداندن این پرونده به جریان کاری اطمینان دارید؟')) return; const updatedRecord = { ...selectedRecord, isArchived: false, status: 'Active' as const }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); alert('پرونده بازیابی شد.'); };
@@ -2480,48 +2588,51 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-800"><h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">ویرایش مرحله: {editingStage}</h3><button type="button" onClick={() => setEditingStage(null)}><X size={20} className="text-gray-400 hover:text-red-500"/></button></div>
                             <div className="space-y-4 text-gray-800 dark:text-gray-200">
                                 <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={stageFormData.isCompleted} onChange={e => setStageFormData({...stageFormData, isCompleted: e.target.checked})} className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500"/> <span className="font-bold text-sm">مرحله تکمیل شده است</span></label>
-                                 {editingStage === TradeStage.ALLOCATION_QUEUE && (
-                                     <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800 space-y-2">
-                                         <div>
-                                             <label className="text-xs font-bold block mb-1">تاریخ ورود به صف</label>
-                                             <TradeDatePicker 
-                                                 value={stageFormData.queueDate || ''} 
-                                                 onChange={val => setStageFormData({...stageFormData, queueDate: val})} 
-                                             />
-                                         </div>
-                                         {stageFormData.queueDate && (
-                                             <div className="text-xs text-amber-700 dark:text-amber-400 font-bold">
-                                                 مدت انتظار: {calculateDaysDiff(stageFormData.queueDate)} روز
-                                             </div>
-                                         )}
-                                     </div>
-                                 )}
-                                 {editingStage === TradeStage.ALLOCATION_APPROVED && (
-                                     <div className="bg-green-50 dark:bg-green-950/40 p-3 rounded-xl border border-green-200 dark:border-green-800 space-y-2">
-                                         <div>
-                                             <label className="text-xs font-bold block mb-1">شماره فیش/تخصیص</label>
-                                             <input 
-                                                 type="text" 
-                                                 className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" 
-                                                 value={stageFormData.allocationCode || ''} 
-                                                 onChange={e => setStageFormData({...stageFormData, allocationCode: e.target.value})} 
-                                             />
-                                         </div>
-                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                 {(editingStage === TradeStage.ALLOCATION_QUEUE || editingStage === TradeStage.ALLOCATION_APPROVED) && (
+                                     <div className="space-y-3">
+                                         <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800 space-y-2">
+                                             <div className="font-bold text-xs text-amber-800 dark:text-amber-300">۱. در صف تخصیص ارز</div>
                                              <div>
-                                                 <label className="text-xs font-bold block mb-1">تاریخ تخصیص</label>
+                                                 <label className="text-xs font-bold block mb-1">تاریخ ورود به صف</label>
                                                  <TradeDatePicker 
-                                                     value={stageFormData.allocationDate || ''} 
-                                                     onChange={val => setStageFormData({...stageFormData, allocationDate: val})} 
+                                                     value={stageFormData.queueDate || ''} 
+                                                     onChange={val => setStageFormData({...stageFormData, queueDate: val})} 
                                                  />
                                              </div>
+                                             {stageFormData.queueDate && (
+                                                 <div className="text-xs text-amber-700 dark:text-amber-400 font-bold">
+                                                     مدت انتظار: {calculateDaysDiff(stageFormData.queueDate)} روز
+                                                 </div>
+                                             )}
+                                         </div>
+
+                                         <div className="bg-green-50 dark:bg-green-950/40 p-3 rounded-xl border border-green-200 dark:border-green-800 space-y-2">
+                                             <div className="font-bold text-xs text-green-800 dark:text-green-300">۲. تخصیص یافته</div>
                                              <div>
-                                                 <label className="text-xs font-bold block mb-1">مهلت انقضا</label>
-                                                 <TradeDatePicker 
-                                                     value={stageFormData.allocationExpiry || ''} 
-                                                     onChange={val => setStageFormData({...stageFormData, allocationExpiry: val})} 
-                                                     placeholder="۱۴۰۳/۰۲/۰۱"
+                                                 <label className="text-xs font-bold block mb-1">شماره فیش/تخصیص</label>
+                                                 <input 
+                                                     type="text" 
+                                                     className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono font-bold" 
+                                                     value={stageFormData.allocationCode || ''} 
+                                                     onChange={e => setStageFormData({...stageFormData, allocationCode: e.target.value})} 
                                                  />
+                                             </div>
+                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                 <div>
+                                                     <label className="text-xs font-bold block mb-1">تاریخ تخصیص</label>
+                                                     <TradeDatePicker 
+                                                         value={stageFormData.allocationDate || ''} 
+                                                         onChange={val => setStageFormData({...stageFormData, allocationDate: val})} 
+                                                     />
+                                                 </div>
+                                                 <div>
+                                                     <label className="text-xs font-bold block mb-1">مهلت انقضا</label>
+                                                     <TradeDatePicker 
+                                                         value={stageFormData.allocationExpiry || ''} 
+                                                         onChange={val => setStageFormData({...stageFormData, allocationExpiry: val})} 
+                                                         placeholder="۱۴۰۳/۰۲/۰۱"
+                                                     />
+                                                 </div>
                                              </div>
                                          </div>
                                      </div>
@@ -2587,6 +2698,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         <button type="button" onClick={() => setActiveTab('timeline')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'timeline' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>تایم‌لاین</button>
                         <button type="button" onClick={() => setActiveTab('proforma')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'proforma' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>پروفرما</button>
                         <button type="button" onClick={() => setActiveTab('insurance')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'insurance' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>بیمه</button>
+                        <button type="button" onClick={() => setActiveTab('allocation')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'allocation' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>صف و تخصیص ارز</button>
                         <button type="button" onClick={() => setActiveTab('currency_purchase')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'currency_purchase' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>خرید ارز</button>
                         <button type="button" onClick={() => setActiveTab('shipping_docs')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'shipping_docs' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>اسناد حمل</button>
                         <button type="button" onClick={() => setActiveTab('inspection')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'inspection' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>بازرسی</button>
@@ -2604,22 +2716,46 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     {activeTab === 'timeline' && (
                         <div className="p-2.5 sm:p-6 max-w-4xl mx-auto">
                             <div className="relative border-r-2 border-gray-200/50 dark:border-white/10 mr-2 sm:mr-4 space-y-3.5 sm:space-y-6 pr-4 sm:pr-8">
-                                {STAGES.map((stage, idx) => {
-                                    const data = getStageData(selectedRecord, stage);
+                                {STAGES.filter(s => s !== TradeStage.ALLOCATION_APPROVED).map((stage) => {
+                                    const isAllocation = stage === TradeStage.ALLOCATION_QUEUE;
+                                    const queueData = getStageData(selectedRecord, TradeStage.ALLOCATION_QUEUE);
+                                    const approvedData = getStageData(selectedRecord, TradeStage.ALLOCATION_APPROVED);
+                                    
+                                    const title = isAllocation ? 'صف و تخصیص ارز' : stage;
+                                    const isCompleted = isAllocation 
+                                        ? (approvedData.isCompleted || (queueData.isCompleted && Boolean(selectedRecord.currencyPurchaseData?.allocationCode)))
+                                        : getStageData(selectedRecord, stage).isCompleted;
+                                    
+                                    const description = isAllocation
+                                        ? (approvedData.allocationCode || selectedRecord.currencyPurchaseData?.allocationCode
+                                            ? `تخصیص یافته (شماره فیش/تخصیص: ${approvedData.allocationCode || selectedRecord.currencyPurchaseData?.allocationCode || '-'})`
+                                            : queueData.queueDate || selectedRecord.currencyPurchaseData?.queueEntryDate
+                                                ? `در صف تخصیص ارز (تاریخ: ${queueData.queueDate || selectedRecord.currencyPurchaseData?.queueEntryDate})`
+                                                : 'بدون ثبت تاریخ صف یا تخصیص')
+                                        : (getStageData(selectedRecord, stage).description || 'بدون توضیحات');
+
+                                    const totalCostRial = isAllocation 
+                                        ? (queueData.costRial || 0) + (approvedData.costRial || 0)
+                                        : (getStageData(selectedRecord, stage).costRial || 0);
+
+                                    const totalCostCurrency = isAllocation
+                                        ? (queueData.costCurrency || 0) + (approvedData.costCurrency || 0)
+                                        : (getStageData(selectedRecord, stage).costCurrency || 0);
+
                                     return (
                                         <div key={stage} className="relative">
-                                            <div className={`absolute -right-[22px] sm:-right-[41px] top-2 w-3.5 h-3.5 sm:w-6 sm:h-6 rounded-full border-2 sm:border-4 ${data.isCompleted ? 'bg-green-500 border-green-100' : 'bg-gray-300 border-gray-100'}`}></div>
-                                            <div className="glass-panel p-2.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-zinc-800 hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleStageClick(stage)}>
+                                            <div className={`absolute -right-[22px] sm:-right-[41px] top-2 w-3.5 h-3.5 sm:w-6 sm:h-6 rounded-full border-2 sm:border-4 ${isCompleted ? 'bg-green-500 border-green-100' : 'bg-gray-300 border-gray-100'}`}></div>
+                                            <div className="glass-panel p-2.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-zinc-800 hover:shadow-md transition-shadow cursor-pointer" onClick={() => isAllocation ? setActiveTab('allocation') : handleStageClick(stage)}>
                                                 <div className="flex justify-between items-start">
                                                     <div>
-                                                        <h3 className="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-sm">{stage}</h3>
-                                                        <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">{data.description || 'بدون توضیحات'}</p>
+                                                        <h3 className="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-sm">{title}</h3>
+                                                        <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>
                                                     </div>
-                                                    {data.isCompleted && <CheckCircle2 size={16} className="text-green-500 shrink-0"/>}
+                                                    {isCompleted && <CheckCircle2 size={16} className="text-green-500 shrink-0"/>}
                                                 </div>
                                                 <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2 text-[10px] sm:text-xs">
-                                                    {data.costRial > 0 && <span className="bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-lg">هزینه ریالی: {formatCurrency(data.costRial)} ریال</span>}
-                                                    {data.costCurrency > 0 && <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-lg font-mono">هزینه ارزی: {formatNumberString(data.costCurrency)} {selectedRecord.mainCurrency}</span>}
+                                                    {totalCostRial > 0 && <span className="bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-lg">هزینه ریالی: {formatCurrency(totalCostRial)} ریال</span>}
+                                                    {totalCostCurrency > 0 && <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-lg font-mono">هزینه ارزی: {formatNumberString(totalCostCurrency)} {selectedRecord.mainCurrency}</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -3031,6 +3167,24 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                             editingEndorsementId={editingEndorsementId}
                             onEditEndorsement={handleEditEndorsement}
                             onCancelEditEndorsement={handleCancelEditEndorsement}
+                        />
+                    )}
+
+                    {activeTab === 'allocation' && selectedRecord && (
+                        <AllocationTab 
+                            record={selectedRecord}
+                            onSave={handleSaveAllocation}
+                            uploadFile={uploadFile}
+                            onOpenAttachment={(url, name) => {
+                                setViewerUrl(url);
+                                setViewerName(name);
+                                setViewerOpen(true);
+                            }}
+                            onSendToChat={(attachment, msg) => {
+                                setSendToChatAttachment(attachment);
+                                setSendToChatDefaultMsg(msg);
+                                setSendToChatOpen(true);
+                            }}
                         />
                     )}
 

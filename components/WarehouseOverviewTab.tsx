@@ -34,6 +34,7 @@ interface CustomCargoItem {
     cartons: number;
     container: number;
     dollars: number;
+    statusBadge?: string;
 }
 
 interface CommercialGoodItem {
@@ -247,43 +248,49 @@ export const WarehouseOverviewTab: React.FC = () => {
     ) => {
         const activeTradeRecords = (trades || []).filter((r: any) => !r.isArchived && isCompanyMatching(r.company, targetAllowedCompanies));
 
-        const parsedCommercialTransit: CustomCargoItem[] = [];
         const parsedCommercialCustoms: CustomCargoItem[] = [];
-        const parsedCommercialPurchase: CustomCargoItem[] = [];
+        const parsedCommercialPurchaseAndTransit: CustomCargoItem[] = [];
 
         for (const record of activeTradeRecords) {
-            const isCompleted = record.status === 'Completed' || record.isArchived;
+            const isCompleted = record.status === 'Completed' || Boolean(record.isArchived);
 
-            // Check if record has reached customs (has cottage, green leaf, guarantees, or customs clearance receipts)
+            // Check if record has Truck Freight Cost (هزینه حمل کامیون / تحویل به انبار)
+            const hasTruckFreight = Boolean(
+                (record.internalShippingData?.payments && record.internalShippingData.payments.length > 0) ||
+                (record.stages?.[TradeStage.INTERNAL_SHIPPING]?.costRial > 0) ||
+                record.stages?.[TradeStage.INTERNAL_SHIPPING]?.isCompleted ||
+                (record.stages?.['حمل داخلی']?.costRial > 0) ||
+                record.stages?.['حمل داخلی']?.isCompleted
+            );
+
+            // Rule 4: "و وقتی هم هزینه حمل کامیون و یا بایگانی شد باید از تراز وزنی خارج بشه"
+            if (isCompleted || hasTruckFreight) {
+                continue;
+            }
+
+            // Rule 3: "و وقتی هم اعلامیه ورود ثبت میشه یا کوتاژ اتومات بره در گمرک"
+            // Cottage (کوتاژ):
             const hasCottage = Boolean(
+                (record.cottageNumber && String(record.cottageNumber).trim() !== '') ||
                 (record.greenLeafData?.duties && record.greenLeafData.duties.length > 0) ||
                 (record.greenLeafData?.guarantees && record.greenLeafData.guarantees.length > 0) ||
                 (record.stages?.[TradeStage.GREEN_LEAF]?.costRial > 0 || record.stages?.[TradeStage.GREEN_LEAF]?.isCompleted) ||
                 (record.stages?.['برگ سبز']?.costRial > 0 || record.stages?.['برگ سبز']?.isCompleted) ||
-                (record.cottageNumber && String(record.cottageNumber).trim() !== '') ||
                 (record.greenLeafData?.duties?.some((d: any) => d.cottageNumber && String(d.cottageNumber).trim() !== ''))
             );
 
-            const hasCustomsWarehouseReceipt = Boolean(
+            // Arrival Notice (اعلامیه ورود / ترخیصیه / قبض انبار):
+            const hasArrivalNotice = Boolean(
                 (record.clearanceData?.receipts && record.clearanceData.receipts.length > 0) ||
+                (record.clearanceData?.payments && record.clearanceData.payments.length > 0) ||
                 (record.stages?.[TradeStage.CLEARANCE_DOCS]?.costRial > 0 || record.stages?.[TradeStage.CLEARANCE_DOCS]?.isCompleted) ||
                 (record.stages?.['ترخیصیه و قبض انبار']?.costRial > 0 || record.stages?.['ترخیصیه و قبض انبار']?.isCompleted) ||
-                (record.clearanceData?.payments && record.clearanceData.payments.length > 0)
+                record.isInCustoms
             );
 
-            const isInCustoms = !isCompleted && (record.isInCustoms || hasCottage || hasCustomsWarehouseReceipt);
+            const isInCustoms = hasCottage || hasArrivalNotice;
 
-            const hasShipping = Boolean(
-                record.isInTransit ||
-                (record.shippingDocuments && record.shippingDocuments.length > 0) ||
-                (record.stages?.[TradeStage.SHIPPING_DOCS]?.costRial > 0 || record.stages?.[TradeStage.SHIPPING_DOCS]?.costCurrency > 0 || record.stages?.[TradeStage.SHIPPING_DOCS]?.isCompleted) ||
-                (record.stages?.['اسناد حمل']?.costRial > 0 || record.stages?.['اسناد حمل']?.costCurrency > 0 || record.stages?.['اسناد حمل']?.isCompleted) ||
-                (record.stages?.[TradeStage.INSPECTION]?.costRial > 0 || record.stages?.[TradeStage.INSPECTION]?.isCompleted) ||
-                (record.stages?.['گواهی بازرسی']?.costRial > 0 || record.stages?.['گواهی بازرسی']?.isCompleted)
-            );
-
-            const isInTransit = !isCompleted && !isInCustoms && hasShipping;
-
+            // Currency Purchase registered (خرید ارز ثبت شده):
             const hasCurrencyPurchase = Boolean(
                 (record.currencyPurchaseData && (
                     (record.currencyPurchaseData.purchasedAmount || 0) > 0 || 
@@ -293,54 +300,81 @@ export const WarehouseOverviewTab: React.FC = () => {
                 (record.stages?.['خرید ارز']?.costCurrency > 0 || record.stages?.['خرید ارز']?.costRial > 0 || record.stages?.['خرید ارز']?.isCompleted)
             );
 
-            const isPurchasing = !isCompleted && !isInCustoms && !isInTransit && (
-                hasCurrencyPurchase ||
-                (record.registrationNumber && String(record.registrationNumber).trim() !== '') ||
-                (record.stages?.[TradeStage.ALLOCATION_APPROVED]?.isCompleted || record.stages?.['تخصیص یافته']?.isCompleted) ||
-                (record.stages?.[TradeStage.ALLOCATION_QUEUE]?.isCompleted || record.stages?.['در صف تخصیص ارز']?.isCompleted) ||
-                (record.stages?.[TradeStage.LICENSES]?.isCompleted || record.stages?.['مجوزها و پروفرما']?.isCompleted) ||
-                (record.licenseData?.transactions && record.licenseData.transactions.length > 0) ||
-                (record.items && record.items.length > 0)
+            // Allocation Approved (تخصیص یافته):
+            const hasAllocationApproved = Boolean(
+                record.currencyPurchaseData?.allocationDate ||
+                record.stages?.[TradeStage.ALLOCATION_APPROVED]?.isCompleted ||
+                record.stages?.['تخصیص یافته']?.isCompleted
             );
 
-            const item: CustomCargoItem = {
-                id: `com_${record.id}`,
-                cargoType: record.goodsName || 'کالای بازرگانی',
-                proforma: record.fileNumber || '',
-                weight: getRecordWeight(record),
-                cartons: getRecordCartons(record),
-                container: 0,
-                dollars: getRecordDollars(record)
-            };
-
             if (isInCustoms) {
-                parsedCommercialCustoms.push(item);
-            } else if (isInTransit) {
-                parsedCommercialTransit.push(item);
-            } else if (isPurchasing) {
-                parsedCommercialPurchase.push(item);
+                let badge = 'ترخیصی گمرک';
+                if (hasCottage) badge = 'دارای کوتاژ';
+                else if (hasArrivalNotice) badge = 'دارای اعلامیه ورود';
+
+                parsedCommercialCustoms.push({
+                    id: `com_${record.id}`,
+                    cargoType: record.goodsName || 'کالای بازرگانی',
+                    proforma: record.fileNumber || '',
+                    weight: getRecordWeight(record),
+                    cartons: getRecordCartons(record),
+                    container: 0,
+                    dollars: getRecordDollars(record),
+                    statusBadge: badge
+                });
+            } else if (hasCurrencyPurchase || hasAllocationApproved) {
+                // Rule 5: Merged "در حال خرید و در راه"
+                let badge = hasCurrencyPurchase ? 'خرید ارز ثبت شده' : 'تخصیص یافته';
+                if (record.isInTransit || (record.shippingDocuments && record.shippingDocuments.length > 0)) {
+                    badge = hasCurrencyPurchase ? 'خرید ارز / در راه' : 'در راه (تخصیص یافته)';
+                }
+
+                parsedCommercialPurchaseAndTransit.push({
+                    id: `com_${record.id}`,
+                    cargoType: record.goodsName || 'کالای بازرگانی',
+                    proforma: record.fileNumber || '',
+                    weight: getRecordWeight(record),
+                    cartons: getRecordCartons(record),
+                    container: 0,
+                    dollars: getRecordDollars(record),
+                    statusBadge: badge
+                });
             }
+            // Rule 1: Records that are only order-registered and in allocation queue without allocation and without currency purchase
+            // are explicitly excluded from the weight balance!
         }
 
         const clearedFileNumbers = new Set(
-            activeTradeRecords
-                .filter(r => r.status === 'Completed' || r.isArchived)
-                .map(r => r.fileNumber)
+            (trades || [])
+                .filter((r: any) => {
+                    const hasTruck = Boolean(
+                        (r.internalShippingData?.payments && r.internalShippingData.payments.length > 0) ||
+                        (r.stages?.[TradeStage.INTERNAL_SHIPPING]?.costRial > 0) ||
+                        r.stages?.[TradeStage.INTERNAL_SHIPPING]?.isCompleted ||
+                        (r.stages?.['حمل داخلی']?.costRial > 0) ||
+                        r.stages?.['حمل داخلی']?.isCompleted
+                    );
+                    return r.status === 'Completed' || r.isArchived || hasTruck;
+                })
+                .map((r: any) => r.fileNumber)
                 .filter(Boolean)
         );
 
-        setGoodsInTransit([
-            ...(baseTransit || []).filter((x: any) => !x.id.startsWith('com_')),
-            ...parsedCommercialTransit
-        ]);
         setGoodsInCustoms([
             ...(baseCustoms || []).filter((x: any) => !x.id.startsWith('com_') && (!x.proforma || !clearedFileNumbers.has(x.proforma))),
             ...parsedCommercialCustoms
         ]);
+
+        const mergedBasePurchaseAndTransit = [
+            ...(basePurchase || []).filter((x: any) => !x.id.startsWith('com_') && (!x.proforma || !clearedFileNumbers.has(x.proforma))),
+            ...(baseTransit || []).filter((x: any) => !x.id.startsWith('com_') && (!x.proforma || !clearedFileNumbers.has(x.proforma)))
+        ];
+
         setPurchasingGoods([
-            ...(basePurchase || []).filter((x: any) => !x.id.startsWith('com_')),
-            ...parsedCommercialPurchase
+            ...mergedBasePurchaseAndTransit,
+            ...parsedCommercialPurchaseAndTransit
         ]);
+        setGoodsInTransit([]);
     };
 
     // Helper to extract Jalali year
@@ -484,11 +518,12 @@ export const WarehouseOverviewTab: React.FC = () => {
                 const loadedCustoms: CustomCargoItem[] = (dbData.goodsInCustoms || []).filter((x: any) => !x.id.startsWith('com_'));
                 const loadedPurchase: CustomCargoItem[] = (dbData.purchasingGoods || []).filter((x: any) => !x.id.startsWith('com_'));
 
-                baseTransitRef.current = loadedTransit;
+                const mergedLoadedPurchaseAndTransit = [...loadedPurchase, ...loadedTransit];
+                baseTransitRef.current = [];
                 baseCustomsRef.current = loadedCustoms;
-                basePurchaseRef.current = loadedPurchase;
+                basePurchaseRef.current = mergedLoadedPurchaseAndTransit;
 
-                applyCommercialFilterAndMerge(tradeRecords, currentAllowedComps, loadedTransit, loadedCustoms, loadedPurchase);
+                applyCommercialFilterAndMerge(tradeRecords, currentAllowedComps, [], loadedCustoms, mergedLoadedPurchaseAndTransit);
 
                 setCommercialGoods(dbData.commercialGoods || []);
                 setItemCategories(dbData.itemCategories || {});
@@ -600,7 +635,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             const payload = {
                 lastYearOverrides,
                 currentOverrides,
-                goodsInTransit: goodsInTransit.filter(r => !r.id.startsWith('com_')),
+                goodsInTransit: [],
                 goodsInCustoms: goodsInCustoms.filter(r => !r.id.startsWith('com_')),
                 purchasingGoods: purchasingGoods.filter(r => !r.id.startsWith('com_')),
                 commercialGoods,
@@ -1123,25 +1158,6 @@ export const WarehouseOverviewTab: React.FC = () => {
             });
         });
 
-        // Add Goods In Transit (بارهای در راه)
-        goodsInTransit.forEach((item, idx) => {
-            const wCurr = parseFloat(String(item.weight || 0)) || 0;
-            const wLast = 0; // Current pipeline cargo
-            const diff = wCurr - wLast;
-            const ratio = wCurr > 0 ? 100 : (wCurr < 0 ? -100 : 0);
-            list.push({
-                code: item.proforma ? `TR-${item.proforma}` : `TR-${idx + 1}`,
-                name: `${item.cargoType || 'بار در راه'}${item.proforma ? ` (${item.proforma})` : ''}`,
-                category: 'transit',
-                categoryLabel: 'بارهای در راه (کانتینری)',
-                lastYearWeight: wLast,
-                currentWeight: wCurr,
-                diffWeight: diff,
-                ratio,
-                isNegative: diff < 0 || wCurr < 0
-            });
-        });
-
         // Add Goods In Customs (بارهای در گمرک)
         goodsInCustoms.forEach((item, idx) => {
             const wCurr = parseFloat(String(item.weight || 0)) || 0;
@@ -1150,7 +1166,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             const ratio = wCurr > 0 ? 100 : (wCurr < 0 ? -100 : 0);
             list.push({
                 code: item.proforma ? `CUST-${item.proforma}` : `CUST-${idx + 1}`,
-                name: `${item.cargoType || 'بار در گمرک'}${item.proforma ? ` (${item.proforma})` : ''}`,
+                name: `${item.cargoType || 'بار در گمرک'}${item.statusBadge ? ` [${item.statusBadge}]` : ''}${item.proforma ? ` (${item.proforma})` : ''}`,
                 category: 'customs',
                 categoryLabel: 'بارهای در گمرک',
                 lastYearWeight: wLast,
@@ -1161,7 +1177,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             });
         });
 
-        // Add Purchasing Goods (بارهای در حال خرید)
+        // Add Purchasing & In-Transit Goods (بارهای در حال خرید و در راه)
         purchasingGoods.forEach((item, idx) => {
             const wCurr = parseFloat(String(item.weight || 0)) || 0;
             const wLast = 0; // Current pipeline cargo
@@ -1169,9 +1185,9 @@ export const WarehouseOverviewTab: React.FC = () => {
             const ratio = wCurr > 0 ? 100 : (wCurr < 0 ? -100 : 0);
             list.push({
                 code: item.proforma ? `PUR-${item.proforma}` : `PUR-${idx + 1}`,
-                name: `${item.cargoType || 'بار در حال خرید'}${item.proforma ? ` (${item.proforma})` : ''}`,
+                name: `${item.cargoType || 'بار در حال خرید و در راه'}${item.statusBadge ? ` [${item.statusBadge}]` : ''}${item.proforma ? ` (${item.proforma})` : ''}`,
                 category: 'purchasing',
-                categoryLabel: 'بارهای در حال خرید',
+                categoryLabel: 'بارهای در حال خرید و در راه',
                 lastYearWeight: wLast,
                 currentWeight: wCurr,
                 diffWeight: diff,
@@ -1254,10 +1270,9 @@ export const WarehouseOverviewTab: React.FC = () => {
         }));
 
         const logisticsItems = [
-            ...goodsInTransit.map(r => ({ ...r, category: 'transit', categoryLabel: 'بارهای در راه (کانتینری)' })),
-            ...goodsInCustoms.map(r => ({ ...r, category: 'customs', categoryLabel: 'بارهای در گمرک' })),
-            ...purchasingGoods.map(r => ({ ...r, category: 'purchasing', categoryLabel: 'بارهای در حال خرید' })),
-            ...commercialGoods.map(r => ({ ...r, category: 'commercial', categoryLabel: 'کالای تجاری / متفرقه' }))
+            ...goodsInCustoms.map(r => ({ ...r, category: 'customs', categoryLabel: 'بارهای در گمرک', status: r.statusBadge || 'در گمرک' })),
+            ...purchasingGoods.map(r => ({ ...r, category: 'purchasing', categoryLabel: 'بارهای در حال خرید و در راه', status: r.statusBadge || 'در حال خرید / در راه' })),
+            ...commercialGoods.map(r => ({ ...r, category: 'commercial', categoryLabel: 'کالای تجاری / متفرقه', status: 'انبار تجاری' }))
         ];
 
         const summary = {
@@ -1484,56 +1499,42 @@ export const WarehouseOverviewTab: React.FC = () => {
             container: 0,
             dollars: 0
         };
-        if (type === 'transit') {
-            const next = [...goodsInTransit, newRow];
-            setGoodsInTransit(next);
-            baseTransitRef.current = next.filter(r => !r.id.startsWith('com_'));
+        if (type === 'transit' || type === 'purchase') {
+            const next = [...purchasingGoods, newRow];
+            setPurchasingGoods(next);
+            basePurchaseRef.current = next.filter(r => !r.id.startsWith('com_'));
         }
         if (type === 'customs') {
             const next = [...goodsInCustoms, newRow];
             setGoodsInCustoms(next);
             baseCustomsRef.current = next.filter(r => !r.id.startsWith('com_'));
         }
-        if (type === 'purchase') {
-            const next = [...purchasingGoods, newRow];
-            setPurchasingGoods(next);
-            basePurchaseRef.current = next.filter(r => !r.id.startsWith('com_'));
-        }
     };
 
     const deleteCustomRow = (type: 'transit' | 'customs' | 'purchase', id: string) => {
-        if (type === 'transit') {
-            const next = goodsInTransit.filter(r => r.id !== id);
-            setGoodsInTransit(next);
-            baseTransitRef.current = next.filter(r => !r.id.startsWith('com_'));
+        if (type === 'transit' || type === 'purchase') {
+            const next = purchasingGoods.filter(r => r.id !== id);
+            setPurchasingGoods(next);
+            basePurchaseRef.current = next.filter(r => !r.id.startsWith('com_'));
         }
         if (type === 'customs') {
             const next = goodsInCustoms.filter(r => r.id !== id);
             setGoodsInCustoms(next);
             baseCustomsRef.current = next.filter(r => !r.id.startsWith('com_'));
         }
-        if (type === 'purchase') {
-            const next = purchasingGoods.filter(r => r.id !== id);
-            setPurchasingGoods(next);
-            basePurchaseRef.current = next.filter(r => !r.id.startsWith('com_'));
-        }
     };
 
     const updateCustomCell = (type: 'transit' | 'customs' | 'purchase', id: string, field: string, value: any) => {
-        const list = type === 'transit' ? goodsInTransit : type === 'customs' ? goodsInCustoms : purchasingGoods;
+        const list = type === 'customs' ? goodsInCustoms : purchasingGoods;
         const next = list.map(r => r.id === id ? { ...r, [field]: field === 'cargoType' || field === 'proforma' ? value : parseFloat(value || '0') } : r);
 
-        if (type === 'transit') {
-            setGoodsInTransit(next);
-            baseTransitRef.current = next.filter(r => !r.id.startsWith('com_'));
+        if (type === 'transit' || type === 'purchase') {
+            setPurchasingGoods(next);
+            basePurchaseRef.current = next.filter(r => !r.id.startsWith('com_'));
         }
         if (type === 'customs') {
             setGoodsInCustoms(next);
             baseCustomsRef.current = next.filter(r => !r.id.startsWith('com_'));
-        }
-        if (type === 'purchase') {
-            setPurchasingGoods(next);
-            basePurchaseRef.current = next.filter(r => !r.id.startsWith('com_'));
         }
     };
 
@@ -1984,15 +1985,6 @@ export const WarehouseOverviewTab: React.FC = () => {
 
                     <button
                         type="button"
-                        onClick={() => scrollToSection('section-transit')}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-700 whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                        <Layers className="w-3 h-3 text-teal-600" />
-                        <span>🚢 بارهای در راه</span>
-                    </button>
-
-                    <button
-                        type="button"
                         onClick={() => scrollToSection('section-customs')}
                         className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-sky-50 text-slate-700 hover:text-sky-700 whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer"
                     >
@@ -2006,7 +1998,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                         className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer"
                     >
                         <Layers className="w-3 h-3 text-indigo-600" />
-                        <span>🛒 در حال خرید</span>
+                        <span>🚢🛒 در حال خرید و در راه</span>
                     </button>
 
                     {negativeItems.length > 0 && (
@@ -2559,156 +2551,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                 </div>
             </div>
 
-            {/* THREE INTERACTIVE CARGO TABLES: Transit, Customs, Purchasing */}
+            {/* INTERACTIVE CARGO TABLES: Customs, and Merged Purchasing & In-Transit */}
             <div className="space-y-4 sm:space-y-6 w-full">
                 
-                {/* A. GOODS IN TRANSIT (کالاهای در راه) */}
-                <div id="section-transit" className="bg-white rounded-none sm:rounded-2xl border-y sm:border border-slate-200 overflow-hidden shadow-sm scroll-mt-28 w-full">
-                    <div className="p-4 bg-teal-800 text-white flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <h4 className="font-extrabold text-sm sm:text-base">کالاهای در راه (بارهای در مسیر حمل دریایی / زمینی)</h4>
-                        </div>
-                        {isEditMode && (
-                            <button
-                                onClick={() => addCustomRow('transit')}
-                                className="bg-teal-700 hover:bg-teal-600 text-white rounded px-3 py-1 text-xs font-bold transition-all flex items-center gap-1"
-                            >
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>افزودن بار در راه</span>
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[620px] text-xs text-center border-collapse">
-                            <thead>
-                                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                                    <th className="py-3 px-3 text-right whitespace-nowrap">نوع بار</th>
-                                    <th className="py-3 px-2 whitespace-nowrap">پروفرم / حواله</th>
-                                    <th className="py-3 px-2 whitespace-nowrap">وزن (kg)</th>
-                                    <th className="py-3 px-2 whitespace-nowrap">تعداد کارتن</th>
-                                    <th className="py-3 px-2 whitespace-nowrap">کانتینر</th>
-                                    <th className="py-3 px-2 whitespace-nowrap">ارزش دلاری ($)</th>
-                                    {isEditMode && <th className="py-3 px-2 whitespace-nowrap">عملیات</th>}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {goodsInTransit.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ باری در راه ثبت نشده است.</td>
-                                    </tr>
-                                ) : (
-                                    goodsInTransit.map((item) => {
-                                        const isCommercial = item.id.startsWith('com_');
-                                        return (
-                                            <tr key={item.id} className="hover:bg-slate-50 text-slate-700">
-                                                <td className="py-2.5 px-3 text-right font-bold flex items-center gap-1.5 flex-wrap">
-                                                    {isEditMode && !isCommercial ? (
-                                                        <input 
-                                                            type="text" 
-                                                            value={item.cargoType} 
-                                                            onChange={(e) => updateCustomCell('transit', item.id, 'cargoType', e.target.value)}
-                                                            className="w-full py-1 px-2 border rounded border-slate-200 focus:outline-none"
-                                                        />
-                                                    ) : (
-                                                        <span className="flex items-center gap-1.5 flex-wrap">
-                                                            {item.cargoType}
-                                                            {isCommercial && (
-                                                                <span className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 text-[10px] px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900 font-bold font-sans">
-                                                                    سیستم بازرگانی
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="py-2.5 px-2">
-                                                    {isEditMode && !isCommercial ? (
-                                                        <input 
-                                                            type="text" 
-                                                            value={item.proforma} 
-                                                            onChange={(e) => updateCustomCell('transit', item.id, 'proforma', e.target.value)}
-                                                            className="w-full text-center py-1 px-2 border rounded border-slate-200 focus:outline-none"
-                                                        />
-                                                    ) : item.proforma || '-'}
-                                                </td>
-                                                <td className="py-2.5 px-2 font-mono">
-                                                    {isEditMode && !isCommercial ? (
-                                                        <input 
-                                                            type="number" 
-                                                            value={item.weight} 
-                                                            onChange={(e) => updateCustomCell('transit', item.id, 'weight', e.target.value)}
-                                                            className="w-28 text-center py-1 px-2 border rounded border-slate-200 font-mono"
-                                                        />
-                                                    ) : item.weight.toLocaleString('fa-IR')}
-                                                </td>
-                                                <td className="py-2.5 px-2 font-mono">
-                                                    {isEditMode && !isCommercial ? (
-                                                        <input 
-                                                            type="number" 
-                                                            value={item.cartons} 
-                                                            onChange={(e) => updateCustomCell('transit', item.id, 'cartons', e.target.value)}
-                                                            className="w-24 text-center py-1 px-2 border rounded border-slate-200 font-mono"
-                                                        />
-                                                    ) : item.cartons.toLocaleString('fa-IR')}
-                                                </td>
-                                                <td className="py-2.5 px-2 font-mono">
-                                                    {isEditMode && !isCommercial ? (
-                                                        <input 
-                                                            type="number" 
-                                                            value={item.container} 
-                                                            onChange={(e) => updateCustomCell('transit', item.id, 'container', e.target.value)}
-                                                            className="w-20 text-center py-1 px-2 border rounded border-slate-200 font-mono"
-                                                        />
-                                                    ) : item.container.toLocaleString('fa-IR')}
-                                                </td>
-                                                <td className="py-2.5 px-2 font-mono font-bold text-emerald-600">
-                                                    {isEditMode && !isCommercial ? (
-                                                        <input 
-                                                            type="number" 
-                                                            value={item.dollars} 
-                                                            onChange={(e) => updateCustomCell('transit', item.id, 'dollars', e.target.value)}
-                                                            className="w-28 text-center py-1 px-2 border rounded border-slate-200 font-mono"
-                                                        />
-                                                    ) : `$${item.dollars.toLocaleString('en-US')}`}
-                                                </td>
-                                                {isEditMode && (
-                                                    <td className="py-2.5 px-2">
-                                                        {!isCommercial && (
-                                                            <button 
-                                                                onClick={() => deleteCustomRow('transit', item.id)}
-                                                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-all"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                            {goodsInTransit.length > 0 && (
-                                <tfoot>
-                                    <tr className="bg-teal-900 text-white font-extrabold border-t border-teal-700">
-                                        <td className="py-3 px-3 text-right" colSpan={2}>جمع بارهای در راه</td>
-                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(goodsInTransit, 'weight').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(goodsInTransit, 'cartons').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(goodsInTransit, 'container').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-emerald-300">${calculateCustomTableSum(goodsInTransit, 'dollars').toLocaleString('en-US')}</td>
-                                        {isEditMode && <td></td>}
-                                    </tr>
-                                </tfoot>
-                            )}
-                        </table>
-                    </div>
-                </div>
-
-                {/* B. GOODS IN CUSTOMS (بارهای در گمرک) */}
+                {/* A. GOODS IN CUSTOMS (بارهای در گمرک - دارای اعلامیه ورود یا کوتاژ) */}
                 <div id="section-customs" className="bg-white rounded-none sm:rounded-2xl border-y sm:border border-slate-200 overflow-hidden shadow-sm scroll-mt-28 w-full">
                     <div className="p-4 bg-sky-800 text-white flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <h4 className="font-extrabold text-sm sm:text-base">بارهای در گمرک (رسیده به گمرکات کشور و در حال ترخیص)</h4>
+                            <h4 className="font-extrabold text-sm sm:text-base">بارهای در گمرک (دارای اعلامیه ورود یا کوتاژ)</h4>
+                            <span className="text-[11px] bg-sky-700/80 px-2 py-0.5 rounded text-sky-100 hidden sm:inline">
+                                شامل پرونده‌های دارای کوتاژ یا اعلامیه ورود / ترخیصیه
+                            </span>
                         </div>
                         {isEditMode && (
                             <button
@@ -2737,7 +2590,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {goodsInCustoms.length === 0 ? (
                                     <tr>
-                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ باری در گمرک ثبت نشده است.</td>
+                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ بار دارای کوتاژ یا اعلامیه ورود در گمرک ثبت نشده است.</td>
                                     </tr>
                                 ) : (
                                     goodsInCustoms.map((item) => {
@@ -2755,7 +2608,12 @@ export const WarehouseOverviewTab: React.FC = () => {
                                                     ) : (
                                                         <span className="flex items-center gap-1.5 flex-wrap">
                                                             {item.cargoType}
-                                                            {isCommercial && (
+                                                            {item.statusBadge && (
+                                                                <span className="bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 text-[10px] px-1.5 py-0.5 rounded-md border border-sky-200 dark:border-sky-900 font-bold font-sans">
+                                                                    {item.statusBadge}
+                                                                </span>
+                                                            )}
+                                                            {isCommercial && !item.statusBadge && (
                                                                 <span className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 text-[10px] px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900 font-bold font-sans">
                                                                     سیستم بازرگانی
                                                                 </span>
@@ -2846,11 +2704,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                     </div>
                 </div>
 
-                {/* C. GOODS UNDER PURCHASE / PROCURING (در حال خرید) */}
+                {/* Anchor for any old transit scroll link */}
+                <div id="section-transit" className="scroll-mt-28" />
+
+                {/* B. MERGED PURCHASING & IN-TRANSIT (بارهای در حال خرید و در راه - خرید ارز ثبت شده یا تخصیص یافته) */}
                 <div id="section-purchasing" className="bg-white rounded-none sm:rounded-2xl border-y sm:border border-slate-200 overflow-hidden shadow-sm scroll-mt-28 w-full">
-                    <div className="p-4 bg-indigo-800 text-white flex items-center justify-between">
+                    <div className="p-4 bg-indigo-900 text-white flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <h4 className="font-extrabold text-sm sm:text-base">بارهای در حال خرید (ثبت سفارش شده یا پیش پرداخت انجام شده)</h4>
+                            <h4 className="font-extrabold text-sm sm:text-base">بارهای در حال خرید و در راه (تخصیص یافته یا دارای خرید ارز)</h4>
+                            <span className="text-[11px] bg-indigo-800/80 px-2 py-0.5 rounded text-indigo-200 hidden sm:inline">
+                                ادغام در حال خرید و در راه (فقط بارهای دارای خرید ارز یا تخصیص یافته)
+                            </span>
                         </div>
                         {isEditMode && (
                             <button
@@ -2858,7 +2722,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                                 className="bg-indigo-700 hover:bg-indigo-600 text-white rounded px-3 py-1 text-xs font-bold transition-all flex items-center gap-1"
                             >
                                 <Plus className="w-3.5 h-3.5" />
-                                <span>افزودن خرید جدید</span>
+                                <span>افزودن بار جدید</span>
                             </button>
                         )}
                     </div>
@@ -2879,7 +2743,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {purchasingGoods.length === 0 ? (
                                     <tr>
-                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ خرید فعالی در دست اقدام نیست.</td>
+                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ بار در حال خرید یا در راه با شرایط خرید ارز/تخصیص ثبت نشده است.</td>
                                     </tr>
                                 ) : (
                                     purchasingGoods.map((item) => {
@@ -2897,7 +2761,12 @@ export const WarehouseOverviewTab: React.FC = () => {
                                                     ) : (
                                                         <span className="flex items-center gap-1.5 flex-wrap">
                                                             {item.cargoType}
-                                                            {isCommercial && (
+                                                            {item.statusBadge && (
+                                                                <span className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 text-[10px] px-1.5 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 font-bold font-sans">
+                                                                    {item.statusBadge}
+                                                                </span>
+                                                            )}
+                                                            {isCommercial && !item.statusBadge && (
                                                                 <span className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 text-[10px] px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900 font-bold font-sans">
                                                                     سیستم بازرگانی
                                                                 </span>
@@ -2974,8 +2843,8 @@ export const WarehouseOverviewTab: React.FC = () => {
                             </tbody>
                             {purchasingGoods.length > 0 && (
                                 <tfoot>
-                                    <tr className="bg-indigo-900 text-white font-extrabold border-t border-indigo-700">
-                                        <td className="py-3 px-3 text-right" colSpan={2}>جمع بارهای در حال خرید</td>
+                                    <tr className="bg-indigo-950 text-white font-extrabold border-t border-indigo-800">
+                                        <td className="py-3 px-3 text-right" colSpan={2}>جمع کل بارهای در حال خرید و در راه</td>
                                         <td className="py-3 px-2 font-mono">{calculateCustomTableSum(purchasingGoods, 'weight').toLocaleString('fa-IR')}</td>
                                         <td className="py-3 px-2 font-mono">{calculateCustomTableSum(purchasingGoods, 'cartons').toLocaleString('fa-IR')}</td>
                                         <td className="py-3 px-2 font-mono">{calculateCustomTableSum(purchasingGoods, 'container').toLocaleString('fa-IR')}</td>

@@ -765,9 +765,17 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
                     </span>
                 </div>
                 <h3 className="font-bold text-gray-800 text-base mb-1">{req.itemName}</h3>
-                <div className="flex gap-4 text-xs text-gray-500">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                     <span>📦 {req.quantity} {req.unit}</span>
                     <span>📅 {formatDate(req.date)}</span>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                        (req.comments && req.comments.length > 0)
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800'
+                            : 'bg-gray-50 text-gray-400 border-gray-100 dark:bg-gray-800/60 dark:text-gray-500 dark:border-gray-700'
+                    }`}>
+                        <MessageSquare size={11} />
+                        <span>{req.comments?.length || 0} نظر</span>
+                    </span>
                 </div>
                 {req.image && (
                     <div className="mt-3 rounded-lg overflow-hidden h-12 bg-gray-100 border">
@@ -1906,13 +1914,36 @@ interface PurchaseCommentsSectionProps {
     request: PurchaseRequest;
     currentUser: User;
     onSuccess: () => void;
+    settings?: SystemSettings;
 }
 
-const PurchaseCommentsSection: React.FC<PurchaseCommentsSectionProps> = ({ request, currentUser, onSuccess }) => {
+const PurchaseCommentsSection: React.FC<PurchaseCommentsSectionProps> = ({ request, currentUser, onSuccess, settings }) => {
     const [comments, setComments] = useState<PurchaseComment[]>(request.comments || []);
     const [newCommentText, setNewCommentText] = useState('');
     const [replyTo, setReplyTo] = useState<PurchaseComment | null>(null);
     const [submitting, setSubmitting] = useState(false);
+
+    const getRoleLabel = (roleId?: string) => {
+        if (!roleId) return '';
+        if (settings?.customRoleNames?.[roleId]) return settings.customRoleNames[roleId];
+        const custom = settings?.customRoles?.find((r: any) => r.id === roleId || r.name === roleId);
+        if (custom) return settings?.customRoleNames?.[custom.id] || custom.label || custom.name;
+        const standardRoles: Record<string, string> = {
+            'admin': 'مدیر سیستم',
+            'ceo': 'مدیر عامل',
+            'financial': 'مالی',
+            'manager': 'مدیر بخش',
+            'sales_manager': 'مدیر فروش',
+            'factory_manager': 'مدیر کارخانه',
+            'warehouse_keeper': 'انباردار',
+            'security_head': 'رئیس انتظامات',
+            'security_guard': 'نگهبان انتظامات',
+            'commercial': 'بازرگانی',
+            'qc': 'کنترل کیفیت',
+            'user': 'کاربر'
+        };
+        return standardRoles[roleId.toLowerCase()] || roleId;
+    };
 
     useEffect(() => {
         setComments(request.comments || []);
@@ -2011,7 +2042,7 @@ const PurchaseCommentsSection: React.FC<PurchaseCommentsSectionProps> = ({ reque
                                 <span className="text-xs font-black text-gray-800 dark:text-gray-200">{c.userName}</span>
                                 {c.userRole && (
                                     <span className="text-[9px] font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-md">
-                                        {c.userRole}
+                                        {getRoleLabel(c.userRole)}
                                     </span>
                                 )}
                             </div>
@@ -2118,6 +2149,7 @@ const PurchaseCommentsSection: React.FC<PurchaseCommentsSectionProps> = ({ reque
 };
 
 const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, parts }: { request: PurchaseRequest, onClose: () => void, currentUser: User, onSuccess: () => void, settings?: SystemSettings, parts: PartMasterData[] }) => {
+    const [modalTab, setModalTab] = useState<'DETAILS' | 'COMMENTS'>('DETAILS');
     const [actionLoading, setActionLoading] = useState(false);
     const [pdfLoading, setPdfLoading] = useState(false);
     const [showProformaModal, setShowProformaModal] = useState(false);
@@ -2334,6 +2366,61 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     />
                 )}
 
+                {/* Sub-header Navigation Tabs */}
+                <div className="flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 md:px-6 gap-2 pt-2 shrink-0 z-20">
+                    <button
+                        type="button"
+                        onClick={() => setModalTab('DETAILS')}
+                        className={`pb-3 px-4 text-xs md:text-sm font-black border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                            modalTab === 'DETAILS'
+                                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                        }`}
+                    >
+                        <Package size={16} />
+                        <span>مشخصات، اقلام و گردش کار</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setModalTab('COMMENTS')}
+                        className={`pb-3 px-4 text-xs md:text-sm font-black border-b-2 transition-all flex items-center gap-2 cursor-pointer relative ${
+                            modalTab === 'COMMENTS'
+                                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                        }`}
+                    >
+                        <MessageSquare size={16} />
+                        <span>بخش نظرات و کامنت‌ها</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            (request.comments?.length || 0) > 0 
+                                ? 'bg-indigo-600 text-white shadow-xs' 
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                        }`}>
+                            {request.comments?.length || 0} نظر
+                        </span>
+                    </button>
+                </div>
+
+                {modalTab === 'COMMENTS' ? (
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50/50 dark:bg-gray-950/40 no-scrollbar space-y-4">
+                        <div className="max-w-4xl mx-auto space-y-4">
+                            <div className="bg-white dark:bg-gray-900 border border-indigo-100 dark:border-indigo-900/40 p-4 rounded-3xl flex flex-wrap justify-between items-center gap-3 shadow-xs">
+                                <div>
+                                    <div className="text-[10px] font-bold text-gray-400">درخواست خرید شماره:</div>
+                                    <div className="text-sm font-black text-indigo-600 dark:text-indigo-400">{request.requestNumber} - {request.itemName}</div>
+                                </div>
+                                <div className="text-xs text-gray-500 flex items-center gap-3">
+                                    <span>متقاضی: <strong className="text-gray-800 dark:text-gray-200 font-black">{request.requester || '---'}</strong></span>
+                                    <span>تاریخ: <strong className="font-bold">{formatDate(request.date)}</strong></span>
+                                    <span className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-bold border border-indigo-100 dark:border-indigo-900">
+                                        {request.status}
+                                    </span>
+                                </div>
+                            </div>
+                            <PurchaseCommentsSection request={request} currentUser={currentUser} onSuccess={onSuccess} settings={settings} />
+                        </div>
+                    </div>
+                ) : (
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50/50 dark:bg-gray-950/40 no-scrollbar">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-6">
@@ -2350,6 +2437,15 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         )}
                                     </h3>
                                     <div className="flex items-center gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setModalTab('COMMENTS')} 
+                                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                                            title="مشاهده بخش کامنت‌ها و نظرات این درخواست"
+                                        >
+                                            <MessageSquare size={13} className="text-indigo-600 dark:text-indigo-400" />
+                                            <span>نظرات ({request.comments?.length || 0})</span>
+                                        </button>
                                         <button 
                                             onClick={() => setShowAiAdvisorModal(true)} 
                                             className="px-3 py-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-sm active:scale-95 cursor-pointer"
@@ -2745,7 +2841,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                             )}
 
                             <div className="mt-6">
-                                <PurchaseCommentsSection request={request} currentUser={currentUser} onSuccess={onSuccess} />
+                                <PurchaseCommentsSection request={request} currentUser={currentUser} onSuccess={onSuccess} settings={settings} />
                             </div>
                         </div>
 
@@ -2790,6 +2886,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         <BpmnWorkflowDiagram currentStatus={request.status} location={request.location} />
                     </div>
                 </div>
+                )}
 
                 {/* Current Stage & Role Authority Notification Banner */}
                 {(() => {

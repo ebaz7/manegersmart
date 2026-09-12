@@ -58,6 +58,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
                 canViewNotifications: true, canCreateNotifications: true, canCreateAnnouncements: true,
                 canViewCustomerBalances: true, canImportCustomerBalances: true,
                 canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
+                canAccessSayanRegistrations: true, canSayanPreInvoices: true,
                 canSayanRegisterCheque: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
                 canAccessChequeReceipts: true
             };
@@ -91,6 +92,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             canViewNotifications: true, canCreateNotifications: true, canCreateAnnouncements: true,
             canViewCustomerBalances: true, canImportCustomerBalances: true,
             canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
+            canAccessSayanRegistrations: true, canSayanPreInvoices: true,
             canSayanRegisterCheque: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
             canAccessChequeReceipts: true,
             // Purchase-specific permissions hardwired for administrator:
@@ -114,6 +116,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewNotifications: false, canCreateNotifications: false, canCreateAnnouncements: false,
         canViewCustomerBalances: false, canImportCustomerBalances: false,
         canViewSayan: false, canViewSayanTraz: false, canViewSayanSales: false, canViewSayanProduction: false, canViewSayanProdReturns: false, canViewSayanCheques: false, canViewSayanRemittances: false, canViewSayanWarehouseOverview: false, canViewSayanWarehouseWidget: false,
+        canAccessSayanRegistrations: false, canSayanPreInvoices: false,
         canSayanRegisterCheque: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanDeleteReceipt: false,
         canAccessChequeReceipts: false
     };
@@ -191,8 +194,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             // Assign specific default purchase-flow permissions for Commercial role
             perms.canView = true;
             perms.canCommercialFinalize = true;
-            perms.canManageProformas = true;
-            perms.canSelectProforma = true;
+            perms.canManageProformas = false; // Strictly requires explicit permission in settings
+            perms.canSelectProforma = false;
             break;
 
         case UserRole.QC:
@@ -214,11 +217,23 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // --- FIX FOR CUSTOM ROLES: ENSURE NO LEAKAGE ---
-    // If not a system role, force warehouse permissions off UNLESS explicitly enabled
+    // If not a system role, force sensitive permissions off UNLESS explicitly enabled in settings
     const systemRoleIds = Object.values(UserRole);
     if (!systemRoleIds.includes(userRole as any)) {
         if (!settings?.rolePermissions?.[userRole]?.canManageWarehouse) {
             perms.canManageWarehouse = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canAccessChequeReceipts) {
+            perms.canAccessChequeReceipts = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canAccessSayanRegistrations) {
+            perms.canAccessSayanRegistrations = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanPreInvoices) {
+            perms.canSayanPreInvoices = false;
+        }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanRegisterCheque) {
+            perms.canSayanRegisterCheque = false;
         }
     }
 

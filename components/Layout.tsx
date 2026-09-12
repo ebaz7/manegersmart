@@ -75,6 +75,16 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
   }, []);
 
   const getRoleDisplayName = (role: string) => {
+    if (!role) return '';
+    if (settings?.customRoleNames && settings.customRoleNames[role]) {
+      return settings.customRoleNames[role];
+    }
+    if (settings?.customRoles) {
+      const customRole = settings.customRoles.find((r: any) => r.id === role || r.name === role);
+      if (customRole) {
+        return settings?.customRoleNames?.[customRole.id] || customRole.label || customRole.name;
+      }
+    }
     const builtInTranslations: Record<string, string> = {
       'admin': 'مدیر سیستم',
       'ceo': 'مدیر عامل',
@@ -89,19 +99,17 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
       'qc': 'کنترل کیفیت',
       'user': 'کاربر'
     };
-    if (builtInTranslations[role]) {
-      return builtInTranslations[role];
-    }
-    if (settings?.customRoles) {
-      const customRole = settings.customRoles.find((r: any) => r.id === role);
-      if (customRole) {
-        return customRole.label;
-      }
-    }
-    if (settings?.customRoleNames && settings.customRoleNames[role]) {
-      return settings.customRoleNames[role];
+    if (builtInTranslations[role.toLowerCase()]) {
+      return builtInTranslations[role.toLowerCase()];
     }
     return role;
+  };
+
+  const getUserAllRolesDisplayName = (user: any) => {
+    if (!user) return '';
+    const rolesList = user?.roles && user.roles.length > 0 ? user.roles : (user?.role ? [user.role] : []);
+    if (rolesList.length === 0) return 'کاربر';
+    return rolesList.map((r: string) => getRoleDisplayName(r)).join(' / ');
   };
 
   useEffect(() => {
@@ -789,7 +797,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                             <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} disabled={uploadingAvatar} />
                         </div>
                         <h2 className="text-xl font-black text-gray-800 dark:text-white mb-1">{currentUser.fullName}</h2>
-                        <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold rounded-full text-xs border border-blue-100 dark:border-blue-900/50 mb-4">{getRoleDisplayName(currentUser.role)}</span>
+                        <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold rounded-full text-xs border border-blue-100 dark:border-blue-900/50 mb-4">{getUserAllRolesDisplayName(currentUser)}</span>
                         
                         <div className="w-full space-y-4 pt-4 border-t border-gray-200 dark:border-zinc-800/60">
                             <div className="space-y-1">
@@ -989,7 +997,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                   {isSidebarOpen && (
                      <div className="overflow-hidden flex-1 animate-fade-in">
                          <p className="text-xs font-bold truncate text-zinc-800 dark:text-zinc-200">{currentUser.fullName}</p>
-                         <p className="text-[10px] text-zinc-400 truncate font-bold inline-flex items-center gap-1 mt-0.5"><span>نقش:</span> <span className="text-blue-600 dark:text-blue-400">{getRoleDisplayName(currentUser.role)}</span></p>
+                         <p className="text-[10px] text-zinc-400 truncate font-bold inline-flex items-center gap-1 mt-0.5"><span>نقش:</span> <span className="text-blue-600 dark:text-blue-400">{getUserAllRolesDisplayName(currentUser)}</span></p>
                      </div>
                   )}
               </div>
@@ -1178,7 +1186,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                           </div>
                           <div>
                               <div className="font-bold text-zinc-900 dark:text-white text-sm">{currentUser.fullName}</div>
-                              <div className="text-[10px] text-zinc-500 font-medium">{getRoleDisplayName(currentUser.role)}</div>
+                              <div className="text-[10px] text-zinc-500 font-medium">{getUserAllRolesDisplayName(currentUser)}</div>
                           </div>
                       </div>
                       <button onClick={() => setShowMobileMenu(false)} className="p-1.5 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors">

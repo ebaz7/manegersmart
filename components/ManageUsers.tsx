@@ -171,25 +171,41 @@ const ManageUsers: React.FC = () => {
   };
 
   const getRoleLabel = (roleId: string) => {
+      if (!roleId) return '';
       if (settings?.customRoleNames?.[roleId]) {
           return settings.customRoleNames[roleId];
       }
-      switch (roleId) {
-          case UserRole.ADMIN: return 'مدیر سیستم';
-          case UserRole.CEO: return 'مدیر عامل';
-          case UserRole.FINANCIAL: return 'مدیر مالی';
-          case UserRole.MANAGER: return 'مدیر داخلی';
-          case UserRole.SALES_MANAGER: return 'مدیر فروش';
-          case UserRole.FACTORY_MANAGER: return 'مدیر کارخانه';
-          case UserRole.WAREHOUSE_KEEPER: return 'انبار واردات'; 
-          case UserRole.SECURITY_HEAD: return 'سرپرست انتظامات';
-          case UserRole.SECURITY_GUARD: return 'نگهبان';
-          case UserRole.QC: return 'کنترل کیفی';
-          case UserRole.COMMERCIAL: return 'بازرگانی';
-          case UserRole.USER: return 'کاربر عادی';
+      const custom = settings?.customRoles?.find((r: any) => r.id === roleId || r.name === roleId);
+      if (custom) {
+          return settings?.customRoleNames?.[custom.id] || custom.label || custom.name;
+      }
+      switch (roleId?.toLowerCase()) {
+          case UserRole.ADMIN:
+          case 'admin': return 'مدیر سیستم';
+          case UserRole.CEO:
+          case 'ceo': return 'مدیر عامل';
+          case UserRole.FINANCIAL:
+          case 'financial': return 'مدیر مالی';
+          case UserRole.MANAGER:
+          case 'manager': return 'مدیر داخلی';
+          case UserRole.SALES_MANAGER:
+          case 'sales_manager': return 'مدیر فروش';
+          case UserRole.FACTORY_MANAGER:
+          case 'factory_manager': return 'مدیر کارخانه';
+          case UserRole.WAREHOUSE_KEEPER:
+          case 'warehouse_keeper': return 'انبار واردات'; 
+          case UserRole.SECURITY_HEAD:
+          case 'security_head': return 'سرپرست انتظامات';
+          case UserRole.SECURITY_GUARD:
+          case 'security_guard': return 'نگهبان';
+          case UserRole.QC:
+          case 'qc': return 'کنترل کیفی';
+          case UserRole.COMMERCIAL:
+          case 'commercial': return 'بازرگانی';
+          case UserRole.USER:
+          case 'user': return 'کاربر عادی';
           default:
-              const custom = settings?.customRoles?.find(r => r.id === roleId);
-              return custom ? custom.label : roleId;
+              return roleId;
       }
   };
 
@@ -306,7 +322,7 @@ const ManageUsers: React.FC = () => {
                                             }}
                                             className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" 
                                         />
-                                        <span>{role.label}</span>
+                                        <span>{getRoleLabel(role.id) || role.label}</span>
                                     </label>
                                 );
                             })}

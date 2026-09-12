@@ -128,6 +128,7 @@ export interface PrintTemplate {
 export interface CustomRole {
   id: string;
   label: string;
+  name?: string;
 }
 
 export interface RolePermissions {
@@ -191,6 +192,7 @@ export interface RolePermissions {
   canAccessSayanDailySales?: boolean;
   canAccessSayanCompareSales?: boolean;
   canAccessSayanRegistrations?: boolean;
+  canSayanPreInvoices?: boolean;
   canSayanRegisterCheque?: boolean;
   canSayanApproveAccounting?: boolean;
   canSayanApproveCeo?: boolean;

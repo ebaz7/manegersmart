@@ -107,17 +107,18 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
     }, [currentUser, settings]);
 
     const canSayanRegisterCheque = currentUser?.role === UserRole.ADMIN || perms.canSayanRegisterCheque === true;
-    const canAccessSayanRegistrations = currentUser?.role === UserRole.ADMIN || perms.canAccessSayanRegistrations === true;
+    const canSayanPreInvoices = currentUser?.role === UserRole.ADMIN || perms.canSayanPreInvoices === true;
+    const canAccessSayanRegistrations = currentUser?.role === UserRole.ADMIN || perms.canAccessSayanRegistrations === true || canSayanPreInvoices || canSayanRegisterCheque;
 
     const initialTab = useMemo(() => {
-        if (currentUser?.role === UserRole.ADMIN || perms.canAccessSayanRegistrations === true) {
+        if (canSayanPreInvoices) {
             return 'PURCHASE_PREINVOICES';
         }
-        if (perms.canSayanRegisterCheque === true) {
+        if (canSayanRegisterCheque) {
             return 'CHEQUE_RECEIPTS';
         }
         return 'FUTURE_DOCS';
-    }, [currentUser, perms]);
+    }, [canSayanPreInvoices, canSayanRegisterCheque]);
 
     const [mainSubTab, setMainSubTab] = useState<'PURCHASE_PREINVOICES' | 'CHEQUE_RECEIPTS' | 'FUTURE_DOCS'>(initialTab);
 
@@ -132,7 +133,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                     setMainSubTab('CHEQUE_RECEIPTS');
                 }
             } else if (e.detail === 'PURCHASE_PREINVOICES') {
-                if (canAccessSayanRegistrations) {
+                if (canSayanPreInvoices) {
                     setMainSubTab('PURCHASE_PREINVOICES');
                 }
             }
@@ -568,7 +569,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
 
                 {/* Sub-Module Switcher */}
                 <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl gap-1 border border-slate-200 dark:border-slate-700/60 self-start md:self-auto">
-                    {canAccessSayanRegistrations && (
+                    {canSayanPreInvoices && (
                         <button
                             type="button"
                             onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
@@ -631,7 +632,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                         </p>
                     </div>
                     <div className="pt-2">
-                        {canAccessSayanRegistrations && (
+                        {canSayanPreInvoices && (
                             <button
                                 type="button"
                                 onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
@@ -646,7 +647,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
             )}
 
             {/* TAB 1: Main Purchase Request to Pre-Invoice Feature */}
-            {mainSubTab === 'PURCHASE_PREINVOICES' && canAccessSayanRegistrations && (
+            {mainSubTab === 'PURCHASE_PREINVOICES' && canSayanPreInvoices && (
                 <div className="space-y-4">
                     {/* Automation Status & Control Header Bar */}
                     <div className="bg-slate-50 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5">

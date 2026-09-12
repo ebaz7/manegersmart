@@ -137,11 +137,12 @@ const PERMISSION_GROUPS = [
     },
     { 
         id: 'sayan_registrations', 
-        title: 'ثبت اسناد و چک سایان (ERP)', 
+        title: 'بخش ثبت‌های سایان ERP (اسناد و چک سایان)', 
         icon: FileText, 
         color: 'indigo', 
         items: [
-            { id: 'canAccessSayanRegistrations', label: 'دسترسی به بخش ثبت‌های سایان و صدور اسناد' },
+            { id: 'canAccessSayanRegistrations', label: 'دسترسی کلی به ماژول ثبت‌های سایان ERP' },
+            { id: 'canSayanPreInvoices', label: 'ثبت پیش‌فاکتورهای خرید در سایان (تبدیل اسناد ۵۳ به ۵۷)' },
             { id: 'canSayanRegisterCheque', label: 'ثبت رسید چک سایان (ورود اطلاعات و بارگذاری رسید جدید)' },
             { id: 'canSayanApproveAccounting', label: 'تایید مرحله اول (ویرایش و تایید حسابداری چک سایان)' },
             { id: 'canSayanApproveCeo', label: 'تایید مرحله نهایی (تایید مدیرعامل و ثبت خودکار در ERP سایان)' },
@@ -150,11 +151,11 @@ const PERMISSION_GROUPS = [
     },
     { 
         id: 'cheque_receipts_general', 
-        title: 'ماژول رسید دریافت چک عمومی (غیر سایان)', 
+        title: 'رسید دریافت چک (مستقل و عمومی - غیر سایان)', 
         icon: Landmark, 
         color: 'emerald', 
         items: [
-            { id: 'canAccessChequeReceipts', label: 'مشاهده و دسترسی به ماژول مستقل رسید دریافت چک عمومی' }
+            { id: 'canAccessChequeReceipts', label: 'مشاهده و دسترسی به ماژول مستقل رسید دریافت چک عمومی (غیر سایان)' }
         ] 
     },
     { 
@@ -184,12 +185,14 @@ const PERMISSION_GROUPS = [
 
 const DEFAULT_ROLES = [
     { id: UserRole.USER, label: 'کاربر عادی' },
+    { id: UserRole.COMMERCIAL, label: 'بازرگانی' },
     { id: UserRole.FINANCIAL, label: 'مدیر مالی' },
     { id: UserRole.MANAGER, label: 'مدیر داخلی' },
     { id: UserRole.CEO, label: 'مدیر عامل' },
     { id: UserRole.SALES_MANAGER, label: 'مدیر فروش' },
     { id: UserRole.FACTORY_MANAGER, label: 'مدیر کارخانه' },
     { id: UserRole.WAREHOUSE_KEEPER, label: 'انبار واردات' },
+    { id: UserRole.QC, label: 'کنترل کیفی' },
     { id: UserRole.SECURITY_HEAD, label: 'سرپرست انتظامات' },
     { id: UserRole.SECURITY_GUARD, label: 'نگهبان' },
     { id: UserRole.ADMIN, label: 'مدیر سیستم' },

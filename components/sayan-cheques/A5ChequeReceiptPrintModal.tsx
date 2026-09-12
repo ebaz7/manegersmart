@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Printer, 
     X, 
@@ -12,10 +13,8 @@ import {
     Calendar, 
     CreditCard, 
     MessageSquare, 
-    Send,
     Paperclip,
     Image as ImageIcon,
-    Layers,
     Eye
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
@@ -82,6 +81,300 @@ const toShamsiStr = (dateStr?: string): string => {
     }
 };
 
+/**
+ * Builds standalone, isolated pure-white A5 Landscape HTML for direct printing.
+ * This completely prevents dark mode, gray overlays, or parent container backgrounds.
+ */
+function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'receipt' | 'attachments'): string {
+    const totalAmount = Number(receipt.totalAmount) || 0;
+    const amountInWords = formatChequeAmountInWords(totalAmount);
+    const receiptDate = receipt.docDateShamsi || toShamsiStr(receipt.createdAt) || toShamsiStr(new Date().toISOString());
+    const attachments = Array.isArray(receipt.attachments) ? receipt.attachments : [];
+    const hasAttachments = attachments.length > 0;
+
+    const includeReceipt = printTarget === 'all' || printTarget === 'receipt';
+    const includeAttachments = hasAttachments && (printTarget === 'all' || printTarget === 'attachments');
+
+    let pagesHtml = '';
+
+    // PAGE 1: A5 Landscape Receipt
+    if (includeReceipt) {
+        const rowsHtml = receipt.cheques.map((ch, idx) => `
+            <tr style="border-bottom: 1px solid #94a3b8;">
+                <td style="padding: 3px 4px; border-left: 1px solid #94a3b8; text-align: center; font-weight: 900; font-family: monospace; font-size: 11px;">
+                    ${toPersianDigits(ch.rowSeq || (idx + 1))}
+                </td>
+                <td style="padding: 3px 6px; border-left: 1px solid #94a3b8; text-align: right; direction: ltr; font-weight: 900; font-family: monospace; font-size: 12px; letter-spacing: 0.5px;">
+                    ${toPersianDigits(ch.chequeNumber)}
+                </td>
+                <td style="padding: 3px 6px; border-left: 1px solid #94a3b8; text-align: center; font-weight: 800; font-family: monospace; font-size: 11.5px;">
+                    ${toPersianDigits(toShamsiStr(ch.dueDate))}
+                </td>
+                <td style="padding: 3px 6px; border-left: 1px solid #94a3b8; text-align: left; direction: ltr; font-weight: 900; font-family: monospace; font-size: 12.5px;">
+                    ${toPersianDigits(Number(ch.amount).toLocaleString('fa-IR'))}
+                </td>
+                <td style="padding: 3px 6px; border-left: 1px solid #94a3b8; text-align: center; font-weight: 800; font-size: 11.5px;">
+                    ${ch.bankName || '-'}
+                </td>
+                <td style="padding: 3px 6px; border-left: 1px solid #94a3b8; text-align: right; font-weight: 700; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">
+                    ${ch.inNameOf || receipt.personName || '-'}
+                </td>
+                <td style="padding: 3px 6px; text-align: right; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px;">
+                    ${ch.description || '-'}
+                </td>
+            </tr>
+        `).join('');
+
+        pagesHtml += `
+        <div class="print-page a5-landscape">
+            <!-- Header Section -->
+            <div style="border-bottom: 2px solid #000000; padding-bottom: 4px;">
+                <table style="width: 100%; border-collapse: collapse; border: none;">
+                    <tr>
+                        <td style="width: 33%; text-align: right; vertical-align: top; border: none; padding: 0;">
+                            <div style="font-size: 15px; font-weight: 900; color: #000000; line-height: 1.2;">شرکت لپان بافت</div>
+                            <div style="font-size: 11px; font-weight: bold; color: #334155; margin-top: 1px;">سیستم مدیریت مالی و خزانه‌داری</div>
+                            <div style="font-size: 10px; color: #475569;">واحد اعتبارات و دریافت اسناد تجاری</div>
+                        </td>
+                        <td style="width: 34%; text-align: center; vertical-align: top; border: none; padding: 0;">
+                            <div style="display: inline-block; padding: 3px 14px; border: 2px solid #000000; border-radius: 8px; background-color: #f1f5f9;">
+                                <div style="font-size: 14px; font-weight: 900; color: #000000;">رسید دریافت چک</div>
+                            </div>
+                            <div style="font-size: 10px; font-weight: bold; color: #475569; margin-top: 2px;">(اسناد دریافتنی نزد صندوق خزانه‌داری)</div>
+                        </td>
+                        <td style="width: 33%; text-align: left; vertical-align: top; border: none; padding: 0; font-family: monospace; font-size: 11px;">
+                            <div style="margin-bottom: 2px;"><span style="font-family: inherit; font-size: 10.5px; color: #475569;">شماره رسید: </span><strong style="font-size: 13px; font-weight: 900; background: #f1f5f9; padding: 1px 4px; border: 1px solid #cbd5e1; border-radius: 4px;">#${toPersianDigits(receipt.receiptNo || receipt.id)}</strong></div>
+                            <div style="margin-bottom: 2px;"><span style="font-family: inherit; font-size: 10.5px; color: #475569;">شماره پشت‌نمره: </span><strong style="font-size: 12px; font-weight: 900;">${toPersianDigits(receipt.poshtNomreh || '-')}</strong></div>
+                            <div style="margin-bottom: 2px;"><span style="font-family: inherit; font-size: 10.5px; color: #475569;">تاریخ صدور: </span><strong style="font-size: 12px; font-weight: 900;">${toPersianDigits(receiptDate)}</strong></div>
+                            <div><span style="font-family: inherit; font-size: 10px; color: #64748b;">سال مالی: </span><strong style="font-size: 11px;">${toPersianDigits(receipt.fiscalYear || '۱۴۰۳')}</strong></div>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="margin-top: 5px; padding-top: 4px; border-top: 1px dashed #94a3b8; display: flex; justify-content: space-between; font-size: 11.5px;">
+                    <div style="flex: 1;">
+                        <span style="color: #475569; font-weight: bold;">دریافت شد از: </span>
+                        <strong style="font-size: 12.5px; color: #000000;">${receipt.personName || 'شخص نامشخص'}</strong>
+                        <span style="font-family: monospace; font-size: 10.5px; color: #475569; background: #f1f5f9; padding: 0 4px; border-radius: 3px; border: 1px solid #cbd5e1; margin-right: 3px;">(کد: ${toPersianDigits(receipt.personCode)})</span>
+                    </div>
+                    <div style="margin-left: 15px;">
+                        <span style="color: #475569; font-weight: bold;">صندوق: </span>
+                        <strong style="color: #000000;">${receipt.cashboxTitle || (receipt.cashboxCode === '11001' ? 'صندوق دفتر مرکزی' : `صندوق کد ${toPersianDigits(receipt.cashboxCode)}`)}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #475569; font-weight: bold;">شرح / بابت: </span>
+                        <span style="color: #000000; font-weight: 500;">${receipt.description || 'تسویه حساب و واریز اسناد دریافتنی'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table of Cheques -->
+            <div style="flex: 1; margin: 4px 0; display: flex; flex-direction: column; justify-content: center;">
+                <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000000; text-align: right; background-color: #ffffff;">
+                    <thead>
+                        <tr style="background-color: #f1f5f9; border-bottom: 1.5px solid #000000; font-size: 11px; font-weight: 900; color: #000000;">
+                            <th style="padding: 3px 4px; border-left: 1px solid #000000; text-align: center; width: 30px;">ردیف</th>
+                            <th style="padding: 3px 6px; border-left: 1px solid #000000; text-align: right;">شماره صیادی / چک</th>
+                            <th style="padding: 3px 6px; border-left: 1px solid #000000; text-align: center; width: 90px;">تاریخ سررسید</th>
+                            <th style="padding: 3px 6px; border-left: 1px solid #000000; text-align: left; width: 130px;">مبلغ چک (ریال)</th>
+                            <th style="padding: 3px 6px; border-left: 1px solid #000000; text-align: center; width: 100px;">نام بانک / شعبه</th>
+                            <th style="padding: 3px 6px; border-left: 1px solid #000000; text-align: right;">صاحب حساب / در وجه</th>
+                            <th style="padding: 3px 6px; text-align: right;">شرح / پشت‌نمره</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Financial Totals -->
+            <div style="border: 1.5px solid #000000; border-radius: 6px; padding: 4px 8px; background-color: #f8fafc; font-size: 11.5px;">
+                <table style="width: 100%; border-collapse: collapse; border: none;">
+                    <tr>
+                        <td style="text-align: right; border: none; padding: 0;">
+                            <span style="font-weight: bold; color: #334155;">جمع کل مبالغ: </span>
+                            <strong style="font-family: monospace; font-size: 14px; font-weight: 900; color: #000000;">${toPersianDigits(totalAmount.toLocaleString('fa-IR'))} ریال</strong>
+                            <span style="font-family: monospace; font-size: 11px; font-weight: 900; background: #ffffff; padding: 1px 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 6px;">(${toPersianDigits(Math.floor(totalAmount / 10).toLocaleString('fa-IR'))} تومان)</span>
+                        </td>
+                        <td style="text-align: left; border: none; padding: 0;">
+                            <span style="color: #475569; font-weight: bold;">تعداد چک: </span>
+                            <strong style="font-family: monospace; font-size: 13px; font-weight: 900;">${toPersianDigits(receipt.cheques.length)} فقره</strong>
+                        </td>
+                    </tr>
+                </table>
+                <div style="margin-top: 3px; padding-top: 3px; border-top: 1px solid #e2e8f0; font-size: 11px;">
+                    <span style="font-weight: bold; color: #334155;">مبلغ به حروف: </span>
+                    <strong style="color: #000000;">${amountInWords.rialWords} (${amountInWords.tomanWords})</strong>
+                </div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">
+                    * اسناد و چک‌های فوق‌الذکر جهت واریز به حساب و طی تشریفات بانکی دریافت گردید. تسویه نهایی منوط به وصول قطعی وجه در سررسیدهای مقرر در سامانه صیاد خواهد بود.
+                </div>
+            </div>
+
+            <!-- Signatures Section -->
+            <div style="margin-top: 5px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">امضای واگذارکننده:</span>
+                    <span style="font-size: 10px; font-weight: bold; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;">${receipt.personName || 'طرف‌حساب'}</span>
+                </div>
+                <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">تحویل‌گیرنده:</span>
+                    <span style="font-size: 10px; font-weight: bold; font-family: monospace; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85px;">${receipt.createdByName || 'کاربر ثبت'}</span>
+                </div>
+                <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">امور مالی و خزانه:</span>
+                    <span style="font-size: 10px; font-weight: bold; color: #334155;">تایید شد</span>
+                </div>
+                <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">مدیرعامل / مالی:</span>
+                    <span style="font-size: 10px; font-weight: bold; color: #334155;">مهر و امضا</span>
+                </div>
+            </div>
+
+            <!-- Footer Bar -->
+            <div style="margin-top: 3px; padding-top: 2px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 8px; font-family: monospace; color: #64748b;">
+                <span>سامانه هوشمند خزانه‌داری و چک لپان بافت</span>
+                <span>شناسه سند: ${receipt.id || receipt.receiptNo}</span>
+                <span>زمان چاپ: ${toPersianDigits(new Date().toLocaleTimeString('fa-IR'))}</span>
+            </div>
+        </div>
+        `;
+    }
+
+    // PAGES 2+: Attached Images
+    if (includeAttachments) {
+        attachments.forEach((att, idx) => {
+            const isImg = att.fileType?.startsWith('image/') || att.fileData?.startsWith('data:image');
+            const src = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
+
+            pagesHtml += `
+            <div class="print-page a5-landscape" style="page-break-before: always; break-before: page;">
+                <!-- Attachment Header -->
+                <div style="border-bottom: 2px solid #000000; padding-bottom: 4px;">
+                    <table style="width: 100%; border-collapse: collapse; border: none;">
+                        <tr>
+                            <td style="width: 35%; text-align: right; vertical-align: top; border: none; padding: 0;">
+                                <div style="font-size: 14px; font-weight: 900; color: #000000;">شرکت لپان بافت</div>
+                                <div style="font-size: 10.5px; font-weight: bold; color: #334155; margin-top: 1px;">
+                                    پیوست سند دریافت چک • برگه ${toPersianDigits(idx + 1)} از ${toPersianDigits(attachments.length)}
+                                </div>
+                            </td>
+                            <td style="width: 30%; text-align: center; vertical-align: top; border: none; padding: 0;">
+                                <div style="display: inline-block; padding: 2px 10px; border: 1px solid #000000; border-radius: 6px; background-color: #f1f5f9; font-size: 11px; font-weight: 900;">
+                                    تصویر و مدارک پیوست چک
+                                </div>
+                            </td>
+                            <td style="width: 35%; text-align: left; vertical-align: top; border: none; padding: 0; font-family: monospace; font-size: 10.5px;">
+                                <div><span style="font-family: inherit; color: #475569;">پیوست رسید: </span><strong style="font-weight: 900;">#${toPersianDigits(receipt.receiptNo || receipt.id)}</strong></div>
+                                <div><span style="font-family: inherit; color: #475569;">پشت‌نمره: </span><strong style="font-weight: 900;">${toPersianDigits(receipt.poshtNomreh || '-')}</strong></div>
+                                <div><span style="font-family: inherit; color: #475569;">تاریخ: </span><strong>${toPersianDigits(receiptDate)}</strong></div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top: 4px; padding-top: 3px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; font-size: 10.5px; color: #334155;">
+                        <div>
+                            <span style="font-weight: bold; color: #475569;">طرف‌حساب: </span>
+                            <strong style="color: #000000;">${receipt.personName} (کد ${toPersianDigits(receipt.personCode)})</strong>
+                        </div>
+                        <div style="font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;">
+                            <span style="font-family: inherit; font-weight: bold; color: #475569;">نام فایل: </span>
+                            <strong>${att.fileName}</strong>
+                        </div>
+                        <div>
+                            <span style="font-weight: bold; color: #475569;">مبلغ رسید: </span>
+                            <strong style="font-family: monospace; color: #047857;">${toPersianDigits(totalAmount.toLocaleString('fa-IR'))} ریال</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Attachment Image View -->
+                <div style="flex: 1; margin: 6px 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px;">
+                    ${isImg && src ? `
+                        <img src="${src}" alt="${att.fileName}" style="max-height: 105mm; max-width: 100%; object-fit: contain; margin: 0 auto; display: block;" />
+                    ` : `
+                        <div style="text-align: center; padding: 20px; color: #334155;">
+                            <div style="font-size: 14px; font-weight: 900; margin-bottom: 5px;">${att.fileName}</div>
+                            <div style="font-size: 11px; font-family: monospace; color: #64748b;">فرمت: ${att.fileType || 'سند پیوست'} • حجم: ${att.fileSize ? `${Math.round(att.fileSize / 1024)} KB` : '-'}</div>
+                        </div>
+                    `}
+                </div>
+
+                <!-- Attachment Footer -->
+                <div style="border-top: 1px solid #e2e8f0; padding-top: 2px; display: flex; justify-content: space-between; font-size: 8.5px; font-family: monospace; color: #64748b;">
+                    <span>سامانه هوشمند خزانه‌داری و چک لپان بافت</span>
+                    <span>ضمیمه رسمی سند حسابداری</span>
+                    <span>چاپ: ${toPersianDigits(receiptDate)} - ${toPersianDigits(new Date().toLocaleTimeString('fa-IR'))}</span>
+                </div>
+            </div>
+            `;
+        });
+    }
+
+    return `
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>رسید دریافت چک #${receipt.receiptNo || receipt.id} - لپان بافت</title>
+        <style>
+            @page {
+                size: A5 landscape;
+                margin: 2mm 3mm;
+            }
+            * {
+                box-sizing: border-box;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            html, body {
+                margin: 0;
+                padding: 0;
+                background-color: #ffffff !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-family: "Vazirmatn", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, sans-serif;
+                direction: rtl;
+                text-align: right;
+            }
+            .print-page {
+                width: 100%;
+                height: 142mm;
+                max-height: 144mm;
+                padding: 3mm 4mm;
+                background-color: #ffffff !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: 1.5px solid #000000;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                overflow: hidden;
+            }
+            @media print {
+                html, body {
+                    background: #ffffff !important;
+                    background-color: #ffffff !important;
+                }
+                .print-page {
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                    border: 1.5px solid #000000 !important;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        ${pagesHtml}
+    </body>
+    </html>
+    `;
+}
+
 export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
     isOpen = true,
     receipt,
@@ -91,18 +384,70 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
     const [copied, setCopied] = React.useState(false);
     const [sharingToChat, setSharingToChat] = useState(false);
     const [printTarget, setPrintTarget] = useState<'all' | 'receipt' | 'attachments'>('all');
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [isPrinting, setIsPrinting] = useState(false);
 
     if (!isOpen || !receipt) return null;
 
     const attachments = Array.isArray(receipt.attachments) ? receipt.attachments : [];
     const hasAttachments = attachments.length > 0;
 
-    const handlePrint = (target: 'all' | 'receipt' | 'attachments' = 'all') => {
+    /**
+     * Isolated Pure White iframe Print:
+     * Eliminates 100% of gray backgrounds, dark mode artifacts, and modal backdrops.
+     */
+    const handlePrintDirectly = (target: 'all' | 'receipt' | 'attachments' = 'all') => {
+        setIsPrinting(true);
         setPrintTarget(target);
-        setTimeout(() => {
+
+        try {
+            const htmlContent = buildA5ChequePrintHtml(receipt, target);
+
+            // Create invisible iframe
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0px';
+            iframe.style.height = '0px';
+            iframe.style.border = '0';
+            iframe.style.zIndex = '-9999';
+            document.body.appendChild(iframe);
+
+            const frameDoc = iframe.contentWindow?.document || iframe.contentDocument;
+            if (!frameDoc) {
+                window.print();
+                setIsPrinting(false);
+                return;
+            }
+
+            frameDoc.open();
+            frameDoc.write(htmlContent);
+            frameDoc.close();
+
+            // Allow rendering then print
+            setTimeout(() => {
+                try {
+                    if (iframe.contentWindow) {
+                        iframe.contentWindow.focus();
+                        iframe.contentWindow.print();
+                    }
+                } catch (err) {
+                    console.error('Iframe print error, falling back to window.print():', err);
+                    window.print();
+                } finally {
+                    setIsPrinting(false);
+                    setTimeout(() => {
+                        if (document.body.contains(iframe)) {
+                            document.body.removeChild(iframe);
+                        }
+                    }, 2000);
+                }
+            }, 250);
+        } catch (e) {
+            console.error('Print build error:', e);
             window.print();
-        }, 80);
+            setIsPrinting(false);
+        }
     };
 
     const handleCopySummary = () => {
@@ -117,7 +462,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
         if (!receipt) return;
         setSharingToChat(true);
         try {
-            const el = document.getElementById('a5-cheque-receipt-print-area');
+            const el = document.getElementById('a5-cheque-receipt-preview-card');
             const summaryText = `📄 رسید دریافت چک #${receipt.receiptNo || receipt.id} - شرکت لپان بافت\n👤 طرف حساب: ${receipt.personName} (کد ${receipt.personCode})\n🏷️ شماره پشت‌نمره: ${receipt.poshtNomreh || '-'}\n💳 تعداد چک: ${receipt.cheques.length} فقره\n💰 جمع کل: ${Number(receipt.totalAmount).toLocaleString('fa-IR')} ریال\n📎 پیوست‌ها: ${attachments.length} فایل\n📝 بابت: ${receipt.description || '-'}`;
             if (el) {
                 await shareElementToChat(
@@ -149,26 +494,10 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
     const amountInWords = formatChequeAmountInWords(totalAmount);
     const receiptDate = receipt.docDateShamsi || toShamsiStr(receipt.createdAt) || toShamsiStr(new Date().toISOString());
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-xs overflow-y-auto animate-fade-in">
-            {/* Print & Screen CSS specific to A5 Landscape - Pure White Multi-Page Print */}
+            {/* Global Print Fallback Styles */}
             <style>{`
-                @page {
-                    size: A5 landscape;
-                    margin: 2mm 3mm;
-                }
-                
-                /* Screen view isolation */
-                .a5-screen-paper {
-                    background-color: #ffffff !important;
-                    background: #ffffff !important;
-                    color: #000000 !important;
-                }
-                .a5-screen-paper * {
-                    color: #000000 !important;
-                    text-shadow: none !important;
-                }
-
                 @media print {
                     @page {
                         size: A5 landscape;
@@ -184,134 +513,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         color: #000000 !important;
                         margin: 0 !important;
                         padding: 0 !important;
-                        width: 100% !important;
-                        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, sans-serif !important;
                     }
-                    /* Completely neutralize background overlays */
-                    .fixed, .relative, [class*="backdrop-blur"], [class*="bg-slate-950"], [class*="bg-slate-900"] {
-                        background: transparent !important;
-                        background-color: transparent !important;
-                        backdrop-filter: none !important;
-                        -webkit-backdrop-filter: none !important;
-                        box-shadow: none !important;
-                        border: none !important;
-                    }
-                    body * {
-                        visibility: hidden !important;
-                    }
-                    #a5-print-wrapper,
-                    #a5-print-wrapper * {
-                        visibility: visible !important;
-                    }
-                    #a5-print-wrapper {
-                        position: absolute !important;
-                        top: 0 !important;
-                        left: 0 !important;
-                        width: 100% !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        display: block !important;
-                        background: #ffffff !important;
-                    }
-
-                    /* Receipt Page Print Styling */
-                    .print-target-attachments #a5-cheque-receipt-print-area {
-                        display: none !important;
-                    }
-                    .print-target-receipt .a5-attachment-print-page {
-                        display: none !important;
-                    }
-
-                    #a5-cheque-receipt-print-area {
-                        position: relative !important;
-                        width: 100% !important;
-                        height: 144mm !important;
-                        max-height: 146mm !important;
-                        padding: 2mm 3.5mm !important;
-                        background-color: #ffffff !important;
-                        background: #ffffff !important;
-                        color: #000000 !important;
-                        border: 1.5px solid #000000 !important;
-                        box-sizing: border-box !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: space-between !important;
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
-                        page-break-after: ${hasAttachments && printTarget !== 'receipt' ? 'always' : 'auto'} !important;
-                        break-after: ${hasAttachments && printTarget !== 'receipt' ? 'page' : 'auto'} !important;
-                        overflow: hidden !important;
-                    }
-
-                    #a5-cheque-receipt-print-area table {
-                        border: 1.5px solid #000000 !important;
-                        border-collapse: collapse !important;
-                        width: 100% !important;
-                        background-color: #ffffff !important;
-                    }
-                    #a5-cheque-receipt-print-area th {
-                        background-color: #f1f5f9 !important;
-                        background: #f1f5f9 !important;
-                        padding: 2px 3px !important;
-                        line-height: 1.2 !important;
-                        font-size: 11px !important;
-                        font-weight: 900 !important;
-                        border: 1px solid #000000 !important;
-                        color: #000000 !important;
-                    }
-                    #a5-cheque-receipt-print-area td {
-                        background-color: #ffffff !important;
-                        background: #ffffff !important;
-                        padding: 2px 3.5px !important;
-                        line-height: 1.25 !important;
-                        font-size: 11.5px !important;
-                        font-weight: 800 !important;
-                        border: 1px solid #000000 !important;
-                        color: #000000 !important;
-                    }
-                    .signature-box {
-                        height: 26px !important;
-                        min-height: 26px !important;
-                        max-height: 28px !important;
-                        padding: 2px 4px !important;
-                        font-size: 9.5px !important;
-                        display: flex !important;
-                        align-items: center !important;
-                        justify-content: space-between !important;
-                        border: 1px solid #000000 !important;
-                        background-color: #ffffff !important;
-                        background: #ffffff !important;
-                        color: #000000 !important;
-                    }
-
-                    /* Attachments Print Pages */
-                    .a5-attachment-print-page {
-                        position: relative !important;
-                        width: 100% !important;
-                        height: 144mm !important;
-                        max-height: 146mm !important;
-                        padding: 3mm 4mm !important;
-                        background-color: #ffffff !important;
-                        background: #ffffff !important;
-                        color: #000000 !important;
-                        border: 1.5px solid #000000 !important;
-                        box-sizing: border-box !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: space-between !important;
-                        page-break-before: always !important;
-                        break-before: page !important;
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
-                        page-break-after: always !important;
-                        break-after: page !important;
-                        overflow: hidden !important;
-                    }
-                    .a5-attachment-print-page:last-child {
-                        page-break-after: auto !important;
-                        break-after: auto !important;
-                    }
-
                     .no-print {
                         display: none !important;
                     }
@@ -319,7 +521,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
             `}</style>
 
             <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto text-slate-100 max-h-[95vh]">
-                {/* Modal Top Control Bar (Hidden on Print) */}
+                {/* Modal Top Control Bar */}
                 <div className="no-print p-4 bg-slate-800/95 border-b border-slate-700 flex flex-wrap items-center justify-between gap-3 shrink-0">
                     <div className="flex items-center gap-2.5">
                         <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/30">
@@ -327,7 +529,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h3 className="text-sm font-black text-white">
+                                <h3 className="text-sm sm:text-base font-black text-white">
                                     رسید دریافت چک با موفقیت ثبت شد
                                 </h3>
                                 <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[11px] font-mono font-bold border border-emerald-800">
@@ -341,7 +543,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                 )}
                             </div>
                             <p className="text-xs text-slate-400">
-                                شرکت لپان بافت • ابعاد استاندارد A5 افقی • آماده چاپ و بایگانی رسمی
+                                شرکت لپان بافت • آماده چاپ شفاف و مستقیم A5 افقی
                             </p>
                         </div>
                     </div>
@@ -373,16 +575,18 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                             <div className="flex items-center bg-emerald-700 p-0.5 rounded-xl shadow-lg shadow-emerald-600/30">
                                 <button
                                     type="button"
-                                    onClick={() => handlePrint('all')}
+                                    onClick={() => handlePrintDirectly('all')}
+                                    disabled={isPrinting}
                                     className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 transition-all active:scale-95"
-                                    title="چاپ همزمان برگه رسید A5 و تمام فایل‌ها/تصاویر پیوست شده"
+                                    title="چاپ مستقیم و ایزوله رسید و فایل‌های پیوست"
                                 >
                                     <Printer className="w-4 h-4" />
-                                    <span>چاپ کامل (رسید + پیوست‌ها)</span>
+                                    <span>{isPrinting ? 'آماده‌سازی چاپ...' : 'چاپ کامل (رسید + پیوست‌ها)'}</span>
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => handlePrint('receipt')}
+                                    onClick={() => handlePrintDirectly('receipt')}
+                                    disabled={isPrinting}
                                     className="px-2.5 py-2 text-emerald-100 hover:text-white hover:bg-emerald-600/60 rounded-lg text-xs font-bold transition-colors"
                                     title="فقط چاپ برگه رسید"
                                 >
@@ -390,9 +594,10 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => handlePrint('attachments')}
+                                    onClick={() => handlePrintDirectly('attachments')}
+                                    disabled={isPrinting}
                                     className="px-2.5 py-2 text-emerald-100 hover:text-white hover:bg-emerald-600/60 rounded-lg text-xs font-bold transition-colors"
-                                    title="فقط چاپ تصاویر پیوست"
+                                    title="فقط چاپ فایل‌های پیوست"
                                 >
                                     فقط پیوست
                                 </button>
@@ -400,11 +605,12 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         ) : (
                             <button
                                 type="button"
-                                onClick={() => handlePrint('all')}
+                                onClick={() => handlePrintDirectly('all')}
+                                disabled={isPrinting}
                                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all active:scale-95"
                             >
                                 <Printer className="w-4 h-4" />
-                                <span>چاپ رسید (A5 افقی)</span>
+                                <span>{isPrinting ? 'آماده‌سازی چاپ...' : 'چاپ رسید (A5 افقی)'}</span>
                             </button>
                         )}
 
@@ -432,18 +638,14 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                     </div>
                 </div>
 
-                {/* Printable Scroll Container */}
-                <div 
-                    id="a5-print-wrapper"
-                    className={`flex-1 p-3 sm:p-6 bg-slate-950/60 overflow-y-auto space-y-6 ${
-                        printTarget === 'attachments' ? 'print-target-attachments' : printTarget === 'receipt' ? 'print-target-receipt' : ''
-                    }`}
-                >
-                    {/* PAGE 1: Official A5 Landscape Cheque Receipt */}
+                {/* Printable Visual Preview Area in Pure White */}
+                <div className="flex-1 p-3 sm:p-6 bg-slate-950/60 overflow-y-auto space-y-6">
+                    {/* PAGE 1 Preview Card */}
                     <div className="flex justify-center items-center">
                         <div
-                            id="a5-cheque-receipt-print-area"
-                            className="a5-screen-paper w-full max-w-[880px] aspect-[210/148] min-h-[560px] bg-white text-slate-900 rounded-xl shadow-2xl p-3 sm:p-4 border-2 border-slate-400 flex flex-col justify-between select-text"
+                            id="a5-cheque-receipt-preview-card"
+                            className="w-full max-w-[880px] aspect-[210/148] min-h-[560px] bg-white text-slate-900 rounded-xl shadow-2xl p-4 sm:p-5 border-2 border-slate-900 flex flex-col justify-between select-text"
+                            style={{ backgroundColor: '#ffffff', color: '#000000' }}
                         >
                             {/* 1. Header Section */}
                             <div className="border-b-2 border-slate-900 pb-2">
@@ -463,7 +665,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
 
                                     {/* Main Title Badge */}
                                     <div className="text-center w-1/3 flex flex-col items-center">
-                                        <div className="px-4 py-1 rounded-xl border-2 border-slate-900 bg-slate-100/80 shadow-xs">
+                                        <div className="px-4 py-1 rounded-xl border-2 border-slate-900 bg-slate-100 shadow-xs">
                                             <h1 className="text-sm sm:text-base font-black text-slate-900">
                                                 رسید دریافت چک
                                             </h1>
@@ -607,10 +809,9 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                 </p>
                             </div>
 
-                            {/* 4. Official Compact Signature & Stamp Strips */}
+                            {/* 4. Official Signatures */}
                             <div className="mt-1.5 pt-1 grid grid-cols-4 gap-2 text-center text-xs">
-                                {/* Box 1: Depositor / Customer */}
-                                <div className="signature-box border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
                                         امضای واگذارکننده:
                                     </span>
@@ -619,8 +820,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                     </span>
                                 </div>
 
-                                {/* Box 2: Receiver / User */}
-                                <div className="signature-box border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
                                         تحویل‌گیرنده:
                                     </span>
@@ -629,8 +829,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                     </span>
                                 </div>
 
-                                {/* Box 3: Accounting / Treasury */}
-                                <div className="signature-box border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
                                         امور مالی و خزانه:
                                     </span>
@@ -639,8 +838,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                     </span>
                                 </div>
 
-                                {/* Box 4: Management / CEO */}
-                                <div className="signature-box border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900" style={{ backgroundColor: '#ffffff', color: '#000000', borderColor: '#000000' }}>
+                                <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
                                         مدیرعامل / مالی:
                                     </span>
@@ -650,24 +848,26 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                 </div>
                             </div>
 
-                            {/* Footer Bar Code / System Meta */}
+                            {/* Footer */}
                             <div className="mt-0.5 pt-0.5 border-t border-slate-200 flex items-center justify-between text-[8px] text-slate-500 font-mono">
                                 <span>سامانه هوشمند خزانه‌داری و چک لپان بافت</span>
-                                <span>شناسه رهگیری سند: {receipt.id || receipt.receiptNo}</span>
+                                <span>شناسه سند: {receipt.id || receipt.receiptNo}</span>
                                 <span>زمان چاپ: {toPersianDigits(new Date().toLocaleTimeString('fa-IR'))}</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* PAGES 2+: Attached Cheque Images / Files (Printable sheets) */}
+                    {/* Attached Images Preview */}
                     {hasAttachments && attachments.map((att, idx) => {
                         const isImg = att.fileType?.startsWith('image/') || att.fileData?.startsWith('data:image');
                         const src = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
 
                         return (
                             <div key={att.id || idx} className="flex justify-center items-center">
-                                <div className="a5-attachment-print-page a5-screen-paper w-full max-w-[880px] aspect-[210/148] min-h-[560px] bg-white text-slate-900 rounded-xl shadow-2xl p-4 sm:p-5 border-2 border-slate-400 flex flex-col justify-between select-text">
-                                    {/* Attachment Sheet Header */}
+                                <div 
+                                    className="w-full max-w-[880px] aspect-[210/148] min-h-[560px] bg-white text-slate-900 rounded-xl shadow-2xl p-4 sm:p-5 border-2 border-slate-900 flex flex-col justify-between select-text"
+                                    style={{ backgroundColor: '#ffffff', color: '#000000' }}
+                                >
                                     <div className="border-b-2 border-slate-900 pb-2">
                                         <div className="flex items-center justify-between">
                                             <div className="text-right">
@@ -717,15 +917,14 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                         </div>
                                     </div>
 
-                                    {/* Attachment Sheet Image Body */}
-                                    <div className="flex-1 my-2 flex items-center justify-center overflow-hidden bg-slate-50 border border-slate-300 rounded-lg p-2 min-h-[300px]">
+                                    {/* Image Display */}
+                                    <div className="flex-1 my-2 flex items-center justify-center overflow-hidden bg-white border border-slate-300 rounded-lg p-2 min-h-[300px]">
                                         {isImg && src ? (
                                             <img
                                                 src={src}
                                                 alt={att.fileName}
                                                 referrerPolicy="no-referrer"
                                                 className="max-h-[320px] sm:max-h-[380px] max-w-full object-contain mx-auto rounded shadow-xs"
-                                                onClick={() => setPreviewImage(src)}
                                             />
                                         ) : (
                                             <div className="flex flex-col items-center justify-center p-6 text-slate-600 space-y-2">
@@ -738,11 +937,11 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                         )}
                                     </div>
 
-                                    {/* Attachment Sheet Footer */}
+                                    {/* Footer */}
                                     <div className="border-t border-slate-300 pt-1.5 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-600 font-mono">
                                         <span>سامانه هوشمند خزانه‌داری و چک لپان بافت</span>
                                         <span>ضمیمه معتبر سند حسابداری و بایگانی</span>
-                                        <span>تاریخ و ساعت چاپ: {toPersianDigits(receiptDate)} - {toPersianDigits(new Date().toLocaleTimeString('fa-IR'))}</span>
+                                        <span>چاپ: ${toPersianDigits(receiptDate)} - ${toPersianDigits(new Date().toLocaleTimeString('fa-IR'))}</span>
                                     </div>
                                 </div>
                             </div>
@@ -750,62 +949,26 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                     })}
                 </div>
 
-                {/* Bottom Dismiss / Next Action */}
+                {/* Bottom Bar */}
                 <div className="no-print p-3 bg-slate-800/90 border-t border-slate-700/80 flex items-center justify-between text-xs text-slate-400 shrink-0">
                     <span className="flex items-center gap-1 text-[11px]">
                         <span>شرکت </span>
                         <strong className="text-white font-bold">لپان بافت</strong>
-                        <span> • سایز کاغذ پرینتر روی </span>
-                        <strong className="text-white font-bold">A5</strong>
-                        <span> و جهت </span>
-                        <strong className="text-white font-bold">افقی (Landscape)</strong>
-                        <span> تنظیم گردیده است.</span>
+                        <span> • چاپ کاملاً شفاف و سفید روی ابعاد </span>
+                        <strong className="text-white font-bold">A5 افقی (Landscape)</strong>
                     </span>
 
-                    <div className="flex items-center gap-2">
-                        {hasAttachments && (
-                            <button
-                                type="button"
-                                onClick={() => handlePrint('all')}
-                                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
-                            >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>چاپ همه ({toPersianDigits(1 + attachments.length)} برگه)</span>
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition-colors"
-                        >
-                            بستن
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-colors"
+                    >
+                        بستن
+                    </button>
                 </div>
             </div>
-
-            {/* Optional Fullscreen Zoom Preview */}
-            {previewImage && (
-                <div 
-                    className="fixed inset-0 z-[120] bg-black/90 flex items-center justify-center p-4"
-                    onClick={() => setPreviewImage(null)}
-                >
-                    <div className="relative max-w-4xl max-h-[90vh]">
-                        <img 
-                            src={previewImage} 
-                            alt="Preview" 
-                            className="max-h-[85vh] max-w-full rounded-2xl shadow-2xl object-contain"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setPreviewImage(null)}
-                            className="absolute top-3 left-3 p-2 bg-slate-900/80 text-white rounded-full hover:bg-slate-800"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

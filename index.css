@@ -1203,8 +1203,10 @@ td {
   body * {
     visibility: hidden;
   }
-  html, body {
-    background: white !important;
+  html, html.dark, body, body.dark, #root {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
   }

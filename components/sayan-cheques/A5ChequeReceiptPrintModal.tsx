@@ -117,11 +117,11 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto animate-fade-in">
-            {/* Print & Screen CSS specific to A5 Landscape - Strictly Theme-Agnostic */}
+            {/* Print & Screen CSS specific to A5 Landscape - Strictly Theme-Agnostic & Pure White Print */}
             <style>{`
                 @page {
                     size: A5 landscape;
-                    margin: 3mm;
+                    margin: 2mm 3mm;
                 }
                 
                 /* Guarantee that the print area looks identical on screen in all themes (light/dark/etc.) */
@@ -178,17 +178,21 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                 #a5-cheque-receipt-print-area .text-slate-600,
                 #a5-cheque-receipt-print-area .text-slate-500,
                 #a5-cheque-receipt-print-area .text-slate-700 {
-                    color: #1e293b !important; /* slate-800 - dark enough for high contrast */
+                    color: #1e293b !important;
                 }
 
                 @media print {
                     @page {
                         size: A5 landscape;
-                        margin: 3mm;
+                        margin: 2mm 3mm;
                     }
-                    html, body {
-                        background-color: #ffffff !important;
+                    * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    html, html.dark, body, body.dark, #root {
                         background: #ffffff !important;
+                        background-color: #ffffff !important;
                         color: #000000 !important;
                         margin: 0 !important;
                         padding: 0 !important;
@@ -196,19 +200,16 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         height: 100% !important;
                         max-height: 100% !important;
                         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, sans-serif !important;
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
                         overflow: hidden !important;
                     }
-                    /* Reset wrappers so no parent shadows/borders create extra pages or lines */
-                    .fixed, .relative, [class*="backdrop-blur"] {
-                        position: static !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
+                    /* Completely neutralize backdrop and modals */
+                    .fixed, .relative, [class*="backdrop-blur"], [class*="bg-slate-950"], [class*="bg-slate-900"] {
                         background: transparent !important;
-                        border: none !important;
+                        background-color: transparent !important;
+                        backdrop-filter: none !important;
+                        -webkit-backdrop-filter: none !important;
                         box-shadow: none !important;
-                        overflow: visible !important;
+                        border: none !important;
                     }
                     /* Hide everything outside print container */
                     body * {
@@ -219,13 +220,15 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         visibility: visible !important;
                     }
                     #a5-cheque-receipt-print-area {
-                        position: relative !important;
-                        left: 0 !important;
+                        position: fixed !important;
                         top: 0 !important;
+                        left: 0 !important;
+                        right: 0 !important;
+                        bottom: 0 !important;
                         width: 100% !important;
+                        height: 100% !important;
                         max-width: 100% !important;
-                        height: auto !important;
-                        max-height: 138mm !important;
+                        max-height: 100% !important;
                         min-height: 0 !important;
                         aspect-ratio: auto !important;
                         margin: 0 !important;
@@ -234,21 +237,19 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         background: #ffffff !important;
                         color: #000000 !important;
                         box-shadow: none !important;
-                        border: 1px solid #000000 !important;
+                        border: 1.5px solid #000000 !important;
                         border-radius: 0 !important;
                         box-sizing: border-box !important;
-                        z-index: 999999 !important;
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
+                        z-index: 2147483647 !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
                         page-break-after: avoid !important;
                         break-after: avoid !important;
                         page-break-before: avoid !important;
                         break-before: avoid !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        justify-content: space-between !important;
                         overflow: hidden !important;
                     }
                     #a5-cheque-receipt-print-area table {
@@ -257,13 +258,23 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
                         width: 100% !important;
+                        background-color: #ffffff !important;
                     }
                     #a5-cheque-receipt-print-area tr {
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
                     }
-                    #a5-cheque-receipt-print-area th,
+                    #a5-cheque-receipt-print-area th {
+                        background-color: #f1f5f9 !important;
+                        background: #f1f5f9 !important;
+                        padding: 1px 2.5px !important;
+                        line-height: 1.15 !important;
+                        font-size: 8px !important;
+                        border: 1px solid #000000 !important;
+                    }
                     #a5-cheque-receipt-print-area td {
+                        background-color: #ffffff !important;
+                        background: #ffffff !important;
                         padding: 1px 2.5px !important;
                         line-height: 1.15 !important;
                         font-size: 8px !important;
@@ -280,6 +291,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                         justify-content: space-between !important;
                         border: 1px solid #000000 !important;
                         background-color: #ffffff !important;
+                        background: #ffffff !important;
                     }
                     .no-print {
                         display: none !important;

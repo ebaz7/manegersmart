@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     CreditCard, Plus, Trash2, CheckCircle2, AlertCircle, Clock, ShieldCheck,
     Search, RefreshCw, Eye, Download, Upload, Calendar, Building2, User,
@@ -1711,6 +1712,10 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     onClose={() => setReviewingReceipt(null)}
                     onSaveReview={handleSaveAccountingReview}
                     actionLoading={actionLoading}
+                    onApproveByCeo={handleApproveByCeo}
+                    currentUser={currentUser}
+                    isCeoOrAdmin={isCeoOrAdmin}
+                    isFinancialOrAdmin={isFinancialOrAdmin}
                 />
             )}
 
@@ -1759,9 +1764,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             )}
 
             {/* Local Attachment Preview Modal */}
-            {previewFile && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[85vh]">
+            {previewFile && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 z-[99999] overflow-y-auto">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[85vh] my-auto animate-scale-in">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
                             <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
@@ -1771,7 +1776,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                             <button
                                 type="button"
                                 onClick={() => setPreviewFile(null)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -1813,7 +1818,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     link.click();
                                     document.body.removeChild(link);
                                 }}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5"
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
                             >
                                 <Download className="w-4 h-4" />
                                 <span>دانلود این فایل</span>
@@ -1821,13 +1826,14 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                             <button
                                 type="button"
                                 onClick={() => setPreviewFile(null)}
-                                className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                             >
                                 بستن
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

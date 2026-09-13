@@ -37,6 +37,7 @@ import { SplitViewSelectorModal } from './components/SplitViewSelectorModal';
 import { WorkstationFloatingWindow } from './components/WorkstationFloatingWindow';
 import { SplitViewDragOverlay } from './components/SplitViewDragOverlay';
 import { FloatingCalculator } from './components/FloatingCalculator';
+import { AppNavItem, getAppNavItems, getSidebarLabel } from './utils/navigationItems';
 import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage, SystemAnnouncement, ChatGroup, TaskGroup, GroupTask } from './types';
@@ -57,6 +58,11 @@ import { initGraphicsEngine } from './services/graphicsEngine';
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SystemSettings | undefined>(undefined);
+
+  // Memoized user navigation items strictly derived from user role permissions
+  const allowedNavItems = useMemo(() => {
+    return getAppNavItems(currentUser, settings || null);
+  }, [currentUser, settings]);
   const [activeTab, setActiveTabState] = useState('dashboard');
   const [tabHistory, setTabHistory] = useState<string[]>(['dashboard']);
   const [directChatTarget, setDirectChatTarget] = useState<{ type: 'private' | 'group' | 'public' | 'task_group' | 'system', id: string, taskId?: string } | null>(null);
@@ -196,11 +202,39 @@ function App() {
       handleCloseSecondaryTab();
       return;
     }
+    // Prevent unauthorized tab opening in Split View
+    if (allowedNavItems.length > 0 && !allowedNavItems.some(i => i.id === tabId)) {
+      return;
+    }
     setSecondaryTab(tabId);
     setOpenWorkstationTabs(prev => prev.includes(tabId) ? prev : [...prev, tabId]);
     localStorage.setItem('app_secondary_tab', tabId);
     setMobileActiveSplitPane('secondary');
   };
+
+  // Security guard: Ensure activeTab, secondaryTab, floatingTab and open tabs are strictly permitted
+  useEffect(() => {
+    if (!currentUser || allowedNavItems.length === 0) return;
+    const allowedSet = new Set(allowedNavItems.map(i => i.id));
+
+    if (secondaryTab && !allowedSet.has(secondaryTab)) {
+      handleCloseSecondaryTab();
+    }
+
+    if (floatingTab && !allowedSet.has(floatingTab)) {
+      handleCloseFloating();
+    }
+
+    if (activeTab && !allowedSet.has(activeTab)) {
+      const fallbackTab = allowedSet.has('dashboard') ? 'dashboard' : allowedNavItems[0]?.id || 'dashboard';
+      setActiveTab(fallbackTab);
+    }
+
+    setOpenWorkstationTabs(prev => {
+      const filtered = prev.filter(t => allowedSet.has(t));
+      return filtered.length > 0 ? filtered : ['dashboard'];
+    });
+  }, [currentUser?.username, currentUser?.role, allowedNavItems]);
 
   const handlePopOutFloating = (tabId: string) => {
     setFloatingTab(tabId);
@@ -1586,34 +1620,7 @@ function App() {
   }, [toast]);
 
   const getModuleTitle = (tabId: string): string => {
-    switch (tabId) {
-      case 'dashboard': return 'داشبورد مدیریتی';
-      case 'create': return 'ثبت پرداخت جدید';
-      case 'manage': return 'سوابق و کارتابل پرداخت';
-      case 'create-exit': return 'ثبت مجوز خروج کالا';
-      case 'manage-invoices': return 'کارتابل فاکتورها';
-      case 'manage-exit': return 'مجوزهای خروج کالا';
-      case 'warehouse': return 'انبارداری و بیجک';
-      case 'trade': return 'معاملات و بازرگانی';
-      case 'balances': return 'مانده حساب مشتریان';
-      case 'sales': return 'فروش و CRM';
-      case 'products': return 'کاتالوگ محصولات';
-      case 'tickets': return 'تیکت‌ها و پشتیبانی';
-      case 'ccti': return 'تبدیل CCTI';
-      case 'sayan': return 'گزارشات نرم‌افزار سایان';
-      case 'sayan-operations': return 'عملیات سایان';
-      case 'users': return 'مدیریت کاربران';
-      case 'settings': return 'تنظیمات سیستم';
-      case 'knowledge':
-      case 'notes': return 'پایگاه دانش و یادداشت‌ها';
-      case 'security': return 'حراست و تردد';
-      case 'meetings': return 'جلسات و صورتجلسات';
-      case 'purchase': return 'تدارکات و خرید';
-      case 'secretariat': return 'دبیرخانه و مکاتبات';
-      case 'cheque-receipts': return 'رسید دریافت چک';
-      case 'chat': return 'گفتگوی سازمانی';
-      default: return tabId;
-    }
+    return getSidebarLabel(tabId, allowedNavItems);
   };
 
   const renderModuleContent = (tabId: string, isSecondary = false) => {
@@ -2044,7 +2051,9 @@ function App() {
                 secondaryTab={secondaryTab}
                 onSelectTab={(tabId) => {
                   if (tabId === activeTab) {
-                    // already active
+                    if (secondaryTab) {
+                      setMobileActiveSplitPane('primary');
+                    }
                   } else if (tabId === secondaryTab) {
                     setMobileActiveSplitPane('secondary');
                   } else {
@@ -2065,6 +2074,8 @@ function App() {
                 }}
                 floatingTab={floatingTab}
                 currentUser={currentUser}
+                settings={settings}
+                allowedItems={allowedNavItems}
               />
             )}
 
@@ -2082,16 +2093,23 @@ function App() {
                 handleCloseSecondaryTab();
                 setIsSplitSelectorOpen(false);
               }}
+              currentUser={currentUser}
+              settings={settings}
+              allowedItems={allowedNavItems}
             />
 
             {/* Windows-style Drag & Snap Overlay for Split-View */}
             <SplitViewDragOverlay
               activeTab={activeTab}
               onDropLeft={(tabId) => {
-                handleSelectSecondaryTab(tabId);
+                if (allowedNavItems.some(i => i.id === tabId)) {
+                  handleSelectSecondaryTab(tabId);
+                }
               }}
               onDropRight={(tabId) => {
-                setActiveTab(tabId);
+                if (allowedNavItems.some(i => i.id === tabId)) {
+                  setActiveTab(tabId);
+                }
               }}
             />
 

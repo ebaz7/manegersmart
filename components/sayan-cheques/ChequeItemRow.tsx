@@ -69,7 +69,7 @@ const toPersianDigits = (num: string | number | undefined | null): string => {
     return String(num).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[parseInt(d, 10)]);
 };
 
-const toShamsiStr = (dateStr: string): string => {
+export const toShamsiStr = (dateStr: string): string => {
     if (!dateStr) return '';
     try {
         const d = new Date(dateStr);
@@ -83,7 +83,7 @@ const toShamsiStr = (dateStr: string): string => {
     }
 };
 
-const fromShamsiStr = (shamsiStr: string): string => {
+export const fromShamsiStr = (shamsiStr: string): string => {
     if (!shamsiStr) return '';
     const clean = shamsiStr.replace(/[^0-9]/g, '/');
     const parts = clean.split('/').filter(Boolean);

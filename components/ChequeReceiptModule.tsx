@@ -384,6 +384,17 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
   const [selectedReceipt, setSelectedReceipt] = useState<ChequeReceipt | null>(null);
   const [isSharingReceipt, setIsSharingReceipt] = useState(false);
 
+  // Automatically scroll to the top of the main container when a receipt is opened for viewing
+  useEffect(() => {
+    if (selectedReceipt) {
+      const mainContainer = document.getElementById('main-scroll-container');
+      if (mainContainer) {
+        mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [selectedReceipt]);
+
   const handleShareReceiptToChat = async () => {
     if (!selectedReceipt) return;
     setIsSharingReceipt(true);
@@ -2194,6 +2205,11 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                             onClick={() => {
                               setSelectedReceipt(item.receipt);
                               setActiveSubTab('list');
+                              const mainContainer = document.getElementById('main-scroll-container');
+                              if (mainContainer) {
+                                mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                              }
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
                             }}
                             className="px-2 py-0.5 border border-gray-200 dark:border-white/10 hover:border-blue-500 text-gray-600 dark:text-gray-300 rounded text-[10px]"
                           >

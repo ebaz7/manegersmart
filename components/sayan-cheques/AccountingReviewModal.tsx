@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     Edit3, 
     X, 
     CreditCard, 
     Plus, 
     Trash2, 
-    Check, 
-    Sparkles, 
     Building2, 
-    Hash, 
-    FileText, 
     Save, 
     Calendar,
-    DollarSign,
+    Send,
+    ShieldCheck,
+    AlertCircle,
     UserCheck,
-    Send
+    CheckCircle2
 } from 'lucide-react';
-import { ChequeItemInput, COMMON_IRANIAN_BANKS } from './ChequeItemRow';
+import { ChequeItemInput, COMMON_IRANIAN_BANKS, toShamsiStr, fromShamsiStr } from './ChequeItemRow';
 import { MobileAttachmentUploader, ReceiptAttachment } from './MobileAttachmentUploader';
 import * as jalaali from 'jalaali-js';
+// @ts-ignore
+import DatePicker from "react-multi-date-picker";
+// @ts-ignore
+import persian from "react-date-object/calendars/persian";
+// @ts-ignore
+import persian_fa from "react-date-object/locales/persian_fa";
 
 interface SayanPerson {
     personCode: string;
@@ -33,6 +38,10 @@ interface Props {
     onClose: () => void;
     onSaveReview: (receiptId: string, updatedData: any, isApproveForCEO: boolean) => Promise<void>;
     actionLoading: string | null;
+    onApproveByCeo?: (receiptId: string) => Promise<void>;
+    currentUser?: any;
+    isCeoOrAdmin?: boolean;
+    isFinancialOrAdmin?: boolean;
 }
 
 const toPersianDigits = (num: string | number | undefined | null): string => {
@@ -40,13 +49,197 @@ const toPersianDigits = (num: string | number | undefined | null): string => {
     return String(num).replace(/[0-9]/g, d => '۰۱۲۳۴۵۶۷۸۹'[parseInt(d, 10)]);
 };
 
+// Subcomponent for individual Cheque Row in Review/Edit Modal
+interface ChequeRowProps {
+    index: number;
+    totalCount: number;
+    item: ChequeItemInput;
+    onChange: (idx: number, field: keyof ChequeItemInput, val: any) => void;
+    onDelete: (idx: number) => void;
+}
+
+const ChequeReviewRow: React.FC<ChequeRowProps> = ({
+    index,
+    totalCount,
+    item,
+    onChange,
+    onDelete
+}) => {
+    const [shamsiInput, setShamsiInput] = useState(() => toShamsiStr(item.dueDate));
+
+    useEffect(() => {
+        setShamsiInput(toShamsiStr(item.dueDate));
+    }, [item.dueDate]);
+
+    const handleShamsiDateTyping = (val: string) => {
+        let clean = val.replace(/[^0-9/]/g, '');
+        if (clean.length > 10) clean = clean.slice(0, 10);
+        const digits = clean.replace(/\//g, '');
+        let formatted = digits;
+        if (digits.length > 4) formatted = digits.slice(0, 4) + '/' + digits.slice(4);
+        if (digits.length > 6) formatted = digits.slice(0, 4) + '/' + digits.slice(4, 6) + '/' + digits.slice(6);
+        setShamsiInput(formatted);
+        const parts = formatted.split('/');
+        if (parts.length === 3) {
+            const jy = parseInt(parts[0], 10);
+            const jm = parseInt(parts[1], 10);
+            const jd = parseInt(parts[2], 10);
+            if (jy >= 1350 && jy <= 1500 && jm >= 1 && jm <= 12 && jd >= 1 && jd <= 31) {
+                const g = jalaali.toGregorian(jy, jm, jd);
+                const gm = String(g.gm).padStart(2, '0');
+                const gd = String(g.gd).padStart(2, '0');
+                onChange(index, 'dueDate', `${g.gy}-${gm}-${gd}`);
+            }
+        }
+    };
+
+    const tomanAmount = item.amount ? Math.floor(Number(item.amount) / 10) : 0;
+
+    return (
+        <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3.5 sm:p-4 space-y-3">
+            <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200 dark:border-slate-700">
+                <span className="font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-mono font-bold text-[11px]">
+                        {toPersianDigits(index + 1)}
+                    </span>
+                    <span>برگ چک شماره {toPersianDigits(index + 1)}</span>
+                </span>
+
+                {totalCount > 1 && (
+                    <button
+                        type="button"
+                        onClick={() => onDelete(index)}
+                        className="text-rose-600 hover:text-rose-700 dark:text-rose-400 text-xs flex items-center gap-1 p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer transition-colors"
+                        title="حذف این برگ چک"
+                    >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>حذف برگ</span>
+                    </button>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* 1. Cheque Number */}
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        شماره صیاد / سریال چک *
+                    </label>
+                    <input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.chequeNumber}
+                        onChange={(e) => onChange(index, 'chequeNumber', e.target.value)}
+                        placeholder="۱۶ رقم صیادی یا سریال"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-emerald-500 transition-colors"
+                    />
+                </div>
+
+                {/* 2. Amount */}
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                        <span>مبلغ چک (ریال) *</span>
+                        {tomanAmount > 0 && (
+                            <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                                {toPersianDigits(tomanAmount.toLocaleString('fa-IR'))} تومان
+                            </span>
+                        )}
+                    </label>
+                    <input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.amount ? Number(item.amount).toLocaleString('en-US') : ''}
+                        onChange={(e) => {
+                            const clean = e.target.value.replace(/,/g, '').replace(/[^0-9]/g, '');
+                            onChange(index, 'amount', clean === '' ? '' : Number(clean));
+                        }}
+                        placeholder="مبلغ به ریال"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 outline-none focus:border-emerald-500 transition-colors"
+                    />
+                </div>
+
+                {/* 3. Due Date */}
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        تاریخ سررسید (شمسی) *
+                    </label>
+                    <div className="relative flex items-center">
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            value={shamsiInput}
+                            onChange={(e) => handleShamsiDateTyping(e.target.value)}
+                            placeholder="۱۴۰۴/۰۸/۲۵"
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl pr-3 pl-8 py-2 text-xs font-mono font-bold outline-none focus:border-emerald-500 transition-colors"
+                        />
+                        <div className="absolute left-1.5 top-1.5 z-10">
+                            <DatePicker
+                                calendar={persian}
+                                locale={persian_fa}
+                                value={item.dueDate ? new Date(item.dueDate) : undefined}
+                                onChange={(date: any) => {
+                                    const val = date?.format?.('YYYY/MM/DD');
+                                    if (val) {
+                                        setShamsiInput(val);
+                                        const greg = fromShamsiStr(val);
+                                        if (greg) onChange(index, 'dueDate', greg);
+                                    }
+                                }}
+                                render={(value: any, openCalendar: any) => (
+                                    <button
+                                        type="button"
+                                        onClick={openCalendar}
+                                        className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 transition-colors"
+                                        title="انتخاب از تقویم شمسی"
+                                    >
+                                        <Calendar className="w-4 h-4 text-emerald-600" />
+                                    </button>
+                                )}
+                                calendarPosition="bottom-right"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* 4. Bank */}
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        بانک صادرکننده
+                    </label>
+                    <select
+                        value={item.bankName || 'سامان'}
+                        onChange={(e) => onChange(index, 'bankName', e.target.value)}
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold outline-none focus:border-emerald-500 transition-colors"
+                    >
+                        {COMMON_IRANIAN_BANKS.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const AccountingReviewModal: React.FC<Props> = ({
     receipt,
     fiscalYear,
     onClose,
     onSaveReview,
-    actionLoading
+    actionLoading,
+    onApproveByCeo,
+    currentUser,
+    isCeoOrAdmin,
+    isFinancialOrAdmin
 }) => {
+    // Lock body scrolling when modal is open to prevent mobile background jump and dual-scroll
+    useEffect(() => {
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, []);
+
     const [editPersonQuery, setEditPersonQuery] = useState(receipt.personName || '');
     const [editPerson, setEditPerson] = useState<SayanPerson | null>({
         personCode: String(receipt.personCode || ''),
@@ -137,16 +330,24 @@ export const AccountingReviewModal: React.FC<Props> = ({
 
     const editTotalAmount = editCheques.reduce((sum, ch) => sum + (Number(ch.amount) || 0), 0);
 
-    const handleSave = (isApproveForCEO: boolean) => {
+    const handleChequeFieldChange = (idx: number, field: keyof ChequeItemInput, val: any) => {
+        setEditCheques(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
+    };
+
+    const handleChequeDelete = (idx: number) => {
+        setEditCheques(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const buildPayload = () => {
         const finalPersonCode = editPerson ? editPerson.personCode : receipt.personCode;
         const finalPersonName = editPerson ? editPerson.fullName : receipt.personName;
 
         if (!finalPersonCode) {
             alert('انتخاب طرف حساب معتبر از سیستم سایان الزامی است.');
-            return;
+            return null;
         }
 
-        const payload = {
+        return {
             personCode: finalPersonCode,
             personName: finalPersonName,
             poshtNomreh: editPoshtNomreh,
@@ -166,53 +367,98 @@ export const AccountingReviewModal: React.FC<Props> = ({
             attachments: editAttachments,
             accountingNote
         };
-        onSaveReview(receipt.id, payload, isApproveForCEO);
     };
 
-    return (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden shadow-2xl animate-scale-in">
-                {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/90 dark:bg-slate-800/60">
-                    <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/30">
-                            <Edit3 className="w-6 h-6" />
+    const handleSave = async (isApproveForCEO: boolean) => {
+        const payload = buildPayload();
+        if (!payload) return;
+        await onSaveReview(receipt.id, payload, isApproveForCEO);
+    };
+
+    const handleSaveAndCeoApprove = async () => {
+        if (!onApproveByCeo) return;
+        const proceed = window.confirm('آیا از ذخیره تغییرات و صدور مستقیم سند در دیتابیس ERP سایان اطمینان دارید؟');
+        if (!proceed) return;
+
+        const payload = buildPayload();
+        if (!payload) return;
+
+        // Save changes first
+        await onSaveReview(receipt.id, payload, false);
+        // Then trigger CEO approval
+        await onApproveByCeo(receipt.id);
+    };
+
+    // Lock body scrolling when modal is open to prevent background jump without resetting #main-scroll-container position
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const originalBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = originalBodyOverflow;
+        };
+    }, []);
+
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+        <div 
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm overflow-hidden select-text"
+            dir="rtl"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
+            {/* Modal Container: Centered modal card */}
+            <div 
+                className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[94vh] sm:h-auto sm:max-h-[88vh] sm:rounded-3xl rounded-2xl flex flex-col overflow-hidden shadow-2xl animate-scale-in border border-slate-200 dark:border-slate-800 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+            >
+                
+                {/* Header (Always Pinned Top) */}
+                <div className="shrink-0 px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-800/80 backdrop-blur-sm flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+                            <Edit3 className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
-                        <div>
-                            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                                <span>ویرایش اطلاعات و پیوست‌های رسید چک</span>
-                                <span className="font-mono text-xs sm:text-sm px-2.5 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800 font-bold">
+                        <div className="min-w-0">
+                            <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+                                <span className="truncate">ویرایش اطلاعات رسید چک</span>
+                                <span className="font-mono text-xs px-2 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800 font-bold shrink-0">
                                     #{toPersianDigits(receipt.receiptNo || receipt.id)}
                                 </span>
                             </h3>
-                            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                                ویرایش در همین مرحله ذخیره می‌شود و وضعیت رسید بدون تایید ناخواسته حفظ خواهد شد.
+                            <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                طرف حساب: {receipt.personName || 'نامشخص'} • جمع: {toPersianDigits(editTotalAmount.toLocaleString('fa-IR'))} ریال
                             </p>
                         </div>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-2.5 rounded-2xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                        className="p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors cursor-pointer shrink-0"
+                        title="بستن"
                     >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Body Form */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                {/* Body Form (Smooth Momentum Scrolling Isolated Container) */}
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-6 space-y-4 sm:space-y-5 -webkit-overflow-scrolling-touch">
+                    
                     {/* General Receipt Metadata Panel */}
-                    <div className="bg-slate-50/80 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                    <div className="bg-slate-50/90 dark:bg-slate-800/40 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-3.5">
                         <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-700/60">
-                            <Building2 className="w-5 h-5 text-amber-500" />
-                            <h4 className="text-sm font-black text-slate-800 dark:text-slate-200">
+                            <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
+                            <h4 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-200">
                                 مشخصات طرف حساب، صندوق و سربرگ رسید
                             </h4>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                             {/* Person Selection */}
-                            <div className="relative">
+                            <div className="relative sm:col-span-2 md:col-span-1">
                                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                                     طرف حساب سایان (پرداخت کننده) *
                                 </label>
@@ -225,18 +471,18 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                             setEditPerson(null);
                                         }
                                     }}
-                                    placeholder="جستجوی کد یا نام طرف حساب در سایان..."
-                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-amber-500 transition-colors"
+                                    placeholder="جستجوی کد یا نام طرف حساب..."
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-amber-500 transition-colors"
                                 />
                                 {editPerson && (
                                     <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 font-bold">
-                                        <span>طرف حساب انتخاب شد: {editPerson.fullName}</span>
-                                        <span className="font-mono">کد: {toPersianDigits(editPerson.personCode)}</span>
+                                        <span className="truncate">انتخاب شد: {editPerson.fullName}</span>
+                                        <span className="font-mono shrink-0 mr-1">کد: {toPersianDigits(editPerson.personCode)}</span>
                                     </div>
                                 )}
 
                                 {editPersonResults.length > 0 && !editPerson && (
-                                    <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto">
+                                    <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-30 max-h-48 overflow-y-auto">
                                         {editPersonResults.map(p => (
                                             <div
                                                 key={p.personCode}
@@ -265,7 +511,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                     value={editPoshtNomreh}
                                     onChange={(e) => setEditPoshtNomreh(e.target.value)}
                                     placeholder="مثال: ۱۰۲۴"
-                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-mono font-bold outline-none focus:border-amber-500"
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold outline-none focus:border-amber-500"
                                 />
                             </div>
 
@@ -277,7 +523,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                 <select
                                     value={editCashboxCode}
                                     onChange={(e) => setEditCashboxCode(e.target.value)}
-                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-amber-500"
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-500"
                                 >
                                     {cashboxes.map(cb => (
                                         <option key={cb.code} value={cb.code}>
@@ -307,9 +553,9 @@ export const AccountingReviewModal: React.FC<Props> = ({
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <CreditCard className="w-5 h-5 text-indigo-500" />
-                                <h4 className="text-sm font-black text-slate-800 dark:text-slate-200">
-                                    اقلام و برگ‌های چک در این رسید ({toPersianDigits(editCheques.length)} برگ)
+                                <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
+                                <h4 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-200">
+                                    اقلام و برگ‌های چک ({toPersianDigits(editCheques.length)} برگ)
                                 </h4>
                             </div>
 
@@ -330,156 +576,50 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                         }
                                     ]);
                                 }}
-                                className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 text-xs font-bold flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                                className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
                             >
-                                <Plus className="w-4 h-4" />
-                                <span>افزودن برگ چک جدید</span>
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>+ برگ چک جدید</span>
                             </button>
                         </div>
 
                         <div className="space-y-3">
-                            {editCheques.map((ch, idx) => {
-                                let shamsiDate = '';
-                                try {
-                                    if (ch.dueDate) {
-                                        const d = new Date(ch.dueDate);
-                                        const j = jalaali.toJalaali(d);
-                                        shamsiDate = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
-                                    }
-                                } catch (e) {
-                                    shamsiDate = '';
-                                }
-
-                                return (
-                                    <div 
-                                        key={ch.id || idx}
-                                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-xs space-y-3"
-                                    >
-                                        <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100 dark:border-slate-800">
-                                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                                                <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-mono font-bold text-[11px] text-slate-600 dark:text-slate-300">
-                                                    {idx + 1}
-                                                </span>
-                                                <span>برگ چک شماره {toPersianDigits(idx + 1)}</span>
-                                            </span>
-
-                                            {editCheques.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setEditCheques(prev => prev.filter((_, i) => i !== idx))}
-                                                    className="text-rose-500 hover:text-rose-700 text-xs flex items-center gap-1 p-1 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                    <span>حذف این برگ</span>
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                                    شماره صیاد / سریال چک *
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={ch.chequeNumber}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setEditCheques(prev => prev.map((item, i) => i === idx ? { ...item, chequeNumber: val } : item));
-                                                    }}
-                                                    placeholder="۱۶ رقم صیادی یا سریال"
-                                                    className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-mono font-bold outline-none focus:border-indigo-500"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                                    مبلغ چک (ریال) *
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={ch.amount ? Number(ch.amount).toLocaleString('en-US') : ''}
-                                                    onChange={(e) => {
-                                                        const clean = e.target.value.replace(/,/g, '').replace(/[^0-9]/g, '');
-                                                        setEditCheques(prev => prev.map((item, i) => i === idx ? { ...item, amount: clean === '' ? '' : Number(clean) } : item));
-                                                    }}
-                                                    placeholder="مبلغ به ریال"
-                                                    className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 outline-none focus:border-indigo-500"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                                    تاریخ سررسید (شمسی)
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={shamsiDate}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        try {
-                                                            const parts = val.split('/').map(Number);
-                                                            if (parts.length === 3 && parts[0] > 1300 && parts[1] >= 1 && parts[1] <= 12 && parts[2] >= 1 && parts[2] <= 31) {
-                                                                const g = jalaali.toGregorian(parts[0], parts[1], parts[2]);
-                                                                const iso = `${g.gy}-${String(g.gm).padStart(2, '0')}-${String(g.gd).padStart(2, '0')}`;
-                                                                setEditCheques(prev => prev.map((item, i) => i === idx ? { ...item, dueDate: iso } : item));
-                                                            }
-                                                        } catch (err) {
-                                                            // silent
-                                                        }
-                                                    }}
-                                                    placeholder="۱۴۰۳/۰۶/۱۵"
-                                                    className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-mono font-bold outline-none focus:border-indigo-500"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                                    بانک صادرکننده
-                                                </label>
-                                                <select
-                                                    value={ch.bankName || 'سامان'}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setEditCheques(prev => prev.map((item, i) => i === idx ? { ...item, bankName: val } : item));
-                                                    }}
-                                                    className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold outline-none focus:border-indigo-500"
-                                                >
-                                                    {COMMON_IRANIAN_BANKS.map(b => (
-                                                        <option key={b} value={b}>{b}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                            {editCheques.map((ch, idx) => (
+                                <ChequeReviewRow
+                                    key={ch.id || idx}
+                                    index={idx}
+                                    totalCount={editCheques.length}
+                                    item={ch}
+                                    onChange={handleChequeFieldChange}
+                                    onDelete={handleChequeDelete}
+                                />
+                            ))}
                         </div>
 
                         {/* Total Amount Summary */}
-                        <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs sm:text-sm">
+                        <div className="p-3 sm:p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between text-xs sm:text-sm">
                             <span className="font-bold text-slate-700 dark:text-slate-300">
                                 جمع کل مبلغ چک‌های این رسید:
                             </span>
-                            <span className="font-mono font-black text-base text-emerald-600 dark:text-emerald-400">
+                            <span className="font-mono font-black text-sm sm:text-base text-emerald-600 dark:text-emerald-400">
                                 {toPersianDigits(editTotalAmount.toLocaleString('fa-IR'))} <span className="text-xs font-normal">ریال</span>
                             </span>
                         </div>
                     </div>
 
                     {/* Mobile-Optimized File & Photo Attachments Component */}
-                    <div className="bg-slate-50/80 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <div className="bg-slate-50/90 dark:bg-slate-800/40 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80">
                         <MobileAttachmentUploader
                             attachments={editAttachments}
                             onChange={setEditAttachments}
                             label="تصاویر و اسناد پیوست چک (بهینه شده برای گوشی و کامپیوتر)"
-                            helperText="می‌توانید مستقیماً با دوربین موبایل از چک عکس بگیرید یا فایل‌های PDF و تصاویر را انتخاب نمایید."
+                            helperText="می‌توانید مستقیماً با دوربین موبایل از چک عکس بگیرید یا تصاویر را انتخاب نمایید."
                         />
                     </div>
 
                     {/* Accounting Review Note */}
-                    <div className="space-y-1.5">
-                        <label className="block text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+                    <div className="space-y-1.5 pb-2">
+                        <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
                             یادداشت و توضیحات کارشناس
                         </label>
                         <input
@@ -487,48 +627,69 @@ export const AccountingReviewModal: React.FC<Props> = ({
                             value={accountingNote}
                             onChange={(e) => setAccountingNote(e.target.value)}
                             placeholder="توضیحات و یادداشت‌های مربوط به این ویرایش..."
-                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 text-xs sm:text-sm font-medium outline-none focus:border-amber-500"
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:border-amber-500"
                         />
                     </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-wrap items-center justify-between gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
-                    >
-                        انصراف
-                    </button>
-
-                    <div className="flex flex-wrap items-center gap-2.5">
-                        {/* Primary Action: Pure Save Edits within Current Stage */}
+                {/* Footer Actions (Always Pinned at Bottom with Safe Area) */}
+                <div className="shrink-0 p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10 shadow-lg pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                        
+                        {/* Cancel Button */}
                         <button
                             type="button"
-                            onClick={() => handleSave(false)}
-                            disabled={actionLoading === 'accounting_review'}
-                            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all active:scale-95 cursor-pointer"
+                            onClick={onClose}
+                            className="order-last sm:order-first px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm transition-colors cursor-pointer text-center"
                         >
-                            <Save className="w-4 h-4" />
-                            <span>ذخیره تغییرات رسید (در همین مرحله)</span>
+                            انصراف
                         </button>
 
-                        {/* Optional Approval Action (Only when receipt is in PENDING_ACCOUNTING) */}
-                        {receipt.status === 'PENDING_ACCOUNTING' && (
+                        {/* Action Buttons: Stack on Mobile, Flex on Desktop */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            
+                            {/* Save Draft / Changes (Current Stage) */}
                             <button
                                 type="button"
-                                onClick={() => handleSave(true)}
+                                onClick={() => handleSave(false)}
                                 disabled={actionLoading === 'accounting_review'}
-                                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
+                                className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
                             >
-                                <Send className="w-4 h-4" />
-                                <span>تایید و ارسال به مدیرعامل (مرحله ۲)</span>
+                                <Save className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                <span>{actionLoading === 'accounting_review' ? 'در حال ذخیره...' : 'ذخیره تغییرات رسید'}</span>
                             </button>
-                        )}
+
+                            {/* Step 1 Approval: Confirm and Send to CEO */}
+                            {receipt.status === 'PENDING_ACCOUNTING' && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleSave(true)}
+                                    disabled={actionLoading === 'accounting_review'}
+                                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-500/25 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                                >
+                                    <Send className="w-4 h-4" />
+                                    <span>تایید و ارسال به مدیرعامل (مرحله ۲)</span>
+                                </button>
+                            )}
+
+                            {/* Step 2 Approval: Direct CEO approval & Sayan ERP registration */}
+                            {(receipt.status === 'PENDING_CEO' || receipt.sayanError) && onApproveByCeo && (isCeoOrAdmin !== false) && (
+                                <button
+                                    type="button"
+                                    onClick={handleSaveAndCeoApprove}
+                                    disabled={actionLoading === receipt.id || actionLoading === 'accounting_review'}
+                                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                                >
+                                    <ShieldCheck className="w-4 h-4" />
+                                    <span>تایید نهایی و صدور سند در سایان</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
+
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

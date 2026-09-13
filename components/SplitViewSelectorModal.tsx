@@ -1,12 +1,8 @@
-import React from 'react';
-import { 
-  X, Columns, LayoutDashboard, Receipt, Truck, FileText, 
-  Warehouse, ArrowLeftRight, MessageSquare, Briefcase, 
-  Users, Settings, Shield, ShoppingCart, Calendar, Mail, 
-  Sparkles, CheckCircle2 
-} from 'lucide-react';
+import React, { useMemo } from 'react';
+import { X, Columns, FileText } from 'lucide-react';
 import { motion } from 'motion/react';
-import { User } from '../types';
+import { User, SystemSettings } from '../types';
+import { AppNavItem, getAppNavItems, getSidebarLabel, ALL_NAVIGATION_ITEMS } from '../utils/navigationItems';
 
 interface SplitViewSelectorModalProps {
   isOpen: boolean;
@@ -17,7 +13,8 @@ interface SplitViewSelectorModalProps {
   onSelectModuleForSplit?: (tabId: string) => void;
   onCloseSplit?: () => void;
   currentUser?: User | null;
-  allowedItems?: Array<{ id: string; label: string; icon?: any }>;
+  settings?: SystemSettings | null;
+  allowedItems?: AppNavItem[];
 }
 
 export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
@@ -28,6 +25,8 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
   onSelectSecondaryTab,
   onSelectModuleForSplit,
   onCloseSplit,
+  currentUser,
+  settings,
   allowedItems
 }) => {
   if (!isOpen) return null;
@@ -50,30 +49,16 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
     onClose();
   };
 
-  const defaultAvailableItems = [
-    { id: 'dashboard', label: 'داشبورد مدیریتی', icon: LayoutDashboard, desc: 'آمار و وضعیت کلی سازمان' },
-    { id: 'manage', label: 'سوابق و کارتابل پرداخت', icon: Receipt, desc: 'حواله‌ها، فاکتورها و تسویه‌ها' },
-    { id: 'warehouse', label: 'انبارداری و بیجک', icon: Warehouse, desc: 'موجودی انبار، بیجک و ورود/خروج کالا' },
-    { id: 'sayan', label: 'گزارشات نرم‌افزار سایان', icon: FileText, desc: 'تراز، فروش، تولید و چک‌ها' },
-    { id: 'sayan-operations', label: 'ثبت‌های سایان', icon: FileText, desc: 'پیش‌فاکتور، دریافت چک و اسناد معلق' },
-    { id: 'chat', label: 'گفتگوی سازمانی (چت)', icon: MessageSquare, desc: 'پیام‌ها، کارگروه‌ها و هماهنگی' },
-    { id: 'balances', label: 'مانده حساب مشتریان', icon: Users, desc: 'وضعیت بدهی و اعتبار مشتریان' },
-    { id: 'ccti', label: 'تبدیل فرمت CCTI', icon: ArrowLeftRight, desc: 'تبدیل و خروجی فایل‌های سی‌سی‌تی‌آی' },
-    { id: 'manage-exit', label: 'مجوزهای خروج کالا', icon: Truck, desc: 'کارتابل و سوابق خروج' },
-    { id: 'purchase', label: 'تدارکات و خرید', icon: ShoppingCart, desc: 'درخواست‌های خرید قطعات' },
-    { id: 'trade', label: 'معاملات و بازرگانی', icon: Briefcase, desc: 'پروفرم‌ها و پرونده‌های بازرگانی' },
-    { id: 'secretariat', label: 'دبیرخانه و نامه‌ها', icon: Mail, desc: 'مکاتبات اداری و صورتجلسات' },
-    { id: 'meetings', label: 'جلسات سازمانی', icon: Calendar, desc: 'تقویم جلسات و صورتجلسات' },
-    { id: 'knowledge', label: 'یادداشت‌ها و دانش سازمانی', icon: Sparkles, desc: 'دفترچه یادداشت، تسک‌ها و پایگاه دانش' },
-    { id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Receipt, desc: 'چک‌های صیادی و کارتابل تاییدیه' },
-  ];
-
-  const items = allowedItems && allowedItems.length > 0 
-    ? allowedItems.map(ai => ({
-        ...ai,
-        desc: defaultAvailableItems.find(d => d.id === ai.id)?.desc || 'بخش سازمانی'
-      }))
-    : defaultAvailableItems;
+  // Strictly respect user permissions: only show modules the user has access to
+  const items = useMemo(() => {
+    if (allowedItems && allowedItems.length > 0) {
+      return allowedItems;
+    }
+    if (currentUser) {
+      return getAppNavItems(currentUser, settings || null);
+    }
+    return [ALL_NAVIGATION_ITEMS['dashboard']];
+  }, [allowedItems, currentUser, settings]);
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in">
@@ -111,7 +96,7 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
             <span>پنجره اصلی فعال:</span>
             <span className="text-blue-600 dark:text-blue-400 font-black">
-              {items.find(i => i.id === activeTab)?.label || activeTab}
+              {getSidebarLabel(activeTab, items)}
             </span>
           </div>
           {secondaryTab && (

@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     FileText, X, CheckCircle2, AlertCircle, Clock, ShieldCheck,
     CreditCard, Building2, User, Hash, Layers, Eye, Download, Printer,
@@ -224,11 +225,33 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
         }
     };
 
-    return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-scale-in my-auto shrink-0">
+    // Lock body scrolling when modal is open to prevent background jump without resetting #main-scroll-container position
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const originalBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = originalBodyOverflow;
+        };
+    }, []);
+
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+        <div 
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm overflow-hidden select-text"
+            dir="rtl"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
+            <div 
+                className="bg-white dark:bg-slate-900 w-full sm:max-w-4xl h-[94vh] sm:h-auto sm:max-h-[88vh] sm:rounded-3xl rounded-2xl flex flex-col overflow-hidden shadow-2xl animate-scale-in border border-slate-200 dark:border-slate-800 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40">
+                <div className="shrink-0 p-3.5 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/95 dark:bg-slate-800/60 backdrop-blur-sm">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                             <FileText className="w-5 h-5" />
@@ -270,7 +293,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 </div>
 
                 {/* Body Details */}
-                <div ref={detailContentRef} className="flex-1 overflow-y-auto p-5 space-y-5 bg-white dark:bg-slate-900">
+                <div ref={detailContentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-4 sm:space-y-5 bg-white dark:bg-slate-900 -webkit-overflow-scrolling-touch">
                     {/* Top Info Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 text-xs">
                         <div>
@@ -590,127 +613,130 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                     </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
-                        >
-                            بستن
-                        </button>
+                {/* Footer Actions (Always Pinned at Bottom with Safe Area) */}
+                <div className="shrink-0 p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10 shadow-lg pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                    <div className="flex flex-col sm:flex-row-reverse sm:items-center sm:justify-between gap-2.5 sm:gap-3">
+                        {/* Step Actions (Primary on mobile, prominent at top) */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            {/* Step 1: Accounting can review/approve, reject and edit */}
+                            {receipt.status === 'PENDING_ACCOUNTING' && (
+                                <>
+                                    {(canEditReceipt || isFinancialOrAdmin) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onOpenAccountingReview(receipt)}
+                                            className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 cursor-pointer active:scale-95"
+                                            title="ویرایش مشخصات، اقلام و مدارک پیوست و ثبت تایید مالی"
+                                        >
+                                            <Edit3 className="w-4 h-4" />
+                                            <span>ویرایش و بررسی مالی</span>
+                                        </button>
+                                    )}
+                                    {isFinancialOrAdmin && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onReject(receipt.id)}
+                                            disabled={actionLoading === receipt.id}
+                                            className="px-3.5 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs hover:bg-rose-100 cursor-pointer text-center"
+                                        >
+                                            رد / بازگشت
+                                        </button>
+                                    )}
+                                </>
+                            )}
 
-                        <button
-                            type="button"
-                            onClick={handleShareToChat}
-                            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                        >
-                            <Send className="w-3.5 h-3.5" />
-                            <span>ارسال به گفتگوی سازمانی</span>
-                        </button>
+                            {/* Edit button for authorized users on pending/failed receipts (e.g. PENDING_CEO or REJECTED) */}
+                            {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && (canEditReceipt || isFinancialOrAdmin) && (
+                                <button
+                                    type="button"
+                                    onClick={() => onOpenAccountingReview(receipt)}
+                                    className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 cursor-pointer active:scale-95"
+                                    title="ویرایش اطلاعات و مدارک رسید"
+                                >
+                                    <Edit3 className="w-4 h-4" />
+                                    <span>ویرایش اطلاعات رسید</span>
+                                </button>
+                            )}
 
-                        {receipt.status !== 'REGISTERED_IN_SAYAN' && canDeleteReceipt && onDelete && (
-                            <button
-                                type="button"
-                                onClick={() => onDelete(receipt.id)}
-                                disabled={actionLoading === receipt.id}
-                                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 text-rose-600 dark:text-rose-400 font-bold text-xs border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 hover:text-rose-700 transition-colors cursor-pointer"
-                                title="حذف کامل این رسید چک"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                <span>حذف کامل رسید</span>
-                            </button>
-                        )}
-
-                        {receipt.archiveCode && (
-                            <button
-                                type="button"
-                                onClick={() => onOpenRealSayanDoc(receipt.archiveCode, receipt.docNo)}
-                                className="px-3.5 py-2 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold text-xs border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 hover:bg-purple-200 transition-colors cursor-pointer"
-                            >
-                                <Layers className="w-4 h-4" />
-                                <span>مشاهده سند واقعی در سایان</span>
-                            </button>
-                        )}
-
-                        {onPrintA5 && (
-                            <button
-                                type="button"
-                                onClick={() => onPrintA5(receipt)}
-                                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-                                title="مشاهده پیش‌نمایش و چاپ رسید استاندارد A5 افقی"
-                            >
-                                <Printer className="w-4 h-4" />
-                                <span>مشاهده و چاپ رسید A5</span>
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Step Actions */}
-                    <div className="flex items-center gap-2">
-                        {/* Step 1: Accounting can review/approve, reject and edit */}
-                        {receipt.status === 'PENDING_ACCOUNTING' && (
-                            <>
-                                {isFinancialOrAdmin && (
+                            {/* Step 2: CEO Approves and registers in Sayan DB */}
+                            {receipt.status === 'PENDING_CEO' && isCeoOrAdmin && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => onApproveByCeo(receipt.id)}
+                                        disabled={actionLoading === receipt.id}
+                                        className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 cursor-pointer active:scale-95"
+                                    >
+                                        <ShieldCheck className="w-4 h-4" />
+                                        <span>{actionLoading === receipt.id ? 'در حال ثبت در پایگاه سایان...' : 'تایید نهایی مدیرعامل و ثبت در ERP سایان'}</span>
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={() => onReject(receipt.id)}
                                         disabled={actionLoading === receipt.id}
-                                        className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs hover:bg-rose-100 cursor-pointer"
+                                        className="px-3.5 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs hover:bg-rose-100 cursor-pointer text-center"
                                     >
-                                        رد / بازگشت
+                                        عدم تایید مدیرعامل
                                     </button>
-                                )}
-                                {(canEditReceipt || isFinancialOrAdmin) && (
-                                    <button
-                                        type="button"
-                                        onClick={() => onOpenAccountingReview(receipt)}
-                                        className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-                                        title="ویرایش مشخصات، اقلام و مدارک پیوست و ثبت تایید مالی"
-                                    >
-                                        <Edit3 className="w-4 h-4" />
-                                        <span>ویرایش و بررسی مالی</span>
-                                    </button>
-                                )}
-                            </>
-                        )}
+                                </>
+                            )}
+                        </div>
 
-                        {/* Edit button for authorized users on pending/failed receipts (e.g. PENDING_CEO or REJECTED) */}
-                        {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && (canEditReceipt || isFinancialOrAdmin) && (
+                        {/* Secondary utility actions */}
+                        <div className="flex flex-wrap items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => onOpenAccountingReview(receipt)}
-                                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-                                title="ویرایش اطلاعات و مدارک رسید"
+                                onClick={onClose}
+                                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
                             >
-                                <Edit3 className="w-4 h-4" />
-                                <span>ویرایش اطلاعات رسید</span>
+                                بستن
                             </button>
-                        )}
 
-                        {/* Step 2: CEO Approves and registers in Sayan DB */}
-                        {receipt.status === 'PENDING_CEO' && isCeoOrAdmin && (
-                            <>
+                            {onPrintA5 && (
                                 <button
                                     type="button"
-                                    onClick={() => onReject(receipt.id)}
-                                    disabled={actionLoading === receipt.id}
-                                    className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs hover:bg-rose-100 cursor-pointer"
+                                    onClick={() => onPrintA5(receipt)}
+                                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                                    title="مشاهده پیش‌نمایش و چاپ رسید استاندارد A5 افقی"
                                 >
-                                    عدم تایید مدیرعامل
+                                    <Printer className="w-4 h-4" />
+                                    <span>چاپ رسید A5</span>
                                 </button>
+                            )}
+
+                            {receipt.archiveCode && (
                                 <button
                                     type="button"
-                                    onClick={() => onApproveByCeo(receipt.id)}
-                                    disabled={actionLoading === receipt.id}
-                                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 cursor-pointer"
+                                    onClick={() => onOpenRealSayanDoc(receipt.archiveCode, receipt.docNo)}
+                                    className="px-3.5 py-2 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold text-xs border border-purple-200 dark:border-purple-800 flex items-center gap-1.5 hover:bg-purple-200 transition-colors cursor-pointer"
                                 >
-                                    <ShieldCheck className="w-4 h-4" />
-                                    <span>{actionLoading === receipt.id ? 'در حال ثبت در پایگاه سایان...' : 'تایید نهایی مدیرعامل و ثبت در ERP سایان'}</span>
+                                    <Layers className="w-4 h-4" />
+                                    <span>سند در سایان</span>
                                 </button>
-                            </>
-                        )}
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={handleShareToChat}
+                                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                            >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>ارسال به گفتگو</span>
+                            </button>
+
+                            {receipt.status !== 'REGISTERED_IN_SAYAN' && canDeleteReceipt && onDelete && (
+                                <button
+                                    type="button"
+                                    onClick={() => onDelete(receipt.id)}
+                                    disabled={actionLoading === receipt.id}
+                                    className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-900/30 text-rose-600 dark:text-rose-400 font-bold text-xs border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    title="حذف کامل این رسید چک"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>حذف</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -722,6 +748,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 fileUrl={previewAttachment?.resolvedSrc || previewAttachment?.fileData || previewAttachment?.url || (previewAttachment?.fileName ? `/uploads/${previewAttachment.fileName}` : '')}
                 fileName={previewAttachment?.fileName || 'پیش‌نمایش پیوست'}
             />
-        </div>
+        </div>,
+        document.body
     );
 };

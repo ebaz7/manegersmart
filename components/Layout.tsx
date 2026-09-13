@@ -20,6 +20,7 @@ import { getSettings, saveSettings, uploadFile } from '../services/storageServic
 import { apiCall, resolveImageUrl } from '../services/apiService';
 import { DEFAULT_MOBILE_NAV_ORDER } from '../constants';
 import { Capacitor } from '@capacitor/core';
+import { getAppNavItems } from '../utils/navigationItems';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -657,78 +658,9 @@ const Layout: React.FC<LayoutProps> = ({
 
   const unreadCount = notifications.filter(n => !n.read).length;
   
-  // Calculate Permissions (Memoized for high performance on heavy Admin/CEO roles)
+  // Calculate Permissions (Single source of truth via getAppNavItems)
   const navItems = useMemo(() => {
-    const perms = settings ? getRolePermissions(currentUser.role, settings, currentUser) : { canCreatePaymentOrder: false, canViewPaymentOrders: false };
-    
-    // Specific Access Flags
-    const canCreatePayment = perms.canCreatePaymentOrder === true;
-    const canViewPayment = perms.canViewPaymentOrders === true;
-    const canCreateExit = perms.canCreateExitPermit === true;
-    const canViewInvoices = perms.canViewInvoices === true;
-    const canViewExit = perms.canViewExitPermits === true;
-    const canManageWarehouse = currentUser.role === UserRole.ADMIN || perms.canManageWarehouse === true;
-    const canSeeTrade = currentUser.role === UserRole.ADMIN || perms.canManageTrade === true;
-    const canSeeBalances = currentUser.role === UserRole.ADMIN || (perms as any).canViewCustomerBalances === true;
-    const canSeeProducts = currentUser.role === UserRole.ADMIN || perms.canManageSales === true;
-    const canSeeSettings = currentUser.role === UserRole.ADMIN || perms.canManageSettings === true || perms.canManageTradeSettings === true;
-    const canSeeSecurity = currentUser.role === UserRole.ADMIN || perms.canViewSecurity === true;
-    const canSeeKnowledgeBase = currentUser.role === UserRole.ADMIN || perms.canViewKnowledgeBase === true || perms.canManageKnowledgeBase === true;
-    const canSeeMeetings = currentUser.role === UserRole.ADMIN || perms.canViewMeetings === true;
-    const canSeePurchase = currentUser.role === UserRole.ADMIN || (perms.canView === true);
-    const canSeeCcti = currentUser.role === UserRole.ADMIN || perms.canAccessCcti === true;
-    const canSeeSayan = currentUser.role === UserRole.ADMIN || 
-      perms.canViewSayan === true || 
-      perms.canViewSayanTraz === true || 
-      perms.canViewSayanSales === true || 
-      perms.canViewSayanProduction === true || 
-      perms.canViewSayanProdReturns === true || 
-      perms.canViewSayanCheques === true || 
-      perms.canViewSayanRemittances === true || 
-      perms.canViewSayanWarehouseOverview === true || 
-      perms.canAccessSayanReports === true;
-
-    const canSeeSayanOps = currentUser.role === UserRole.ADMIN || 
-      perms.canAccessSayanRegistrations === true || 
-      perms.canSayanPreInvoices === true || 
-      perms.canSayanRegisterCheque === true || 
-      perms.canSayanEditReceipt === true || 
-      perms.canSayanDeleteReceipt === true || 
-      perms.canSayanApproveAccounting === true || 
-      perms.canSayanApproveCeo === true || 
-      perms.canAccessSayanPendingDocs === true;
-
-    const canSeeChequeReceipts = currentUser.role === UserRole.ADMIN || perms.canAccessChequeReceipts === true;
-
-    const items = [
-      { id: 'dashboard', label: 'داشبورد', icon: LayoutDashboard },
-    ];
-    if (canCreatePayment) items.push({ id: 'create', label: 'ثبت پرداخت', icon: BadgePlus });
-    if (canViewPayment) items.push({ id: 'manage', label: 'سوابق پرداخت', icon: Receipt });
-    if (canSeeCcti) items.push({ id: 'ccti', label: 'تبدیل CCTI', icon: ArrowLeftRight });
-    if (canCreateExit) items.push({ id: 'create-exit', label: 'ثبت خروج', icon: Truck });
-    if (canViewInvoices) items.push({ id: 'manage-invoices', label: 'مدیریت فاکتورها', icon: ScrollText });
-    if (canViewExit) items.push({ id: 'manage-exit', label: 'سوابق خروج', icon: ClipboardCheck });
-    if (canManageWarehouse) items.push({ id: 'warehouse', label: 'مدیریت انبار', icon: Warehouse });
-    if (canSeeSayan) items.push({ id: 'sayan', label: 'گزارشات سایان', icon: BarChart3 });
-    if (canSeeSayanOps) items.push({ id: 'sayan-operations', label: 'ثبت‌های سایان', icon: FileCheck2 });
-    if (canSeeSecurity) items.push({ id: 'security', label: 'انتظامات', icon: ShieldCheck });
-    if (canSeeMeetings) items.push({ id: 'meetings', label: 'جلسات تولید', icon: CalendarDays });
-    if (canSeePurchase) items.push({ id: 'purchase', label: 'درخواست خرید', icon: ShoppingCart });
-    items.push({ id: 'secretariat', label: 'دبیرخانه اداری', icon: FolderArchive });
-    if (canSeeChequeReceipts) items.push({ id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Banknote });
-    items.push({ id: 'chat', label: 'گفتگو', icon: MessagesSquare });
-    if (canSeeKnowledgeBase) items.push({ id: 'knowledge', label: 'اطلاعات و یادداشت ها', icon: BookOpen });
-    if (canSeeTrade) items.push({ id: 'trade', label: 'بازرگانی', icon: Globe });
-    if (canSeeBalances) items.push({ id: 'balances', label: 'مانده حساب مشتریان', icon: Wallet });
-    if (canSeeProducts) {
-        items.push({ id: 'products', label: 'کالاها', icon: Boxes });
-        items.push({ id: 'sales', label: 'مشتریان', icon: Handshake });
-        items.push({ id: 'tickets', label: 'تیکت‌ها', icon: Headset });
-    }
-    if (hasPermission(currentUser, 'manage_users')) items.push({ id: 'users', label: 'کاربران', icon: UserCog });
-    if (canSeeSettings) items.push({ id: 'settings', label: 'تنظیمات', icon: Settings });
-    return items;
+    return getAppNavItems(currentUser, settings);
   }, [currentUser, settings]);
 
   const canSeeNotifications = true;

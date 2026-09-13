@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  Columns, LayoutDashboard, Receipt, Truck, FileText, 
-  Warehouse, ArrowLeftRight, MessageSquare, Briefcase, 
-  Users, Settings, Shield, ShoppingCart, Calendar, Mail, 
-  Sparkles, X, Minus, Maximize2, Calculator, StickyNote, 
-  ChevronUp, ChevronDown, CheckSquare, Layers, Monitor
+  Columns, X, Calculator, ChevronUp, ChevronDown, Monitor
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User } from '../types';
+import { User, SystemSettings } from '../types';
+import { AppNavItem, getAppNavItems, getSidebarLabel, getSidebarIcon, ALL_NAVIGATION_ITEMS } from '../utils/navigationItems';
 
 interface WorkstationDockProps {
   activeTab: string;
@@ -22,7 +19,8 @@ interface WorkstationDockProps {
   isCalculatorOpen: boolean;
   floatingTab: string | null;
   currentUser: User | null;
-  allowedItems?: Array<{ id: string; label: string; icon?: any }>;
+  settings?: SystemSettings | null;
+  allowedItems?: AppNavItem[];
 }
 
 export const WorkstationDock: React.FC<WorkstationDockProps> = ({
@@ -37,42 +35,40 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
   onToggleCalculator,
   isCalculatorOpen,
   floatingTab,
+  currentUser,
+  settings,
   allowedItems
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Icon map for popular modules
-  const getTabInfo = (tabId: string) => {
-    const found = allowedItems?.find(i => i.id === tabId);
-    if (found) return { label: found.label, Icon: found.icon || FileText };
-
-    switch (tabId) {
-      case 'dashboard': return { label: 'داشبورد', Icon: LayoutDashboard };
-      case 'manage': return { label: 'سوابق پرداخت', Icon: Receipt };
-      case 'warehouse': return { label: 'انبارداری', Icon: Warehouse };
-      case 'sayan': return { label: 'گزارشات سایان', Icon: FileText };
-      case 'sayan-operations': return { label: 'ثبت‌های سایان', Icon: FileText };
-      case 'chat': return { label: 'گفتگو', Icon: MessageSquare };
-      case 'balances': return { label: 'مانده حساب', Icon: Users };
-      case 'ccti': return { label: 'تبدیل CCTI', Icon: ArrowLeftRight };
-      case 'manage-exit': return { label: 'خروج کالا', Icon: Truck };
-      case 'purchase': return { label: 'تدارکات', Icon: ShoppingCart };
-      case 'trade': return { label: 'بازرگانی', Icon: Briefcase };
-      case 'secretariat': return { label: 'دبیرخانه', Icon: Mail };
-      case 'meetings': return { label: 'جلسات', Icon: Calendar };
-      case 'settings': return { label: 'تنظیمات', Icon: Settings };
-      default: return { label: tabId, Icon: Layers };
+  // Derive allowed navigation items for current user
+  const permittedItems = useMemo(() => {
+    if (allowedItems && allowedItems.length > 0) {
+      return allowedItems;
     }
+    if (currentUser) {
+      return getAppNavItems(currentUser, settings || null);
+    }
+    return [ALL_NAVIGATION_ITEMS['dashboard']];
+  }, [allowedItems, currentUser, settings]);
+
+  const allowedSet = useMemo(() => new Set(permittedItems.map(i => i.id)), [permittedItems]);
+
+  // Tab label and icon strictly matched with the sidebar
+  const getTabInfo = (tabId: string) => {
+    const label = getSidebarLabel(tabId, permittedItems);
+    const Icon = getSidebarIcon(tabId, permittedItems);
+    return { label, Icon };
   };
 
-  // Unique list of open tabs to show in the taskbar dock
+  // Unique list of open tabs to show in the taskbar dock - STRICTLY FILTERED BY USER PERMISSIONS
   const displayTabs = Array.from(new Set([
     'dashboard',
     activeTab,
     ...(secondaryTab ? [secondaryTab] : []),
     ...(floatingTab ? [floatingTab] : []),
     ...openTabs
-  ])).filter(Boolean);
+  ])).filter(tabId => Boolean(tabId) && allowedSet.has(tabId));
 
   if (isCollapsed) {
     return (
@@ -181,10 +177,10 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
               ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800'
               : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30'
           }`}
-          title={secondaryTab ? 'تغییر یا مدیریت اسپلیت ویو' : 'مشاهده همزمان دو برنامه (اسپلیت ویو)'}
+          title={secondaryTab ? 'تغییر یا مدیریت صفحه همزمان (Split View)' : 'مشاهده همزمان منوها (Split View)'}
         >
           <Columns size={14} className={secondaryTab ? 'text-purple-600' : 'text-blue-600'} />
-          <span className="hidden lg:inline">{secondaryTab ? 'اسپلیت فعال' : 'اسپلیت ویو'}</span>
+          <span className="hidden lg:inline">{secondaryTab ? 'همزمان (فعال)' : 'مشاهده همزمان'}</span>
         </button>
 
         {/* Floating Calculator Button */}

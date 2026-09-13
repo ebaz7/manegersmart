@@ -495,7 +495,13 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
     const receiptDate = receipt.docDateShamsi || toShamsiStr(receipt.createdAt) || toShamsiStr(new Date().toISOString());
 
     const modalContent = (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-xs overflow-y-auto animate-fade-in">
+        <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-sm overflow-hidden animate-fade-in select-text"
+            dir="rtl"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
             {/* Global Print Fallback Styles */}
             <style>{`
                 @media print {
@@ -520,7 +526,10 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                 }
             `}</style>
 
-            <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto text-slate-100 max-h-[95vh]">
+            <div 
+                className="relative w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col text-slate-100 max-h-[92vh] h-[92vh] sm:h-auto shrink-0"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Modal Top Control Bar */}
                 <div className="no-print p-4 bg-slate-800/95 border-b border-slate-700 flex flex-wrap items-center justify-between gap-3 shrink-0">
                     <div className="flex items-center gap-2.5">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     FileText, X, CheckCircle2, AlertCircle, RefreshCw, Printer,
     CreditCard, Building2, Hash, Calendar, Layers, ShieldCheck, Download,
@@ -81,11 +82,33 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
         }
     };
 
-    return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-scale-in">
+    // Lock body scrolling when modal is open to prevent background jump without resetting #main-scroll-container position
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const originalBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.overflow = originalBodyOverflow;
+        };
+    }, []);
+
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+        <div 
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm overflow-hidden select-text"
+            dir="rtl"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
+            <div 
+                className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[94vh] sm:h-auto sm:max-h-[88vh] sm:rounded-3xl rounded-2xl flex flex-col overflow-hidden shadow-2xl animate-scale-in border border-slate-200 dark:border-slate-800 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-800/40">
+                <div className="shrink-0 p-3.5 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/95 dark:bg-slate-800/60 backdrop-blur-sm">
                     <div className="flex items-center gap-3">
                         <div className="w-11 h-11 rounded-2xl bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-xs">
                             <Layers className="w-6 h-6" />
@@ -130,7 +153,7 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                 </div>
 
                 {/* Sub-tabs */}
-                <div className="flex items-center gap-2 px-5 pt-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 overflow-x-auto text-xs font-bold">
+                <div className="shrink-0 flex items-center gap-2 px-3 sm:px-5 pt-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 overflow-x-auto text-xs font-bold no-scrollbar">
                     <button
                         type="button"
                         onClick={() => setActiveTab('OVERVIEW')}
@@ -218,7 +241,7 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-4 -webkit-overflow-scrolling-touch">
                     {loading ? (
                         <div className="py-20 text-center flex flex-col items-center justify-center gap-3 text-slate-400">
                             <RefreshCw className="w-8 h-8 animate-spin text-purple-500" />
@@ -582,22 +605,23 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                <div className="shrink-0 p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs"
+                        className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs cursor-pointer"
                     >
                         بستن
                     </button>
                     {docData?.header?.docNo && (
                         <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                            <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                            <span>سند با موفقیت در دیتابیس سایان ثبت و بایگانی شده است.</span>
+                            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                            <span className="text-[11px] sm:text-xs">سند با موفقیت در دیتابیس سایان ثبت و بایگانی شده است.</span>
                         </div>
                     )}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

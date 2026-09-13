@@ -958,6 +958,23 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
     const noteText = record.description ? record.description.replace(/'/g, "''") : '';
     const headerDescription = `جزء: 1 | شخص: ${personCode} | کد فرعی:  | توضیحات: ${noteText}`;
 
+    // 2.5. Fetch actual person name and next accounting document number
+    let personName = String(record.personName || '').trim();
+    if (!personName) {
+        try {
+            const pRes = await executeSayanQuery(`SELECT TOP 1 Field_006 as PersonName FROM ACT_TBL_007 WHERE Field_004 = '11' AND Field_005 = '${personCode}'`);
+            if (pRes[0]?.PersonName) {
+                personName = pRes[0].PersonName;
+            }
+        } catch (pErr) {
+            console.warn('Could not query ACT_TBL_007 for PersonName:', pErr.message);
+        }
+    }
+    personName = personName.replace(/'/g, "''");
+
+    const maxActRes = await executeSayanQuery(`SELECT MAX(CAST(Field_005 as bigint)) as MaxActNo FROM ACT_TBL_008 WHERE Field_004 = '${fiscalYear}'`);
+    const actDocNo = (Number(maxActRes[0]?.MaxActNo) || 0) + 1;
+
     // 3. Build obfuscated SQL transaction that passes Sayan gateway keyword filter
     // All 5 tables BUR_TBL_008, BUR_TBL_012, BUR_TBL_009, BUR_TBL_006, BUR_TBL_016 have Field_001 as IDENTITY.
     // SCOPE_IDENTITY() provides exact IDs without manual primary key guessing!
@@ -1003,18 +1020,56 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
             // Row (BUR_TBL_009)
             "N'IN' + N'SERT INTO BUR_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_010, Field_011, Field_020, Field_023, Field_024, Field_025) ' + ",
             `N'VALUES (${fiscalYear}, ${archiveCode}, ''12'', ${chAmount}, @ChId_${i}, N''${rowNote}'', ''${personCode}'', ''${cashboxCode}'', N''صندوق_*: ${cashboxCode}'', ''11'', ''1'', ${rowSeq}); ' + `,
-            `N'DECLARE @RowId_${i} BIGINT = SCOPE_IDENTITY(); ' + `,
+            `N'DECLARE @RowId_${i} BIGINT; SELECT @RowId_${i} = Field_001 FROM BUR_TBL_009 WHERE Field_004 = ''${archiveCode}'' AND Field_007 = @ChId_${i}; ' + `,
 
             // Account Link (BUR_TBL_006)
             "N'IN' + N'SERT INTO BUR_TBL_006 (Field_003, Field_004, Field_005, Field_006, Field_007) ' + ",
             `N'VALUES (${fiscalYear}, ${archiveCode}, @RowId_${i}, 15, ''${cashboxCode}''); ' + `
+        );
+
+        // Standard Sayan ERP automatically creates corresponding General Ledger Journal entries when a treasury receipt is registered.
+        // We write them directly in the same transaction here to make it automatically show up in "صورتحساب تفصیلی" (Customer Statement) immediately without manual Sayan intervention.
+        const seqDebit = rowSeq * 2 - 1;
+        const seqCredit = rowSeq * 2;
+        const descBase = `دریافت/شماره ${docNo}/دریافت چک/آقای ${personName}${rowNote ? '/' + rowNote : ''}`.replace(/'/g, "''");
+
+        sqlChunks.push(
+            // Debit row: (ACT_TBL_009) Moein 102 (اسناد دریافتنی نزد صندوق)
+            "N'IN' + N'SERT INTO ACT_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_018, Field_019) ' + ",
+            `N'VALUES (${fiscalYear}, ${actDocNo}, ''1'', ''3'', ''102'', ${archiveCode}, ${chAmount}, 0, N''${descBase}'', N''BUR-'' + CAST(@NewHId AS VARCHAR(20)) + ''-'' + CAST(@RowId_${i} AS VARCHAR(20)) + ''-VR'', ''${chNumClean}'', ''${chDueDate} 00:00:00.000'', ''11:11${personCode}-12:12${cashboxCode}'', N''اشخاص: 11${personCode} | صندوق ها: 12${cashboxCode}'', ''${seqDebit}''); ' + `,
+            `N'DECLARE @ActRowDebit_${i} BIGINT = SCOPE_IDENTITY(); ' + `,
+
+            // Debit Elaboratives (ACT_TBL_010)
+            "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+            `N'VALUES (${fiscalYear}, ${actDocNo}, @ActRowDebit_${i}, ''1'', ''3'', ''102'', ''11'', ''11${personCode}''); ' + `,
+            "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+            `N'VALUES (${fiscalYear}, ${actDocNo}, @ActRowDebit_${i}, ''1'', ''3'', ''102'', ''12'', ''12${cashboxCode}''); ' + `,
+
+            // Credit row: (ACT_TBL_009) Moein 101 (حساب‌های دریافتنی تجاری)
+            "N'IN' + N'SERT INTO ACT_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_018, Field_019) ' + ",
+            `N'VALUES (${fiscalYear}, ${actDocNo}, ''1'', ''3'', ''101'', ${archiveCode}, 0, ${chAmount}, N''${descBase}'', N''BUR-'' + CAST(@NewHId AS VARCHAR(20)) + ''-'' + CAST(@RowId_${i} AS VARCHAR(20)) + ''-VR'', ''${chNumClean}'', ''${chDueDate} 00:00:00.000'', ''11:11${personCode}'', N''اشخاص: 11${personCode}'', ''${seqCredit}''); ' + `,
+            `N'DECLARE @ActRowCredit_${i} BIGINT = SCOPE_IDENTITY(); ' + `,
+
+            // Credit Elaboratives (ACT_TBL_010)
+            "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+            `N'VALUES (${fiscalYear}, ${actDocNo}, @ActRowCredit_${i}, ''1'', ''3'', ''101'', ''11'', ''11${personCode}''); ' + `
         );
     }
 
     // Dimensions (BUR_TBL_016)
     sqlChunks.push(
         `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 6, ''1''); ' + `,
-        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 15, ''${personCode}''); ' + `,
+        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 15, ''${personCode}''); ' + `
+    );
+
+    // Header (ACT_TBL_008)
+    sqlChunks.push(
+        "N'IN' + N'SERT INTO ACT_TBL_008 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_017) ' + ",
+        `N'VALUES (${fiscalYear}, ${actDocNo}, ${actDocNo}, '''', CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), 0, 0, '''', 5, ''${userGuid}'', ${totalAmount}, ${totalAmount}, CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `
+    );
+
+    // Finalize Transaction
+    sqlChunks.push(
         `N'SELECT @NewHId as HeaderId, ${archiveCode} as ArchiveCode, ${docNo} as DocNo; ' + `,
         "N'COM' + N'MIT TRAN;'",
         ");"

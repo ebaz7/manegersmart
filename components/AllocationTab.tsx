@@ -186,8 +186,10 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
         }
     };
 
-    // Calculate queue waiting days (from queueDate to today)
-    const queueDays = form.queueDate ? calculateDaysDiff(form.queueDate) : null;
+    // Calculate queue waiting days (from queueDate to allocationDate if filled, otherwise to today)
+    const queueDays = form.queueDate 
+        ? calculateDaysDiff(form.queueDate, form.allocationDate || undefined) 
+        : null;
 
     // Calculate total duration (from registered allocationDate to expiry deadline)
     const totalValidityDays = (form.allocationDate && form.allocationExpiry) 
@@ -339,7 +341,9 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
                         {/* Waiting days badge */}
                         {queueDays !== null && (
                             <div className="bg-amber-100/70 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/80 p-2.5 rounded-xl text-xs flex items-center justify-between">
-                                <span className="font-bold text-amber-900 dark:text-amber-200">مدت انتظار در صف:</span>
+                                <span className="font-bold text-amber-900 dark:text-amber-200">
+                                    {form.allocationDate ? 'مدت در صف تا صدور تخصیص:' : 'مدت انتظار در صف (تا امروز):'}
+                                </span>
                                 <span className="font-mono font-black text-amber-800 dark:text-amber-300 text-sm px-2 py-0.5 rounded-lg bg-amber-200/60 dark:bg-amber-900/60">
                                     {queueDays} روز
                                 </span>

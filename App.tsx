@@ -32,10 +32,14 @@ import { ThemeSelectorModal, AppThemeMode } from './components/ThemeSelectorModa
 import { AiExecutiveCopilot } from './components/AiExecutiveCopilot';
 import { AiDocumentScannerModal } from './components/AiDocumentScannerModal';
 import { SendToChatModal } from './components/SendToChatModal';
+import { WorkstationDock } from './components/WorkstationDock';
+import { SplitViewSelectorModal } from './components/SplitViewSelectorModal';
+import { WorkstationFloatingWindow } from './components/WorkstationFloatingWindow';
+import { FloatingCalculator } from './components/FloatingCalculator';
 import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage, SystemAnnouncement, ChatGroup, TaskGroup, GroupTask } from './types';
-import { Loader2, Bell, X, MessageSquare, AlertTriangle, FileWarning, CreditCard, BellRing } from 'lucide-react';
+import { Loader2, Bell, X, MessageSquare, AlertTriangle, FileWarning, CreditCard, BellRing, Columns, Maximize2, Minimize2, ArrowRightLeft, Minus, ExternalLink, Calculator, Monitor } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall, getLocalData, LS_KEYS, getServerHost } from './services/apiService'; 
@@ -64,6 +68,25 @@ function App() {
     defaultMessage?: string;
     title?: string;
   }>({ isOpen: false });
+
+  // Multi-window & Split-view Workstation State
+  const [secondaryTab, setSecondaryTab] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('app_secondary_tab') || null;
+    } catch {
+      return null;
+    }
+  });
+  const [splitRatio, setSplitRatio] = useState<'50-50' | '60-40' | '40-60'>('50-50');
+  const [isSplitSelectorOpen, setIsSplitSelectorOpen] = useState(false);
+  const [openWorkstationTabs, setOpenWorkstationTabs] = useState<string[]>(['dashboard']);
+  const [floatingTab, setFloatingTab] = useState<string | null>(null);
+  const [isFloatingMinimized, setIsFloatingMinimized] = useState(false);
+  const [mobileActiveSplitPane, setMobileActiveSplitPane] = useState<'primary' | 'secondary'>('primary');
+
+  // Floating Calculator State
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [isCalculatorMinimized, setIsCalculatorMinimized] = useState(false);
 
   const activeTabRef = useRef(activeTab);
   const tabHistoryRef = useRef(tabHistory);
@@ -118,6 +141,17 @@ function App() {
   }, [activeTab, tabHistory]);
 
   const setActiveTab = (tab: string, addToHistory = true) => {
+      setOpenWorkstationTabs(prev => prev.includes(tab) ? prev : [...prev, tab]);
+
+      if (tab === secondaryTab) {
+        setSecondaryTab(null);
+        localStorage.removeItem('app_secondary_tab');
+      }
+
+      if (tab === floatingTab) {
+        setFloatingTab(null);
+      }
+
       if (tab === activeTabRef.current) return;
       
       // Clear custom back ref when changing tab to avoid leaks
@@ -140,6 +174,58 @@ function App() {
               }
           }
       }
+  };
+
+  const handleSwapSplitPanes = () => {
+    if (!secondaryTab) return;
+    const oldPrimary = activeTab;
+    const oldSecondary = secondaryTab;
+    setActiveTabState(oldSecondary);
+    setSecondaryTab(oldPrimary);
+    localStorage.setItem('app_secondary_tab', oldPrimary);
+  };
+
+  const handleCloseSecondaryTab = () => {
+    setSecondaryTab(null);
+    localStorage.removeItem('app_secondary_tab');
+  };
+
+  const handleSelectSecondaryTab = (tabId: string) => {
+    if (!tabId || tabId === activeTab) {
+      handleCloseSecondaryTab();
+      return;
+    }
+    setSecondaryTab(tabId);
+    setOpenWorkstationTabs(prev => prev.includes(tabId) ? prev : [...prev, tabId]);
+    localStorage.setItem('app_secondary_tab', tabId);
+    setMobileActiveSplitPane('secondary');
+  };
+
+  const handlePopOutFloating = (tabId: string) => {
+    setFloatingTab(tabId);
+    setIsFloatingMinimized(false);
+    if (secondaryTab === tabId) {
+      handleCloseSecondaryTab();
+    }
+  };
+
+  const handleCloseFloating = () => {
+    setFloatingTab(null);
+    setIsFloatingMinimized(false);
+  };
+
+  const handleCloseWorkstationTab = (tabId: string) => {
+    setOpenWorkstationTabs(prev => prev.filter(t => t !== tabId));
+    if (secondaryTab === tabId) {
+      handleCloseSecondaryTab();
+    }
+    if (floatingTab === tabId) {
+      handleCloseFloating();
+    }
+    if (activeTab === tabId) {
+      const remaining = openWorkstationTabs.filter(t => t !== tabId);
+      setActiveTab(remaining.length > 0 ? remaining[remaining.length - 1] : 'dashboard');
+    }
   };
 
   const goBack = (isPopState: boolean = false) => {
@@ -1498,6 +1584,134 @@ function App() {
      };
   }, [toast]);
 
+  const getModuleTitle = (tabId: string): string => {
+    switch (tabId) {
+      case 'dashboard': return 'داشبورد مدیریتی';
+      case 'create': return 'ثبت پرداخت جدید';
+      case 'manage': return 'سوابق و کارتابل پرداخت';
+      case 'create-exit': return 'ثبت مجوز خروج کالا';
+      case 'manage-invoices': return 'کارتابل فاکتورها';
+      case 'manage-exit': return 'مجوزهای خروج کالا';
+      case 'warehouse': return 'انبارداری و بیجک';
+      case 'trade': return 'معاملات و بازرگانی';
+      case 'balances': return 'مانده حساب مشتریان';
+      case 'sales': return 'فروش و CRM';
+      case 'products': return 'کاتالوگ محصولات';
+      case 'tickets': return 'تیکت‌ها و پشتیبانی';
+      case 'ccti': return 'تبدیل CCTI';
+      case 'sayan': return 'گزارشات نرم‌افزار صایان';
+      case 'sayan-operations': return 'عملیات صایان';
+      case 'users': return 'مدیریت کاربران';
+      case 'settings': return 'تنظیمات سیستم';
+      case 'knowledge':
+      case 'notes': return 'پایگاه دانش و یادداشت‌ها';
+      case 'security': return 'حراست و تردد';
+      case 'meetings': return 'جلسات و صورتجلسات';
+      case 'purchase': return 'تدارکات و خرید';
+      case 'secretariat': return 'دبیرخانه و مکاتبات';
+      case 'cheque-receipts': return 'رسید دریافت چک';
+      case 'chat': return 'گفتگوی سازمانی';
+      default: return tabId;
+    }
+  };
+
+  const renderModuleContent = (tabId: string, isSecondary = false) => {
+    if (!currentUser) return null;
+    switch (tabId) {
+      case 'dashboard':
+        return (
+          <Dashboard 
+              orders={orders} 
+              settings={settings} 
+              currentUser={currentUser} 
+              onViewArchive={handleViewArchive} 
+              onFilterByStatus={handleDashboardFilter} 
+              onGoToPaymentApprovals={handleGoToPaymentApprovals} 
+              onGoToExitApprovals={handleGoToExitApprovals} 
+              onGoToBijakApprovals={handleGoToWarehouseApprovals} 
+              onGoToPurchaseApprovals={handleGoToPurchaseApprovals} 
+              onNavigate={(tab) => {
+                if (isSecondary) setSecondaryTab(tab);
+                else setActiveTab(tab);
+              }}
+              financialYear={financialYear} 
+              activeTab={tabId}
+              onGoToTaskGroup={(groupId, taskId) => {
+                  setDirectChatTarget({ type: 'task_group', id: groupId, taskId });
+                  if (isSecondary) setSecondaryTab('chat');
+                  else setActiveTab('chat');
+              }}
+          />
+        );
+      case 'create':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} /></div>;
+      case 'manage':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} financialYear={financialYear} /></div>;
+      case 'create-exit':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><CreateExitPermit onSuccess={() => (isSecondary ? setSecondaryTab('manage-exit') : setActiveTab('manage-exit'))} currentUser={currentUser} /></div>;
+      case 'manage-invoices':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="INVOICE" /></ErrorBoundary></div>;
+      case 'manage-exit':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="EXIT" /></ErrorBoundary></div>;
+      case 'warehouse':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} financialYear={financialYear} /></div>;
+      case 'trade':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><TradeModule currentUser={currentUser} /></div>;
+      case 'balances':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><CustomerBalanceModule currentUser={currentUser} /></div>;
+      case 'sales':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><SalesCRMModule /></div>;
+      case 'products':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><ProductsModule /></div>;
+      case 'tickets':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><Tickets /></div>;
+      case 'ccti':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><CctiConverter financialYear={financialYear} currentUser={currentUser} canManageArchive={currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canManageCctiArchive === true)} /></div>;
+      case 'sayan':
+        return <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanReports currentUser={currentUser} settings={settings} onNavigateToChat={(target) => { setDirectChatTarget(target); if (isSecondary) setSecondaryTab('chat'); else setActiveTab('chat'); }} /></div>;
+      case 'sayan-operations':
+        return <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanRegistrationsModule currentUser={currentUser} settings={settings} /></div>;
+      case 'users':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><ManageUsers /></div>;
+      case 'settings':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><Settings financialYear={financialYear} settings={settings} onUpdateSettings={setSettings} /></div>;
+      case 'knowledge':
+      case 'notes':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><KnowledgeBaseModule currentUser={currentUser} settings={settings} onUpdateSettings={setSettings} /></div>;
+      case 'security':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><SecurityModule currentUser={currentUser} financialYear={financialYear} /></div>;
+      case 'meetings':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><MeetingModule currentUser={currentUser} /></div>;
+      case 'purchase':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>;
+      case 'secretariat':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>;
+      case 'cheque-receipts':
+        return (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) ? <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div> : null;
+      case 'chat':
+        return (
+          <div className="flex-1 flex flex-col w-full min-h-0 h-full page-transition">
+            <ChatRoom 
+                currentUser={currentUser} 
+                preloadedMessages={chatMessages}
+                onRefresh={() => loadData(true)} 
+                sharedData={sharedData}
+                onClearSharedData={() => setSharedData(null)}
+                onMessagesRead={(msgIds) => {
+                    if (!currentUser) return;
+                    const idsSet = new Set(msgIds);
+                    setChatMessages(prev => prev.map(m => idsSet.has(m.id) ? { ...m, readBy: [...(m.readBy || []), currentUser.username] } : m));
+                }}
+                directChatTarget={directChatTarget}
+                onClearDirectChatTarget={() => setDirectChatTarget(null)}
+            />
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <>
         <AnimatePresence>
@@ -1572,6 +1786,13 @@ function App() {
             isDarkMode={isDarkMode}
             onToggleDarkMode={handleToggleDarkMode}
             unreadChatCount={unreadChatCount}
+            secondaryTab={secondaryTab}
+            onOpenSplitView={() => setIsSplitSelectorOpen(true)}
+            onCloseSecondaryTab={handleCloseSecondaryTab}
+            onToggleCalculator={() => {
+              setIsCalculatorOpen(prev => !prev);
+              setIsCalculatorMinimized(false);
+            }}
             >
             
             <NotificationController 
@@ -1598,65 +1819,210 @@ function App() {
                         <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300">در حال بروزرسانی دیتابیس...</span>
                     </div>
                 )}
-                <div className={activeTab === 'dashboard' ? 'block h-full page-transition' : 'hidden'}>
-                    <Dashboard 
-                        orders={orders} 
-                        settings={settings} 
-                        currentUser={currentUser} 
-                        onViewArchive={handleViewArchive} 
-                        onFilterByStatus={handleDashboardFilter} 
-                        onGoToPaymentApprovals={handleGoToPaymentApprovals} 
-                        onGoToExitApprovals={handleGoToExitApprovals} 
-                        onGoToBijakApprovals={handleGoToWarehouseApprovals} 
-                        onGoToPurchaseApprovals={handleGoToPurchaseApprovals} 
-                        onNavigate={(tab) => setActiveTab(tab)}
-                        financialYear={financialYear} 
-                        activeTab={activeTab}
-                        onGoToTaskGroup={(groupId, taskId) => {
-                            setDirectChatTarget({ type: 'task_group', id: groupId, taskId });
-                            setActiveTab('chat');
-                        }}
-                    />
-                </div>
-                {activeTab === 'create' && <div className="page-transition flex flex-col flex-1 min-h-0"><CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} /></div>}
-                {activeTab === 'manage' && <div className="page-transition flex flex-col flex-1 min-h-0"><ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} financialYear={financialYear} /></div>}
-                {activeTab === 'create-exit' && <div className="page-transition flex flex-col flex-1 min-h-0"><CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} /></div>}
-                {activeTab === 'manage-invoices' && <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="INVOICE" /></ErrorBoundary></div>}
-                {activeTab === 'manage-exit' && <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="EXIT" /></ErrorBoundary></div>}
-                {activeTab === 'warehouse' && <div className="page-transition flex flex-col flex-1 min-h-0"><WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} financialYear={financialYear} /></div>}
-                {activeTab === 'trade' && <div className="page-transition flex flex-col flex-1 min-h-0"><TradeModule currentUser={currentUser} /></div>}
-                {activeTab === 'balances' && <div className="page-transition flex flex-col flex-1 min-h-0"><CustomerBalanceModule currentUser={currentUser} /></div>}
-                {activeTab === 'sales' && <div className="page-transition flex flex-col flex-1 min-h-0"><SalesCRMModule /></div>}
-                {activeTab === 'products' && <div className="page-transition flex flex-col flex-1 min-h-0"><ProductsModule /></div>}
-                {activeTab === 'tickets' && <div className="page-transition flex flex-col flex-1 min-h-0"><Tickets /></div>}
-                {activeTab === 'ccti' && <div className="page-transition flex flex-col flex-1 min-h-0"><CctiConverter financialYear={financialYear} currentUser={currentUser} canManageArchive={currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canManageCctiArchive === true)} /></div>}
-                {activeTab === 'sayan' && <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanReports currentUser={currentUser} settings={settings} onNavigateToChat={(target) => { setDirectChatTarget(target); setActiveTab('chat'); }} /></div>}
-                {activeTab === 'sayan-operations' && <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanRegistrationsModule currentUser={currentUser} settings={settings} /></div>}
-                {activeTab === 'users' && <div className="page-transition flex flex-col flex-1 min-h-0"><ManageUsers /></div>}
-                {activeTab === 'settings' && <div className="page-transition flex flex-col flex-1 min-h-0"><Settings financialYear={financialYear} settings={settings} onUpdateSettings={setSettings} /></div>}
-                {(activeTab === 'knowledge' || activeTab === 'notes') && <div className="page-transition flex flex-col flex-1 min-h-0"><KnowledgeBaseModule currentUser={currentUser} settings={settings} onUpdateSettings={setSettings} /></div>}
-                {activeTab === 'security' && <div className="page-transition flex flex-col flex-1 min-h-0"><SecurityModule currentUser={currentUser} financialYear={financialYear} /></div>}
-                {activeTab === 'meetings' && <div className="page-transition flex flex-col flex-1 min-h-0"><MeetingModule currentUser={currentUser} /></div>}
-                {activeTab === 'purchase' && <div className="page-transition flex flex-col flex-1 min-h-0"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>}
-                {activeTab === 'secretariat' && currentUser && <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>}
-                {activeTab === 'cheque-receipts' && currentUser && (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) && <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div>}
-                
-                <div className={activeTab === 'chat' ? 'flex-1 flex flex-col w-full min-h-0 h-full page-transition' : 'fixed inset-0 pointer-events-none opacity-0 invisible overflow-hidden h-0'}>
-                    <ChatRoom 
-                        currentUser={currentUser} 
-                        preloadedMessages={chatMessages}
-                        onRefresh={() => loadData(true)} 
-                        sharedData={sharedData}
-                        onClearSharedData={() => setSharedData(null)}
-                        onMessagesRead={(msgIds) => {
-                            if (!currentUser) return;
-                            const idsSet = new Set(msgIds);
-                            setChatMessages(prev => prev.map(m => idsSet.has(m.id) ? { ...m, readBy: [...(m.readBy || []), currentUser.username] } : m));
-                        }}
-                        directChatTarget={directChatTarget}
-                        onClearDirectChatTarget={() => setDirectChatTarget(null)}
-                    />
-                </div> 
+
+                {!secondaryTab ? (
+                  <>
+                    <div className={activeTab === 'dashboard' ? 'block h-full page-transition' : 'hidden'}>
+                        <Dashboard 
+                            orders={orders} 
+                            settings={settings} 
+                            currentUser={currentUser} 
+                            onViewArchive={handleViewArchive} 
+                            onFilterByStatus={handleDashboardFilter} 
+                            onGoToPaymentApprovals={handleGoToPaymentApprovals} 
+                            onGoToExitApprovals={handleGoToExitApprovals} 
+                            onGoToBijakApprovals={handleGoToWarehouseApprovals} 
+                            onGoToPurchaseApprovals={handleGoToPurchaseApprovals} 
+                            onNavigate={(tab) => setActiveTab(tab)}
+                            financialYear={financialYear} 
+                            activeTab={activeTab}
+                            onGoToTaskGroup={(groupId, taskId) => {
+                                setDirectChatTarget({ type: 'task_group', id: groupId, taskId });
+                                setActiveTab('chat');
+                            }}
+                        />
+                    </div>
+                    {activeTab === 'create' && <div className="page-transition flex flex-col flex-1 min-h-0"><CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} /></div>}
+                    {activeTab === 'manage' && <div className="page-transition flex flex-col flex-1 min-h-0"><ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} financialYear={financialYear} /></div>}
+                    {activeTab === 'create-exit' && <div className="page-transition flex flex-col flex-1 min-h-0"><CreateExitPermit onSuccess={() => setActiveTab('manage-exit')} currentUser={currentUser} /></div>}
+                    {activeTab === 'manage-invoices' && <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="INVOICE" /></ErrorBoundary></div>}
+                    {activeTab === 'manage-exit' && <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="EXIT" /></ErrorBoundary></div>}
+                    {activeTab === 'warehouse' && <div className="page-transition flex flex-col flex-1 min-h-0"><WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} financialYear={financialYear} /></div>}
+                    {activeTab === 'trade' && <div className="page-transition flex flex-col flex-1 min-h-0"><TradeModule currentUser={currentUser} /></div>}
+                    {activeTab === 'balances' && <div className="page-transition flex flex-col flex-1 min-h-0"><CustomerBalanceModule currentUser={currentUser} /></div>}
+                    {activeTab === 'sales' && <div className="page-transition flex flex-col flex-1 min-h-0"><SalesCRMModule /></div>}
+                    {activeTab === 'products' && <div className="page-transition flex flex-col flex-1 min-h-0"><ProductsModule /></div>}
+                    {activeTab === 'tickets' && <div className="page-transition flex flex-col flex-1 min-h-0"><Tickets /></div>}
+                    {activeTab === 'ccti' && <div className="page-transition flex flex-col flex-1 min-h-0"><CctiConverter financialYear={financialYear} currentUser={currentUser} canManageArchive={currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canManageCctiArchive === true)} /></div>}
+                    {activeTab === 'sayan' && <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanReports currentUser={currentUser} settings={settings} onNavigateToChat={(target) => { setDirectChatTarget(target); setActiveTab('chat'); }} /></div>}
+                    {activeTab === 'sayan-operations' && <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanRegistrationsModule currentUser={currentUser} settings={settings} /></div>}
+                    {activeTab === 'users' && <div className="page-transition flex flex-col flex-1 min-h-0"><ManageUsers /></div>}
+                    {activeTab === 'settings' && <div className="page-transition flex flex-col flex-1 min-h-0"><Settings financialYear={financialYear} settings={settings} onUpdateSettings={setSettings} /></div>}
+                    {(activeTab === 'knowledge' || activeTab === 'notes') && <div className="page-transition flex flex-col flex-1 min-h-0"><KnowledgeBaseModule currentUser={currentUser} settings={settings} onUpdateSettings={setSettings} /></div>}
+                    {activeTab === 'security' && <div className="page-transition flex flex-col flex-1 min-h-0"><SecurityModule currentUser={currentUser} financialYear={financialYear} /></div>}
+                    {activeTab === 'meetings' && <div className="page-transition flex flex-col flex-1 min-h-0"><MeetingModule currentUser={currentUser} /></div>}
+                    {activeTab === 'purchase' && <div className="page-transition flex flex-col flex-1 min-h-0"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>}
+                    {activeTab === 'secretariat' && currentUser && <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>}
+                    {activeTab === 'cheque-receipts' && currentUser && (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) && <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div>}
+                    
+                    <div className={activeTab === 'chat' ? 'flex-1 flex flex-col w-full min-h-0 h-full page-transition' : 'fixed inset-0 pointer-events-none opacity-0 invisible overflow-hidden h-0'}>
+                        <ChatRoom 
+                            currentUser={currentUser} 
+                            preloadedMessages={chatMessages}
+                            onRefresh={() => loadData(true)} 
+                            sharedData={sharedData}
+                            onClearSharedData={() => setSharedData(null)}
+                            onMessagesRead={(msgIds) => {
+                                if (!currentUser) return;
+                                const idsSet = new Set(msgIds);
+                                setChatMessages(prev => prev.map(m => idsSet.has(m.id) ? { ...m, readBy: [...(m.readBy || []), currentUser.username] } : m));
+                            }}
+                            directChatTarget={directChatTarget}
+                            onClearDirectChatTarget={() => setDirectChatTarget(null)}
+                        />
+                    </div>
+                  </>
+                ) : (
+                  /* Dual Split-View Container */
+                  <div className="flex-1 flex flex-col min-h-0 h-full">
+                    {/* Mobile Dual Switcher Bar */}
+                    <div className="md:hidden flex items-center justify-between p-2 mb-1.5 bg-gradient-to-r from-blue-50/90 to-purple-50/90 dark:from-blue-950/40 dark:to-purple-950/40 border border-blue-200/70 dark:border-blue-900/60 rounded-xl shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setMobileActiveSplitPane('primary')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            mobileActiveSplitPane === 'primary'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'bg-white/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          {getModuleTitle(activeTab)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMobileActiveSplitPane('secondary')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            mobileActiveSplitPane === 'secondary'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-white/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          {getModuleTitle(secondaryTab)}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCloseSecondaryTab}
+                        className="p-1.5 text-zinc-500 hover:text-rose-600 rounded-lg hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+                        title="بستن پنجره دوم"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {/* Mobile View: show the active pane */}
+                    <div className="flex-1 md:hidden flex flex-col min-h-0">
+                      {renderModuleContent(mobileActiveSplitPane === 'primary' ? activeTab : secondaryTab, mobileActiveSplitPane === 'secondary')}
+                    </div>
+
+                    {/* Desktop View: Side-by-Side Split Panes */}
+                    <div className="hidden md:flex flex-1 min-h-0 h-full gap-2.5 relative">
+                      {/* Primary Pane (Right side in RTL) */}
+                      <div className={`flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/80 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm overflow-hidden transition-all duration-200 ${
+                        splitRatio === '50-50' ? 'w-1/2' : splitRatio === '60-40' ? 'w-[60%]' : 'w-[40%]'
+                      }`}>
+                        <div className="px-3.5 py-2 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200/70 dark:border-zinc-800/70 flex items-center justify-between shrink-0 select-none">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="text-xs font-black text-zinc-800 dark:text-zinc-200">
+                              {getModuleTitle(activeTab)}
+                            </span>
+                            <span className="text-[10px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-1.5 py-0.2 rounded">اصلی</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={handleSwapSplitPanes}
+                              className="px-2 py-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-blue-600 transition-colors flex items-center gap-1 text-[11px] font-bold"
+                              title="جابجایی جای دو پنجره (Swap)"
+                            >
+                              <ArrowRightLeft size={12} />
+                              <span>جابجایی</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSplitRatio(prev => prev === '50-50' ? '60-40' : prev === '60-40' ? '40-60' : '50-50')}
+                              className="px-2 py-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-purple-600 transition-colors text-[11px] font-bold"
+                              title="تغییر نسبت اندازه (۵۰/۵۰ یا ۶۰/۴۰ یا ۴۰/۶۰)"
+                            >
+                              {splitRatio === '50-50' ? '۵۰/۵۰' : splitRatio === '60-40' ? '۶۰/۴۰' : '۴۰/۶۰'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCloseSecondaryTab}
+                              className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-blue-600 transition-colors"
+                              title="تمام‌صفحه کردن این پنجره (خروج از اسپلیت)"
+                            >
+                              <Maximize2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
+                          {renderModuleContent(activeTab)}
+                        </div>
+                      </div>
+
+                      {/* Secondary Pane (Left side in RTL) */}
+                      <div className={`flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/80 rounded-2xl border border-purple-200/80 dark:border-purple-900/50 shadow-sm overflow-hidden transition-all duration-200 ${
+                        splitRatio === '50-50' ? 'w-1/2' : splitRatio === '60-40' ? 'w-[40%]' : 'w-[60%]'
+                      }`}>
+                        <div className="px-3.5 py-2 bg-purple-50/60 dark:bg-purple-950/30 border-b border-purple-100 dark:border-purple-900/40 flex items-center justify-between shrink-0 select-none">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                            <span className="text-xs font-black text-purple-950 dark:text-purple-200">
+                              {getModuleTitle(secondaryTab)}
+                            </span>
+                            <span className="text-[10px] bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold px-1.5 py-0.2 rounded">همزمان</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handlePopOutFloating(secondaryTab)}
+                              className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg text-purple-600 dark:text-purple-300 transition-colors"
+                              title="شناور کردن پنجره دوم (پنجره کوچک گوشه)"
+                            >
+                              <ExternalLink size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const target = secondaryTab;
+                                handleCloseSecondaryTab();
+                                setActiveTab(target);
+                              }}
+                              className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg text-purple-600 dark:text-purple-300 transition-colors"
+                              title="تمام‌صفحه کردن پنجره دوم"
+                            >
+                              <Maximize2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCloseSecondaryTab}
+                              className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 rounded-lg transition-colors"
+                              title="بستن پنجره دوم"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
+                          {renderModuleContent(secondaryTab, true)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
             </div>
             <ThemeSelectorModal
                 isOpen={showThemeModal}
@@ -1668,6 +2034,85 @@ function App() {
             />
 
             </Layout>
+
+            {/* Workstation Desktop Dock (Windows-style Taskbar) */}
+            {currentUser && (
+              <WorkstationDock
+                openTabs={openWorkstationTabs}
+                activeTab={activeTab}
+                secondaryTab={secondaryTab}
+                onSelectTab={(tabId) => {
+                  if (tabId === activeTab) {
+                    // already active
+                  } else if (tabId === secondaryTab) {
+                    setMobileActiveSplitPane('secondary');
+                  } else {
+                    setActiveTab(tabId);
+                  }
+                }}
+                onCloseTab={handleCloseWorkstationTab}
+                onOpenSplitSelector={() => setIsSplitSelectorOpen(true)}
+                isSplitActive={!!secondaryTab}
+                onCloseSplit={handleCloseSecondaryTab}
+                isCalculatorOpen={isCalculatorOpen}
+                isCalculatorMinimized={isCalculatorMinimized}
+                onToggleCalculator={() => {
+                  if (!isCalculatorOpen) {
+                    setIsCalculatorOpen(true);
+                    setIsCalculatorMinimized(false);
+                  } else {
+                    setIsCalculatorMinimized(prev => !prev);
+                  }
+                }}
+                floatingTab={floatingTab}
+                isFloatingMinimized={isFloatingMinimized}
+                onToggleFloatingMinimize={() => setIsFloatingMinimized(prev => !prev)}
+                onCloseFloating={handleCloseFloating}
+              />
+            )}
+
+            {/* Split View Selection Modal */}
+            <SplitViewSelectorModal
+              isOpen={isSplitSelectorOpen}
+              onClose={() => setIsSplitSelectorOpen(false)}
+              activeTab={activeTab}
+              secondaryTab={secondaryTab}
+              onSelectModuleForSplit={(tabId) => {
+                handleSelectSecondaryTab(tabId);
+                setIsSplitSelectorOpen(false);
+              }}
+              onCloseSplit={() => {
+                handleCloseSecondaryTab();
+                setIsSplitSelectorOpen(false);
+              }}
+            />
+
+            {/* Windows-style Picture-in-Picture Floating Window */}
+            {floatingTab && (
+              <WorkstationFloatingWindow
+                title={getModuleTitle(floatingTab)}
+                tabId={floatingTab}
+                isMinimized={isFloatingMinimized}
+                onMinimize={() => setIsFloatingMinimized(true)}
+                onRestore={() => setIsFloatingMinimized(false)}
+                onMaximizeToSplit={() => {
+                  handleSelectSecondaryTab(floatingTab);
+                  handleCloseFloating();
+                }}
+                onClose={handleCloseFloating}
+              >
+                {renderModuleContent(floatingTab, true)}
+              </WorkstationFloatingWindow>
+            )}
+
+            {/* Windows-style Draggable / Minimizable Floating Calculator */}
+            <FloatingCalculator
+              isOpen={isCalculatorOpen}
+              onClose={() => setIsCalculatorOpen(false)}
+              isMinimized={isCalculatorMinimized}
+              onMinimize={() => setIsCalculatorMinimized(true)}
+              onRestore={() => setIsCalculatorMinimized(false)}
+            />
 
             {/* AI Voice Assistant & Executive Copilot Widget */}
             {currentUser && (

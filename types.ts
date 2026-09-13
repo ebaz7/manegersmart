@@ -61,7 +61,20 @@ export interface User {
   canViewSayanRemittances?: boolean;
   canViewSayanWarehouseOverview?: boolean;
   canViewSayanWarehouseWidget?: boolean;
+  googleLinkedEmail?: string;
+  googleLinkedAt?: number;
 }
+
+export interface WorkstationWindow {
+  id: string;
+  tabId: string;
+  title: string;
+  isMinimized: boolean;
+  isFloating: boolean;
+  openedAt: number;
+}
+
+export type SplitViewRatio = '50-50' | '60-40' | '40-60' | '70-30';
 
 export interface AppNotification {
   id: string;

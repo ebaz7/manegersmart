@@ -3,12 +3,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PaymentOrder, OrderStatus, SystemSettings, User, ExitPermit, ExitPermitStatus, WarehouseTransaction, UserRole, SystemAnnouncement } from '../types';
 import { formatCurrency, getShamsiDateFromIso } from '../constants';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase, Settings2, GripVertical, Eye, EyeOff } from 'lucide-react';
 import { getRolePermissions } from '../services/authService';
 import { getExitPermits, getWarehouseTransactions, getNotes, getPurchaseRequests, getTaskGroups, getTasks, updateTask } from '../services/storageService';
 import { isInFinancialYear } from '../utils/dateUtils';
 import { getRandomPoem, getRandomMotivationalQuote, persianPoems, persianMotivationalQuotes } from '../utils/quotes';
 import { Note, PurchaseRequest, PurchaseRequestStatus, GroupTask, TaskGroup } from '../types';
+import { GoogleWorkspaceWidget } from './GoogleWorkspaceWidget';
 
 interface DashboardProps {
   orders: PaymentOrder[];
@@ -124,6 +125,71 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       } catch {}
       return next;
     });
+  };
+
+  // Windows-style Customizable Tiles Order & Visibility
+  const [customTileOrder, setCustomTileOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_custom_tile_order');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [hiddenTileIds, setHiddenTileIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_hidden_tile_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [showGoogleWidget, setShowGoogleWidget] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_show_google_widget');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleGoogleWidgetVisibility = () => {
+    setShowGoogleWidget(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('dashboard_show_google_widget', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const [isCustomizingTiles, setIsCustomizingTiles] = useState(false);
+
+  const saveTileOrder = (newOrder: string[]) => {
+    setCustomTileOrder(newOrder);
+    try {
+      localStorage.setItem('dashboard_custom_tile_order', JSON.stringify(newOrder));
+    } catch {}
+  };
+
+  const toggleTileVisibility = (tileId: string) => {
+    setHiddenTileIds(prev => {
+      const next = prev.includes(tileId) ? prev.filter(id => id !== tileId) : [...prev, tileId];
+      try {
+        localStorage.setItem('dashboard_hidden_tile_ids', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const moveTile = (fromIdx: number, toIdx: number) => {
+    const list = [...displayTiles];
+    if (fromIdx < 0 || toIdx < 0 || fromIdx >= list.length || toIdx >= list.length) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    saveTileOrder(list.map(t => t.id));
   };
 
   // Warehouse Alert State
@@ -849,6 +915,26 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       { id: 'settings', title: 'تنظیمات', badge: 'سیستم', icon: PenTool, gradient: 'from-slate-600 to-gray-800', onClick: () => onNavigate ? onNavigate('settings') : null },
   ];
 
+  // Windows-style customized tile order and visibility
+  const displayTiles = useMemo(() => {
+    let sorted = [...quickTiles];
+    if (customTileOrder.length > 0) {
+      sorted.sort((a, b) => {
+        const indexA = customTileOrder.indexOf(a.id);
+        const indexB = customTileOrder.indexOf(b.id);
+        if (indexA === -1 && indexB === -1) return 0;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+    }
+    return sorted;
+  }, [quickTiles, customTileOrder]);
+
+  const visibleTiles = useMemo(() => {
+    return displayTiles.filter(t => !hiddenTileIds.includes(t.id));
+  }, [displayTiles, hiddenTileIds]);
+
   return (
     <div className="space-y-6 pb-20 md:pb-0 animate-fade-in">
         
@@ -894,22 +980,33 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
         {/* TOP SECTION: MINIMAL DATE + DUAL ONLINE PANELS (POETRY & MOTIVATIONAL) */}
         <div className="flex flex-col xl:flex-row gap-4 items-stretch">
-            {/* Minimal Date Card - Smaller & Sleek */}
-            <div className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center gap-4 min-w-[210px] xl:w-[220px] shrink-0 relative group overflow-hidden">
+            {/* Minimal Date Card - Smaller & Sleek with Google Calendar/Tasks Quick Status */}
+            <div 
+                onClick={() => setShowGoogleWidget(prev => !prev)}
+                className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center gap-4 min-w-[210px] xl:w-[230px] shrink-0 relative group overflow-hidden cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all active:scale-[0.99]"
+                title="کلیک برای نمایش/پنهان‌سازی ویجت تقویم و کارهای گوگل"
+            >
                 <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-20 transition-opacity"><CalendarIcon size={40}/></div>
-                <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10">
+                <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10 group-hover:scale-105 transition-transform">
                     <CalendarIcon size={24} />
                 </div>
-                <div className="flex flex-col relative z-10">
-                    <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1">
-                        {shamsiDate.weekday}
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-auto" title="همگام‌سازی با تقویم"></span>
+                <div className="flex flex-col relative z-10 flex-1">
+                    <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center justify-between gap-1">
+                        <span>{shamsiDate.weekday}</span>
+                        <span className="flex items-center gap-1">
+                            <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${showGoogleWidget ? 'animate-pulse' : ''}`} title={currentUser?.googleLinkedEmail ? `متصل به: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
+                        </span>
                     </div>
                     <div className="flex items-baseline gap-1">
                         <span className="text-2xl font-black text-gray-800 dark:text-gray-200">{shamsiDate.day}</span>
                         <span className="text-sm font-bold text-gray-600 dark:text-gray-400">{shamsiDate.month}</span>
                     </div>
-                    <div className="text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1 line-clamp-1">{shamsiDate.year} شمسی</div>
+                    <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1">
+                        <span>{shamsiDate.year} شمسی</span>
+                        <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            {showGoogleWidget ? 'ویجت باز' : 'مشاهده رویدادها'}
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -1060,6 +1157,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 </div>
             </div>
         </div>
+
+        {/* GOOGLE WORKSPACE WIDGET (CALENDAR & TASKS) */}
+        {showGoogleWidget && <GoogleWorkspaceWidget currentUser={currentUser} />}
 
         {/* ANNOUNCEMENTS SECTION */}
         {(visibleAnnouncements.length > 0 || permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
@@ -1671,55 +1771,160 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 >
                     <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping"></div>
                     <h3 className="font-black text-sm md:text-base text-gray-800 dark:text-gray-100 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
-                        کاشی‌های دسترسی سریع (Quick Access Tiles)
+                        کاشی‌های دسترسی سریع (Windows Tiles)
                     </h3>
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded-full">
-                        {quickTiles.length} بخش
+                        {visibleTiles.length} از {quickTiles.length} میانبر
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setIsCustomizingTiles(prev => !prev)}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+                            isCustomizingTiles 
+                                ? 'bg-amber-500 text-white shadow-sm' 
+                                : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
+                        }`}
+                        title="شخصی‌سازی، جابجایی و حذف/اضافه میانبرها به سبک ویندوز"
+                    >
+                        <Settings2 size={14} className={isCustomizingTiles ? 'animate-spin' : ''} />
+                        <span>{isCustomizingTiles ? 'اتمام چینش' : 'شخصی‌سازی'}</span>
+                    </button>
                     <button
                         onClick={toggleQuickTiles}
                         className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-bold transition-all active:scale-95"
                         title={showQuickTiles ? 'بستن منو و آزادسازی فضای صفحه' : 'باز کردن منوی دسترسی سریع'}
                     >
-                        <span>{showQuickTiles ? 'بستن منو' : 'نمایش سریع'}</span>
+                        <span>{showQuickTiles ? 'بستن' : 'نمایش'}</span>
                         {showQuickTiles ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
                 </div>
             </div>
 
+            {/* Customization instruction banner */}
+            {isCustomizingTiles && (
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                        <GripVertical size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>می‌توانید با دکمه‌های چپ/راست جایگاه هر کاشی را تغییر دهید یا با کلیک روی چشم آن را پنهان/آشکار سازید.</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={toggleGoogleWidgetVisibility}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                                showGoogleWidget 
+                                    ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' 
+                                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50'
+                            }`}
+                            title="نمایش یا پنهان‌سازی ویجت تقویم و کارهای گوگل"
+                        >
+                            {showGoogleWidget ? <Eye size={13} /> : <EyeOff size={13} />}
+                            <span>ویجت تقویم گوگل: {showGoogleWidget ? 'فعال' : 'پنهان'}</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                saveTileOrder([]);
+                                setHiddenTileIds([]);
+                                setShowGoogleWidget(true);
+                                try {
+                                    localStorage.removeItem('dashboard_show_google_widget');
+                                } catch {}
+                            }}
+                            className="text-[11px] font-bold text-amber-700 dark:text-amber-300 underline hover:text-amber-900 px-2 py-0.5"
+                        >
+                            بازنشانی پیش‌فرض
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {showQuickTiles && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-9 gap-2.5 md:gap-3 mt-3 animate-fade-in">
-                    {quickTiles.map((tile) => (
-                        <button
-                            key={tile.id}
-                            onClick={tile.onClick}
-                            className="group relative flex flex-col items-center justify-between p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-100 dark:border-gray-700/60 shadow-sm hover:shadow-lg hover:border-blue-300 active:scale-95 transition-all aspect-square cursor-pointer"
-                        >
-                            {/* Pending Count Badge */}
-                            {tile.count !== undefined && tile.count > 0 && (
-                                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-bounce z-20">
-                                    {tile.count}
+                    {(isCustomizingTiles ? displayTiles : visibleTiles).map((tile, idx) => {
+                        const isHidden = hiddenTileIds.includes(tile.id);
+                        return (
+                            <div
+                                key={tile.id}
+                                className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-gray-800/90 border shadow-sm transition-all aspect-square ${
+                                    isHidden 
+                                        ? 'opacity-40 border-dashed border-gray-300 dark:border-gray-600' 
+                                        : 'border-gray-100 dark:border-gray-700/60 hover:shadow-lg hover:border-blue-300'
+                                }`}
+                            >
+                                {/* Pending Count Badge */}
+                                {!isCustomizingTiles && tile.count !== undefined && tile.count > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-bounce z-20">
+                                        {tile.count}
+                                    </span>
+                                )}
+
+                                {/* Top Bar in Customization Mode */}
+                                {isCustomizingTiles ? (
+                                    <div className="w-full flex items-center justify-between z-20">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleTileVisibility(tile.id);
+                                            }}
+                                            className={`p-1 rounded-md transition-colors ${isHidden ? 'bg-gray-200 text-gray-600' : 'bg-blue-100 text-blue-700'}`}
+                                            title={isHidden ? 'نمایش کاشی' : 'پنهان کردن کاشی'}
+                                        >
+                                            {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                                        </button>
+                                        <div className="flex items-center gap-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    moveTile(idx, idx - 1);
+                                                }}
+                                                disabled={idx === 0}
+                                                className="p-1 rounded hover:bg-gray-100 disabled:opacity-20 text-gray-600"
+                                                title="انتقال به راست"
+                                            >
+                                                <ChevronRight size={12} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    moveTile(idx, idx + 1);
+                                                }}
+                                                disabled={idx === displayTiles.length - 1}
+                                                className="p-1 rounded hover:bg-gray-100 disabled:opacity-20 text-gray-600"
+                                                title="انتقال به چپ"
+                                            >
+                                                <ChevronLeft size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Top Category Badge / Pill */
+                                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800/40 truncate max-w-full">
+                                        {tile.badge}
+                                    </span>
+                                )}
+
+                                {/* Vibrant Gradient Icon Box */}
+                                <div 
+                                    onClick={() => !isCustomizingTiles && tile.onClick && tile.onClick()}
+                                    className={`w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br ${tile.gradient} text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform my-1 cursor-pointer`}
+                                >
+                                    <tile.icon size={20} className="sm:w-5 sm:h-5" />
+                                </div>
+
+                                {/* Title */}
+                                <span 
+                                    onClick={() => !isCustomizingTiles && tile.onClick && tile.onClick()}
+                                    className="text-[10px] sm:text-[11px] font-black text-gray-800 dark:text-gray-200 text-center leading-tight line-clamp-1 cursor-pointer"
+                                >
+                                    {tile.title}
                                 </span>
-                            )}
-
-                            {/* Top Category Badge / Pill */}
-                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800/40 truncate max-w-full">
-                                {tile.badge}
-                            </span>
-
-                            {/* Vibrant Gradient Icon Box */}
-                            <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br ${tile.gradient} text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform my-1`}>
-                                <tile.icon size={20} className="sm:w-5 sm:h-5" />
                             </div>
-
-                            {/* Title */}
-                            <span className="text-[10px] sm:text-[11px] font-black text-gray-800 dark:text-gray-200 text-center leading-tight line-clamp-1">
-                                {tile.title}
-                            </span>
-                        </button>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>

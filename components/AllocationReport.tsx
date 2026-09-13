@@ -161,7 +161,7 @@ const AllocationReport: React.FC<AllocationReportProps> = ({ records, onUpdateRe
                 const now = new Date();
                 const diffTime = expiryDate.getTime() - now.getTime();
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                remainingDays = diffDays;
+                remainingDays = diffDays < 0 ? 'تمام شده' : diffDays;
             }
         }
 
@@ -491,7 +491,9 @@ const AllocationReport: React.FC<AllocationReportProps> = ({ records, onUpdateRe
                         ) : (
                             processedRecords.map((r, index) => {
                                 let remainingColorClass = 'text-gray-500';
-                                if (typeof r.remainingDays === 'number') {
+                                if (r.remainingDays === 'تمام شده') {
+                                    remainingColorClass = 'text-red-600 font-bold';
+                                } else if (typeof r.remainingDays === 'number') {
                                     remainingColorClass = r.remainingDays > 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold';
                                 }
 

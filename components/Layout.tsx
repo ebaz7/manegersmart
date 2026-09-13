@@ -9,11 +9,12 @@ import {
   ShoppingCart, Wallet, Sparkles, Pin, PinOff, Zap,
   BadgePlus, Receipt, ArrowLeftRight, ArrowRight, ScrollText, ClipboardCheck, Warehouse, BarChart3, 
   CalendarDays, FolderArchive, Banknote, MessagesSquare, Globe, Boxes, Handshake, Headset, UserCog,
-  FileCheck2
+  FileCheck2, Link2, CheckCircle2, AlertCircle, Columns, Calculator, Monitor
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserRole, AppNotification, SystemSettings } from '../types';
 import { logout, hasPermission, getRolePermissions, updateUser } from '../services/authService';
+import { signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken } from '../services/googleWorkspaceService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp, sendNotification } from '../services/notificationService';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { apiCall, resolveImageUrl } from '../services/apiService';
@@ -41,13 +42,42 @@ interface LayoutProps {
   isDarkMode?: boolean;
   onToggleDarkMode?: () => void;
   unreadChatCount?: number;
+  secondaryTab?: string | null;
+  onOpenSplitView?: () => void;
+  onCloseSecondaryTab?: () => void;
+  onToggleCalculator?: () => void;
 }
 
 import { SearchModal } from './SearchModal';
 import { UpdateBanner } from './UpdateBanner';
 import { checkServerUpdate, AppVersionInfo } from '../services/updateService';
 
-const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveTab, currentUser, onLogout, notifications, clearNotifications, markAllNotificationsAsRead, onDeleteNotification, onAddNotification, onRemoveNotification, financialYear, setFinancialYear, settings: propSettings, theme, toggleTheme, isDarkMode, onToggleDarkMode, unreadChatCount = 0 }) => {
+const Layout: React.FC<LayoutProps> = ({ 
+  children, 
+  onBack, 
+  activeTab, 
+  setActiveTab, 
+  currentUser, 
+  onLogout, 
+  notifications, 
+  clearNotifications, 
+  markAllNotificationsAsRead, 
+  onDeleteNotification, 
+  onAddNotification, 
+  onRemoveNotification, 
+  financialYear, 
+  setFinancialYear, 
+  settings: propSettings, 
+  theme, 
+  toggleTheme, 
+  isDarkMode, 
+  onToggleDarkMode, 
+  unreadChatCount = 0,
+  secondaryTab,
+  onOpenSplitView,
+  onCloseSecondaryTab,
+  onToggleCalculator
+}) => {
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [settings, setSettings] = useState<SystemSettings | null>(propSettings || null);
@@ -330,6 +360,65 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Google Account Linking State
+  const [googleLinkingStatus, setGoogleLinkingStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [googleLinkedEmail, setGoogleLinkedEmail] = useState<string>(currentUser?.googleLinkedEmail || '');
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (showProfileModal) {
+      setGoogleLinkedEmail(currentUser?.googleLinkedEmail || '');
+      setGoogleError(null);
+      getGoogleAccessToken(currentUser?.id).then(token => {
+        if (!token && !currentUser?.googleLinkedEmail) {
+          setGoogleLinkedEmail('');
+        }
+      });
+    }
+  }, [showProfileModal, currentUser]);
+
+  const handleLinkGoogleAccount = async () => {
+    setGoogleLinkingStatus('loading');
+    setGoogleError(null);
+    try {
+      const res = await signInWithGoogleWorkspace(currentUser?.id);
+      if (res?.user && res.accessToken) {
+        const email = res.user.email || 'حساب متصل گوگل';
+        setGoogleLinkedEmail(email);
+        setGoogleLinkingStatus('success');
+        await updateUser({
+          ...currentUser,
+          googleLinkedEmail: email,
+          googleLinkedAt: Date.now()
+        });
+        setTimeout(() => setGoogleLinkingStatus('idle'), 3000);
+      }
+    } catch (err: any) {
+      console.error('Failed to link google account:', err);
+      setGoogleError(err?.message || 'خطا در ارتباط با حساب گوگل');
+      setGoogleLinkingStatus('error');
+    }
+  };
+
+  const handleUnlinkGoogleAccount = async () => {
+    if (!confirm('آیا از قطع اتصال حساب گوگل اطمینان دارید؟')) return;
+    setGoogleLinkingStatus('loading');
+    try {
+      await logoutGoogleWorkspace(currentUser?.id);
+      setGoogleLinkedEmail('');
+      await updateUser({
+        ...currentUser,
+        googleLinkedEmail: '',
+        googleLinkedAt: undefined
+      });
+      setGoogleLinkingStatus('idle');
+    } catch (err: any) {
+      console.error('Failed to unlink google account:', err);
+      setGoogleError('خطا در قطع اتصال حساب گوگل');
+      setGoogleLinkingStatus('error');
+    }
+  };
 
   const prevShowDropdown = useRef(showNotifDropdown);
   useEffect(() => {
@@ -819,6 +908,70 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                                     <input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} className="w-full bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none" placeholder="******"/>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Google Workspace Account Linking Section */}
+                        <div className="w-full pt-4 border-t border-gray-200 dark:border-zinc-800/60 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                                    <CalendarDays size={15} className="text-indigo-500" />
+                                    اتصال حساب گوگل
+                                </span>
+                                {googleLinkedEmail ? (
+                                    <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200/50 flex items-center gap-1">
+                                        <CheckCircle2 size={10} /> متصل
+                                    </span>
+                                ) : (
+                                    <span className="text-[9px] font-bold text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
+                                        غیرمتصل
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                                با لینک کردن حساب گوگل، تقویم و تسک‌های روزانه شخصی شما در داشبورد سیستم همگام‌سازی می‌شود.
+                            </p>
+
+                            {googleLinkedEmail ? (
+                                <div className="bg-indigo-50/50 dark:bg-zinc-950/80 border border-indigo-100 dark:border-zinc-800 p-3 rounded-xl space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
+                                            <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate dir-ltr">{googleLinkedEmail}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleUnlinkGoogleAccount}
+                                            disabled={googleLinkingStatus === 'loading'}
+                                            className="text-[10px] font-bold text-rose-500 hover:text-rose-700 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-200/50 transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                                        >
+                                            قطع اتصال
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={handleLinkGoogleAccount}
+                                    disabled={googleLinkingStatus === 'loading'}
+                                    className="w-full flex items-center justify-center gap-2 bg-white dark:bg-zinc-950 hover:bg-gray-50 dark:hover:bg-zinc-900 border border-gray-200 dark:border-zinc-800 text-gray-700 dark:text-gray-200 p-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-98 cursor-pointer disabled:opacity-60"
+                                >
+                                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-4 h-4 shrink-0">
+                                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                                        <path fill="none" d="M0 0h48v48H0z"></path>
+                                    </svg>
+                                    <span>{googleLinkingStatus === 'loading' ? 'در حال برقراری ارتباط...' : 'لینک حساب گوگل (Google Workspace)'}</span>
+                                </button>
+                            )}
+
+                            {googleError && (
+                                <div className="text-[10px] text-rose-500 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 flex items-center gap-1.5">
+                                    <AlertCircle size={12} className="shrink-0" />
+                                    <span>{googleError}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1366,6 +1519,19 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                   </div>
               </div>
               <div className="flex items-center gap-1.5">
+                  {onOpenSplitView && (
+                    <button 
+                      onClick={onOpenSplitView}
+                      className={`p-2 border rounded-lg shadow-sm active:scale-95 transition-all ${
+                        secondaryTab 
+                          ? 'bg-purple-600 text-white border-purple-500 shadow-purple-500/20' 
+                          : 'bg-zinc-100 dark:bg-zinc-900 border-zinc-200/50 dark:border-zinc-800/50 text-zinc-700 dark:text-zinc-300'
+                      }`}
+                      title={secondaryTab ? 'مشاهده همزمان (فعال)' : 'مشاهده همزمان منوها (Split View)'}
+                    >
+                        <Columns size={16} />
+                    </button>
+                  )}
                   <button 
                     onClick={() => setIsSearchOpen(true)}
                     className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95"
@@ -1426,16 +1592,58 @@ const Layout: React.FC<LayoutProps> = ({ children, onBack, activeTab, setActiveT
                 </div>
               )}
 
-              <div className={`${activeTab === 'chat' ? 'hidden' : 'hidden md:flex'} justify-end p-4 bg-white/20 dark:bg-zinc-950/15 border-b border-zinc-200/40 dark:border-zinc-800/40 z-40 shadow-sm no-print items-center backdrop-blur-md`}>
+              <div className={`${activeTab === 'chat' ? 'hidden' : 'hidden md:flex'} justify-end p-4 bg-white/20 dark:bg-zinc-950/15 border-b border-zinc-200/40 dark:border-zinc-800/40 z-40 shadow-sm no-print items-center backdrop-blur-md gap-2`}>
                   <button 
                     onClick={() => setIsSearchOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all mr-auto ml-4 group"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all mr-auto ml-2 group"
                     title="جستجو (Ctrl+K)"
                   >
                       <Search size={14} className="group-hover:text-blue-500 transition-colors" />
                       <span className="text-xs font-bold">جستجو در کل سیستم...</span>
                       <span className="bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[9px] font-black">Ctrl K</span>
                   </button>
+
+                  {/* Split View Quick Action */}
+                  {onOpenSplitView && (
+                    <button
+                      type="button"
+                      onClick={onOpenSplitView}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                        secondaryTab
+                          ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800 shadow-sm'
+                          : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40'
+                      }`}
+                      title={secondaryTab ? 'تغییر یا مدیریت صفحه همزمان' : 'مشاهده همزمان دو منو کنار هم (Split View)'}
+                    >
+                      <Columns size={15} className={secondaryTab ? 'text-purple-600' : 'text-blue-600'} />
+                      <span>{secondaryTab ? 'همزمان (فعال)' : 'مشاهده همزمان (Split View)'}</span>
+                      {secondaryTab && (
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onCloseSecondaryTab) onCloseSecondaryTab();
+                          }}
+                          className="p-0.5 hover:bg-purple-200 dark:hover:bg-purple-800 rounded text-purple-700 dark:text-purple-300 mr-1"
+                          title="بستن صفحه دوم"
+                        >
+                          <X size={12} />
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Floating Calculator Quick Action */}
+                  {onToggleCalculator && (
+                    <button
+                      type="button"
+                      onClick={onToggleCalculator}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-xs font-bold transition-all"
+                      title="ماشین‌حساب مالی شناور"
+                    >
+                      <Calculator size={15} className="text-emerald-600" />
+                      <span>ماشین‌حساب</span>
+                    </button>
+                  )}
                   <span className="font-bold text-zinc-500 dark:text-zinc-400 mr-3 text-xs">سال مالی:</span>
                   {settings?.fiscalYears && (
                       <select 

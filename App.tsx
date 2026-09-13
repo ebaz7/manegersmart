@@ -889,6 +889,20 @@ function App() {
       isFirstLoad.current = true; 
       if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current); 
 
+      // Reset all layout tabs and floating components
+      setActiveTab('chat');
+      setSecondaryTab(null);
+      setTertiaryTab(null);
+      setQuaternaryTab(null);
+      setFloatingTab(null);
+      setSplitLayoutMode('dual');
+      setOpenWorkstationTabs([]);
+      setIsCalculatorOpen(false);
+      localStorage.removeItem('app_secondary_tab');
+      localStorage.removeItem('app_tertiary_tab');
+      localStorage.removeItem('app_quaternary_tab');
+      localStorage.removeItem('app_split_layout_mode');
+
       // 2. Perform thorough push manager unsubscription, cache clearance, and backend cleanup
       unsubscribeFromPushNotifications(user, endpoint).catch(e => {
           console.error("Unregister push token failed on logout", e);
@@ -2035,7 +2049,7 @@ function App() {
                       </div>
                       <button
                         type="button"
-                        onClick={handleCloseAllSplit}
+                        onClick={handleCloseSecondaryTab}
                         className="p-1.5 text-zinc-500 hover:text-rose-600 rounded-lg hover:bg-white dark:hover:bg-zinc-800 transition-colors shrink-0"
                         title="خروج از حالت ۴ پنجره"
                       >
@@ -2099,7 +2113,7 @@ function App() {
                               type="button"
                               onClick={() => {
                                 const t = secondaryTab || 'manage';
-                                handleCloseAllSplit();
+                                handleCloseSecondaryTab();
                                 setActiveTab(t);
                               }}
                               className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg text-purple-600 dark:text-purple-300 transition-colors"
@@ -2135,7 +2149,7 @@ function App() {
                               type="button"
                               onClick={() => {
                                 const t = tertiaryTab || 'sayan';
-                                handleCloseAllSplit();
+                                handleCloseSecondaryTab();
                                 setActiveTab(t);
                               }}
                               className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg text-emerald-600 dark:text-emerald-300 transition-colors"
@@ -2171,7 +2185,7 @@ function App() {
                               type="button"
                               onClick={() => {
                                 const t = quaternaryTab || 'chat';
-                                handleCloseAllSplit();
+                                handleCloseSecondaryTab();
                                 setActiveTab(t);
                               }}
                               className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-lg text-amber-600 dark:text-amber-300 transition-colors"
@@ -2373,7 +2387,7 @@ function App() {
                 onCloseTab={handleCloseWorkstationTab}
                 onCloseSplitPane={handleCloseSplitPane}
                 onOpenSplitView={() => setIsSplitSelectorOpen(true)}
-                onCloseSecondaryTab={handleCloseAllSplit}
+                onCloseSecondaryTab={handleCloseSecondaryTab}
                 isCalculatorOpen={isCalculatorOpen}
                 onToggleCalculator={() => {
                   if (!isCalculatorOpen) {
@@ -2411,7 +2425,7 @@ function App() {
                 handleCloseSplitPane(slot);
               }}
               onCloseSplit={() => {
-                handleCloseAllSplit();
+                handleCloseSecondaryTab();
                 setIsSplitSelectorOpen(false);
               }}
             />

@@ -1458,7 +1458,7 @@ const Layout: React.FC<LayoutProps> = ({
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 80, opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", damping: 25, stiffness: 280 }}
-            className="md:hidden fixed z-[90] bottom-4 left-4 right-4 bg-white/75 dark:bg-zinc-900/75 border border-white/40 dark:border-zinc-800/30 pb-2 pt-2 rounded-[20px] flex justify-around items-center backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.06)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.4)] px-2"
+            className="md:hidden fixed z-[9999] bottom-4 left-4 right-4 bg-white/75 dark:bg-zinc-900/75 border border-white/40 dark:border-zinc-800/30 pb-2 pt-2 rounded-[20px] flex justify-around items-center backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.06)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.4)] px-2"
           >
               {bottomVisibleItems.map((item) => {
                   const Icon = item.icon;

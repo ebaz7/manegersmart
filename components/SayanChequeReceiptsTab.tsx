@@ -1740,6 +1740,10 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     isCeoOrAdmin={isCeoOrAdmin}
                     canDeleteReceipt={canDeleteReceipt}
                     canEditReceipt={canEditReceipt}
+                    onUpdateReceipt={(updated) => {
+                        setSelectedDetailReceipt(updated);
+                        fetchReceipts(true);
+                    }}
                 />
             )}
 

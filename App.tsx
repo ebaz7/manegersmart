@@ -35,6 +35,7 @@ import { SendToChatModal } from './components/SendToChatModal';
 import { WorkstationDock } from './components/WorkstationDock';
 import { SplitViewSelectorModal } from './components/SplitViewSelectorModal';
 import { WorkstationFloatingWindow } from './components/WorkstationFloatingWindow';
+import { SplitViewDragOverlay } from './components/SplitViewDragOverlay';
 import { FloatingCalculator } from './components/FloatingCalculator';
 import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
@@ -1599,8 +1600,8 @@ function App() {
       case 'products': return 'کاتالوگ محصولات';
       case 'tickets': return 'تیکت‌ها و پشتیبانی';
       case 'ccti': return 'تبدیل CCTI';
-      case 'sayan': return 'گزارشات نرم‌افزار صایان';
-      case 'sayan-operations': return 'عملیات صایان';
+      case 'sayan': return 'گزارشات نرم‌افزار سایان';
+      case 'sayan-operations': return 'عملیات سایان';
       case 'users': return 'مدیریت کاربران';
       case 'settings': return 'تنظیمات سیستم';
       case 'knowledge':
@@ -2051,11 +2052,9 @@ function App() {
                   }
                 }}
                 onCloseTab={handleCloseWorkstationTab}
-                onOpenSplitSelector={() => setIsSplitSelectorOpen(true)}
-                isSplitActive={!!secondaryTab}
-                onCloseSplit={handleCloseSecondaryTab}
+                onOpenSplitView={() => setIsSplitSelectorOpen(true)}
+                onCloseSecondaryTab={handleCloseSecondaryTab}
                 isCalculatorOpen={isCalculatorOpen}
-                isCalculatorMinimized={isCalculatorMinimized}
                 onToggleCalculator={() => {
                   if (!isCalculatorOpen) {
                     setIsCalculatorOpen(true);
@@ -2065,9 +2064,7 @@ function App() {
                   }
                 }}
                 floatingTab={floatingTab}
-                isFloatingMinimized={isFloatingMinimized}
-                onToggleFloatingMinimize={() => setIsFloatingMinimized(prev => !prev)}
-                onCloseFloating={handleCloseFloating}
+                currentUser={currentUser}
               />
             )}
 
@@ -2087,15 +2084,28 @@ function App() {
               }}
             />
 
+            {/* Windows-style Drag & Snap Overlay for Split-View */}
+            <SplitViewDragOverlay
+              activeTab={activeTab}
+              onDropLeft={(tabId) => {
+                handleSelectSecondaryTab(tabId);
+              }}
+              onDropRight={(tabId) => {
+                setActiveTab(tabId);
+              }}
+            />
+
             {/* Windows-style Picture-in-Picture Floating Window */}
             {floatingTab && (
               <WorkstationFloatingWindow
-                title={getModuleTitle(floatingTab)}
+                id={floatingTab}
                 tabId={floatingTab}
+                title={getModuleTitle(floatingTab)}
+                isOpen={!!floatingTab}
                 isMinimized={isFloatingMinimized}
                 onMinimize={() => setIsFloatingMinimized(true)}
                 onRestore={() => setIsFloatingMinimized(false)}
-                onMaximizeToSplit={() => {
+                onMaximizeToMain={() => {
                   handleSelectSecondaryTab(floatingTab);
                   handleCloseFloating();
                 }}
@@ -2110,8 +2120,7 @@ function App() {
               isOpen={isCalculatorOpen}
               onClose={() => setIsCalculatorOpen(false)}
               isMinimized={isCalculatorMinimized}
-              onMinimize={() => setIsCalculatorMinimized(true)}
-              onRestore={() => setIsCalculatorMinimized(false)}
+              onMinimize={() => setIsCalculatorMinimized(prev => !prev)}
             />
 
             {/* AI Voice Assistant & Executive Copilot Widget */}

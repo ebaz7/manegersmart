@@ -50,7 +50,8 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
       case 'dashboard': return { label: 'داشبورد', Icon: LayoutDashboard };
       case 'manage': return { label: 'سوابق پرداخت', Icon: Receipt };
       case 'warehouse': return { label: 'انبارداری', Icon: Warehouse };
-      case 'sayan': return { label: 'گزارشات صایان', Icon: FileText };
+      case 'sayan': return { label: 'گزارشات سایان', Icon: FileText };
+      case 'sayan-operations': return { label: 'ثبت‌های سایان', Icon: FileText };
       case 'chat': return { label: 'گفتگو', Icon: MessageSquare };
       case 'balances': return { label: 'مانده حساب', Icon: Users };
       case 'ccti': return { label: 'تبدیل CCTI', Icon: ArrowLeftRight };
@@ -120,8 +121,14 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
           return (
             <div
               key={tabId}
+              draggable
+              data-tab-id={tabId}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', tabId);
+                e.dataTransfer.effectAllowed = 'copyMove';
+              }}
               onClick={() => onSelectTab(tabId)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer group relative ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer select-none group relative ${
                 isPrimary
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-400/50'
                   : isSecondary
@@ -130,7 +137,7 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
                       ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60'
                       : 'bg-zinc-100/80 dark:bg-zinc-900/80 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/80 border border-transparent'
               }`}
-              title={`${label} ${isPrimary ? '(پنجره فعال)' : isSecondary ? '(پنجره اسپلیت)' : isFloating ? '(پنجره شناور)' : ''}`}
+              title={`${label} ${isPrimary ? '(پنجره فعال)' : isSecondary ? '(پنجره اسپلیت)' : isFloating ? '(پنجره شناور)' : ''} - برای اسپلیت به چپ یا راست بکشید`}
             >
               <Icon size={14} className={isActive ? 'text-white' : 'text-zinc-500 group-hover:text-blue-500'} />
               <span className="truncate max-w-[90px]">{label}</span>

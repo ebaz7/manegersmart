@@ -2,12 +2,14 @@ import React, { useState, useRef } from 'react';
 import {
     FileText, X, CheckCircle2, AlertCircle, Clock, ShieldCheck,
     CreditCard, Building2, User, Hash, Layers, Eye, Download, Printer,
-    ArrowRight, Check, Sparkles, CornerUpLeft, Edit3, Trash2, MessageSquare, Send
+    ArrowRight, Check, Sparkles, CornerUpLeft, Edit3, Trash2, MessageSquare, Send,
+    Upload, Plus, Loader2
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { UserRole } from '../../types';
 import { shareElementToChat, openSendToChat } from '../../services/chatShareService';
 import { FileViewerModal } from '../FileViewerModal';
+import { MobileAttachmentUploader } from './MobileAttachmentUploader';
 
 interface Props {
     receipt: any;
@@ -19,6 +21,7 @@ interface Props {
     onReject: (receiptId: string) => void;
     onDelete?: (receiptId: string) => void;
     onPrintA5?: (receipt: any) => void;
+    onUpdateReceipt?: (updatedReceipt: any) => void;
     actionLoading: string | null;
     isFinancialOrAdmin?: boolean;
     isCeoOrAdmin?: boolean;
@@ -46,7 +49,7 @@ const toShamsiDateStr = (dateInput: string | Date | null | undefined): string =>
 };
 
 export const ChequeReceiptDetailModal: React.FC<Props> = ({
-    receipt,
+    receipt: initialReceipt,
     currentUser,
     onClose,
     onOpenRealSayanDoc,
@@ -55,12 +58,22 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
     onReject,
     onDelete,
     onPrintA5,
+    onUpdateReceipt,
     actionLoading,
     isFinancialOrAdmin: propsIsFinancialOrAdmin,
     isCeoOrAdmin: propsIsCeoOrAdmin,
     canDeleteReceipt: propsCanDeleteReceipt,
     canEditReceipt: propsCanEditReceipt
 }) => {
+    const [receipt, setReceipt] = useState<any>(initialReceipt);
+    const [showUploader, setShowUploader] = useState(false);
+    const [savingAttachments, setSavingAttachments] = useState(false);
+
+    // Keep internal receipt synced if prop updates
+    React.useEffect(() => {
+        setReceipt(initialReceipt);
+    }, [initialReceipt]);
+
     const isFinancialOrAdmin = propsIsFinancialOrAdmin !== undefined 
         ? propsIsFinancialOrAdmin 
         : (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || currentUser.roles?.includes('financial') || currentUser.roles?.includes('admin'));
@@ -76,6 +89,75 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
 
     const detailContentRef = useRef<HTMLDivElement>(null);
     const [previewAttachment, setPreviewAttachment] = useState<{ fileName: string; fileData?: string; fileType?: string; url?: string; resolvedSrc?: string } | null>(null);
+
+    // Direct attachment upload / sync handler
+    const handleSaveNewAttachments = async (newAttachments: any[]) => {
+        if (!receipt?.id) return;
+        setSavingAttachments(true);
+        try {
+            const currentAtts = receipt.attachments || [];
+            // Merge attachments avoiding exact duplicate names
+            const merged = [...currentAtts];
+            for (const att of newAttachments) {
+                if (!merged.some(m => m.fileName === att.fileName && m.fileData === att.fileData)) {
+                    merged.push(att);
+                }
+            }
+
+            const res = await fetch(`/api/sayan/cheque-receipts/${receipt.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    attachments: merged,
+                    currentUser: { id: currentUser.id, name: currentUser.name || currentUser.username }
+                })
+            });
+            const data = await res.json();
+            if (data.success && data.receipt) {
+                setReceipt(data.receipt);
+                if (onUpdateReceipt) onUpdateReceipt(data.receipt);
+                setShowUploader(false);
+            } else {
+                alert(data.error || 'خطا در بارگذاری و ذخیره پیوست‌ها');
+            }
+        } catch (err: any) {
+            console.error('Error saving attachments in detail modal:', err);
+            alert('خطای ارتباط با سرور در هنگام ذخیره پیوست‌ها');
+        } finally {
+            setSavingAttachments(false);
+        }
+    };
+
+    const handleDeleteAttachment = async (indexToDelete: number) => {
+        if (!receipt?.id) return;
+        if (!window.confirm('آیا از حذف این پیوست اطمینان دارید؟')) return;
+        setSavingAttachments(true);
+        try {
+            const currentAtts = [...(receipt.attachments || [])];
+            currentAtts.splice(indexToDelete, 1);
+
+            const res = await fetch(`/api/sayan/cheque-receipts/${receipt.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    attachments: currentAtts,
+                    currentUser: { id: currentUser.id, name: currentUser.name || currentUser.username }
+                })
+            });
+            const data = await res.json();
+            if (data.success && data.receipt) {
+                setReceipt(data.receipt);
+                if (onUpdateReceipt) onUpdateReceipt(data.receipt);
+            } else {
+                alert(data.error || 'خطا در حذف پیوست');
+            }
+        } catch (err: any) {
+            console.error('Error deleting attachment:', err);
+            alert('خطا در حذف پیوست');
+        } finally {
+            setSavingAttachments(false);
+        }
+    };
 
     const handleShareToChat = async () => {
         const defaultMsg = `🧾 جزئیات رسید چک #${receipt.receiptNo || receipt.id}
@@ -404,18 +486,56 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                         </div>
                     </div>
 
-                    {/* Attachments */}
-                    {receipt.attachments && receipt.attachments.length > 0 && (
-                        <div className="space-y-2 text-xs">
-                            <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                                <span>فایل‌های پیوست شده چک‌ها و رسید ({toPersianDigits(receipt.attachments.length)} فایل)</span>
+                    {/* Attachments & Document Upload */}
+                    <div className="space-y-3 text-xs bg-slate-50/70 dark:bg-slate-900/40 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                        <div className="flex items-center justify-between">
+                            <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-purple-600" />
+                                <span>فایل‌های پیوست و تصاویر چک‌ها ({toPersianDigits(receipt.attachments?.length || 0)} فایل)</span>
                             </h4>
+                            {(isFinancialOrAdmin || canEditReceipt) && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowUploader(!showUploader)}
+                                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
+                                >
+                                    {showUploader ? <X className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+                                    <span>{showUploader ? 'بستن آپلودر' : 'افزودن / آپلود عکس جدید'}</span>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Inline Attachment Uploader Component */}
+                        {showUploader && (
+                            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-800 shadow-sm space-y-2">
+                                <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                                    فایل‌های جدید (تصویر چک، فیش و مدارک) را بارگذاری کنید:
+                                </div>
+                                <MobileAttachmentUploader
+                                    attachments={[]}
+                                    onChange={(newAtts) => {
+                                        if (newAtts && newAtts.length > 0) {
+                                            handleSaveNewAttachments(newAtts);
+                                        }
+                                    }}
+                                    readOnly={savingAttachments}
+                                />
+                                {savingAttachments && (
+                                    <div className="flex items-center gap-2 text-xs text-purple-600 font-bold py-1">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <span>در حال ذخیره و به‌روزرسانی مدارک...</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {receipt.attachments && receipt.attachments.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {receipt.attachments.map((att: any, idx: number) => {
                                     const fileSrc = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
                                     const isPdf = att.fileName?.toLowerCase().endsWith('.pdf') || att.fileType?.includes('pdf') || att.fileData?.startsWith('data:application/pdf');
                                     return (
-                                        <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 shadow-xs">
+                                        <div key={idx} className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 shadow-xs">
                                             <div className="flex items-center gap-2 truncate">
                                                 <FileText className="w-4 h-4 text-purple-500 shrink-0" />
                                                 <div className="truncate flex flex-col">
@@ -446,13 +566,28 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                                         <span>دانلود</span>
                                                     </a>
                                                 )}
+                                                {(isFinancialOrAdmin || canEditReceipt) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteAttachment(idx)}
+                                                        disabled={savingAttachments}
+                                                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[11px] cursor-pointer transition-colors"
+                                                        title="حذف این پیوست"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="p-3 text-center text-slate-400 text-[11px] bg-white/50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                                هیچ فایلی پیوست نشده است. می‌توانید با دکمه بالا تصویر چک‌ها یا رسید را اضافه کنید.
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer Actions */}
@@ -514,37 +649,40 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
 
                     {/* Step Actions */}
                     <div className="flex items-center gap-2">
-                        {/* Step 1: Accounting can edit and approve */}
-                        {receipt.status === 'PENDING_ACCOUNTING' && isFinancialOrAdmin && (
+                        {/* Step 1: Accounting can review/approve, reject and edit */}
+                        {receipt.status === 'PENDING_ACCOUNTING' && (
                             <>
-                                <button
-                                    type="button"
-                                    onClick={() => onReject(receipt.id)}
-                                    disabled={actionLoading === receipt.id}
-                                    className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs hover:bg-rose-100 cursor-pointer"
-                                >
-                                    رد / بازگشت
-                                </button>
-                                {canEditReceipt && (
+                                {isFinancialOrAdmin && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onReject(receipt.id)}
+                                        disabled={actionLoading === receipt.id}
+                                        className="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 font-bold text-xs hover:bg-rose-100 cursor-pointer"
+                                    >
+                                        رد / بازگشت
+                                    </button>
+                                )}
+                                {(canEditReceipt || isFinancialOrAdmin) && (
                                     <button
                                         type="button"
                                         onClick={() => onOpenAccountingReview(receipt)}
                                         className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-                                        title="ویرایش مشخصات، اقلام و مدارک پیوست در همین مرحله"
+                                        title="ویرایش مشخصات، اقلام و مدارک پیوست و ثبت تایید مالی"
                                     >
                                         <Edit3 className="w-4 h-4" />
-                                        <span>ویرایش اطلاعات و مدارک رسید</span>
+                                        <span>ویرایش و بررسی مالی</span>
                                     </button>
                                 )}
                             </>
                         )}
 
-                        {/* Edit button for authorized users on pending/failed receipts */}
-                        {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && canEditReceipt && (
+                        {/* Edit button for authorized users on pending/failed receipts (e.g. PENDING_CEO or REJECTED) */}
+                        {receipt.status !== 'REGISTERED_IN_SAYAN' && receipt.status !== 'PENDING_ACCOUNTING' && (canEditReceipt || isFinancialOrAdmin) && (
                             <button
                                 type="button"
                                 onClick={() => onOpenAccountingReview(receipt)}
                                 className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                                title="ویرایش اطلاعات و مدارک رسید"
                             >
                                 <Edit3 className="w-4 h-4" />
                                 <span>ویرایش اطلاعات رسید</span>

@@ -1410,7 +1410,203 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             </div>
         </div>
 
-        {/* ACTIONABLE CARTABLE SECTION */}
+        {/* WINDOWS-STYLE QUICK ACCESS TILES & CUSTOMIZABLE WIDGETS */}
+        <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl border border-blue-500/20">
+                        <Sparkles size={20} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-black text-sm sm:text-base text-zinc-900 dark:text-white">
+                                کاشی‌ها و دسترسی سریع برنامه‌ها
+                            </h3>
+                            <span className="text-[10px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
+                                {visibleTiles.length} کاشی فعال
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                            کاشی‌ها را بکشید و رها کنید (Drag & Drop)، جابجا کنید یا کاشی‌های غیرضروری را مخفی نمایید
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                    {hiddenTileIds.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setHiddenTileIds([]);
+                                try {
+                                    localStorage.removeItem('dashboard_hidden_tile_ids');
+                                } catch {}
+                            }}
+                            className="text-[11px] px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 font-bold transition-all"
+                            title="نمایش مجدد همه کاشی‌های مخفی‌شده"
+                        >
+                            بازیابی همه ({hiddenTileIds.length} مخفی)
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setIsCustomizingTiles(prev => !prev)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-sm ${
+                            isCustomizingTiles
+                                ? 'bg-amber-600 text-white shadow-amber-500/20 ring-2 ring-amber-400/40'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                        }`}
+                        title="شخصی‌سازی، حذف، نمایش و جابجایی کاشی‌ها"
+                    >
+                        <Settings2 size={14} />
+                        <span>{isCustomizingTiles ? 'اتمام چینش کاشی‌ها' : 'شخصی‌سازی کاشی‌ها'}</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Tile Customizer Bar / Guide */}
+            {isCustomizingTiles && (
+                <div className="mb-5 p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                        <span>
+                            <b>حالت ویرایش فعال است:</b> می‌توانید با دکمه‌های فلش یا کشیدن، ترتیب را عوض کنید و با آیکون چشم کاشی‌ها را مخفی یا آشکار کنید.
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setCustomTileOrder([]);
+                            setHiddenTileIds([]);
+                            try {
+                                localStorage.removeItem('dashboard_custom_tile_order');
+                                localStorage.removeItem('dashboard_hidden_tile_ids');
+                            } catch {}
+                        }}
+                        className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline shrink-0"
+                    >
+                        بازنشانی به چیدمان پیش‌فرض
+                    </button>
+                </div>
+            )}
+
+            {/* Tiles Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+                {(isCustomizingTiles ? displayTiles : visibleTiles).map((tile, idx) => {
+                    const Icon = tile.icon || FileText;
+                    const isHidden = hiddenTileIds.includes(tile.id);
+
+                    return (
+                        <div
+                            key={tile.id}
+                            draggable
+                            onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', tile.id);
+                                e.dataTransfer.setData('source-index', String(idx));
+                                e.dataTransfer.effectAllowed = 'move';
+                            }}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                            }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                const sourceIdxStr = e.dataTransfer.getData('source-index');
+                                if (sourceIdxStr !== '') {
+                                    const sourceIdx = parseInt(sourceIdxStr, 10);
+                                    if (!isNaN(sourceIdx) && sourceIdx !== idx) {
+                                        moveTile(sourceIdx, idx);
+                                    }
+                                }
+                            }}
+                            onClick={() => {
+                                if (!isCustomizingTiles) {
+                                    if (tile.onClick) {
+                                        tile.onClick();
+                                    } else if (onNavigate) {
+                                        onNavigate(tile.id);
+                                    }
+                                }
+                            }}
+                            className={`p-3.5 rounded-2xl border transition-all duration-200 flex flex-col justify-between relative group ${
+                                isHidden
+                                    ? 'opacity-40 bg-zinc-100 dark:bg-zinc-900 border-dashed border-zinc-300 dark:border-zinc-700'
+                                    : 'bg-white/95 dark:bg-zinc-900/90 hover:bg-white dark:hover:bg-zinc-900 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-400/80 dark:hover:border-blue-600/80 hover:shadow-lg shadow-sm active:scale-[0.98]'
+                            } ${isCustomizingTiles ? 'cursor-move ring-1 ring-zinc-300/60 dark:ring-zinc-700/60' : 'cursor-pointer'}`}
+                            title={`${tile.title} - ${isCustomizingTiles ? 'کشیدن جهت تغییر جایگاه' : 'کلیک برای باز کردن'}`}
+                        >
+                            {/* Drag Grip & Actions in edit mode */}
+                            {isCustomizingTiles ? (
+                                <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-100 dark:border-zinc-800">
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            disabled={idx === 0}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                moveTile(idx, idx - 1);
+                                            }}
+                                            className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 rounded text-zinc-500"
+                                            title="حرکت به جلو"
+                                        >
+                                            <ChevronRight size={13} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={idx === displayTiles.length - 1}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                moveTile(idx, idx + 1);
+                                            }}
+                                            className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 rounded text-zinc-500"
+                                            title="حرکت به عقب"
+                                        >
+                                            <ChevronLeft size={13} />
+                                        </button>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleTileVisibility(tile.id);
+                                        }}
+                                        className={`p-1 rounded-lg transition-colors ${
+                                            isHidden
+                                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                                                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-rose-600'
+                                        }`}
+                                        title={isHidden ? 'آشکار کردن کاشی' : 'مخفی کردن کاشی از پیشخوان'}
+                                    >
+                                        {isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className={`p-2.5 rounded-xl bg-gradient-to-br ${tile.gradient} text-white shadow-md shadow-blue-500/10 transition-transform group-hover:scale-105`}>
+                                        <Icon size={18} />
+                                    </div>
+                                    {tile.count !== undefined && tile.count > 0 && (
+                                        <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                                            {tile.count}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            <div>
+                                <h4 className="font-bold text-xs text-zinc-800 dark:text-zinc-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                    {tile.title}
+                                </h4>
+                                <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-400 font-medium">
+                                    <span>{tile.badge}</span>
+                                    {isHidden && <span className="text-rose-500 font-bold">مخفی</span>}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
         {showActionSection && (
             <div className="mb-8">
                 <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-200 mb-4 flex items-center gap-2">

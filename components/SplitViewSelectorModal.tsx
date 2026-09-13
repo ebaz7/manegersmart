@@ -13,8 +13,10 @@ interface SplitViewSelectorModalProps {
   onClose: () => void;
   activeTab: string;
   secondaryTab: string | null;
-  onSelectSecondaryTab: (tabId: string) => void;
-  currentUser: User | null;
+  onSelectSecondaryTab?: (tabId: string) => void;
+  onSelectModuleForSplit?: (tabId: string) => void;
+  onCloseSplit?: () => void;
+  currentUser?: User | null;
   allowedItems?: Array<{ id: string; label: string; icon?: any }>;
 }
 
@@ -24,15 +26,36 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
   activeTab,
   secondaryTab,
   onSelectSecondaryTab,
+  onSelectModuleForSplit,
+  onCloseSplit,
   allowedItems
 }) => {
   if (!isOpen) return null;
+
+  const handleSelect = (tabId: string) => {
+    if (onSelectModuleForSplit) {
+      onSelectModuleForSplit(tabId);
+    } else if (onSelectSecondaryTab) {
+      onSelectSecondaryTab(tabId);
+    }
+    onClose();
+  };
+
+  const handleCloseActiveSplit = () => {
+    if (onCloseSplit) {
+      onCloseSplit();
+    } else if (onSelectSecondaryTab) {
+      onSelectSecondaryTab('');
+    }
+    onClose();
+  };
 
   const defaultAvailableItems = [
     { id: 'dashboard', label: 'داشبورد مدیریتی', icon: LayoutDashboard, desc: 'آمار و وضعیت کلی سازمان' },
     { id: 'manage', label: 'سوابق و کارتابل پرداخت', icon: Receipt, desc: 'حواله‌ها، فاکتورها و تسویه‌ها' },
     { id: 'warehouse', label: 'انبارداری و بیجک', icon: Warehouse, desc: 'موجودی انبار، بیجک و ورود/خروج کالا' },
-    { id: 'sayan', label: 'گزارشات نرم‌افزار صایان', icon: FileText, desc: 'تراز، فروش، تولید و چک‌ها' },
+    { id: 'sayan', label: 'گزارشات نرم‌افزار سایان', icon: FileText, desc: 'تراز، فروش، تولید و چک‌ها' },
+    { id: 'sayan-operations', label: 'ثبت‌های سایان', icon: FileText, desc: 'پیش‌فاکتور، دریافت چک و اسناد معلق' },
     { id: 'chat', label: 'گفتگوی سازمانی (چت)', icon: MessageSquare, desc: 'پیام‌ها، کارگروه‌ها و هماهنگی' },
     { id: 'balances', label: 'مانده حساب مشتریان', icon: Users, desc: 'وضعیت بدهی و اعتبار مشتریان' },
     { id: 'ccti', label: 'تبدیل فرمت CCTI', icon: ArrowLeftRight, desc: 'تبدیل و خروجی فایل‌های سی‌سی‌تی‌آی' },
@@ -41,6 +64,8 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
     { id: 'trade', label: 'معاملات و بازرگانی', icon: Briefcase, desc: 'پروفرم‌ها و پرونده‌های بازرگانی' },
     { id: 'secretariat', label: 'دبیرخانه و نامه‌ها', icon: Mail, desc: 'مکاتبات اداری و صورتجلسات' },
     { id: 'meetings', label: 'جلسات سازمانی', icon: Calendar, desc: 'تقویم جلسات و صورتجلسات' },
+    { id: 'knowledge', label: 'یادداشت‌ها و دانش سازمانی', icon: Sparkles, desc: 'دفترچه یادداشت، تسک‌ها و پایگاه دانش' },
+    { id: 'cheque-receipts', label: 'رسید دریافت چک', icon: Receipt, desc: 'چک‌های صیادی و کارتابل تاییدیه' },
   ];
 
   const items = allowedItems && allowedItems.length > 0 
@@ -92,10 +117,7 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
           {secondaryTab && (
             <button
               type="button"
-              onClick={() => {
-                onSelectSecondaryTab('');
-                onClose();
-              }}
+              onClick={handleCloseActiveSplit}
               className="text-rose-600 hover:text-rose-700 hover:underline text-[11px]"
             >
               بستن پنجره دوم (حالت تک‌پنجره)
@@ -117,8 +139,7 @@ export const SplitViewSelectorModal: React.FC<SplitViewSelectorModalProps> = ({
                 disabled={isMain}
                 onClick={() => {
                   if (!isMain) {
-                    onSelectSecondaryTab(item.id);
-                    onClose();
+                    handleSelect(item.id);
                   }
                 }}
                 className={`p-3.5 rounded-2xl border text-right transition-all flex items-start gap-3 relative group ${

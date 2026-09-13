@@ -153,9 +153,9 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
 
                 <div style="margin-top: 5px; padding-top: 4px; border-top: 1px dashed #94a3b8; display: flex; justify-content: space-between; font-size: 11.5px;">
                     <div style="flex: 1;">
-                        <span style="color: #475569; font-weight: bold;">دریافت شد از: </span>
-                        <strong style="font-size: 12.5px; color: #000000;">${receipt.personName || 'شخص نامشخص'}</strong>
-                        <span style="font-family: monospace; font-size: 10.5px; color: #475569; background: #f1f5f9; padding: 0 4px; border-radius: 3px; border: 1px solid #cbd5e1; margin-right: 3px;">(کد: ${toPersianDigits(receipt.personCode)})</span>
+                        <span style="color: #334155; font-weight: 900; font-size: 12px;">دریافت شد از: </span>
+                        <strong style="font-size: 14.5px; font-weight: 900; color: #000000; letter-spacing: -0.2px;">${receipt.personName || 'شخص نامشخص'}</strong>
+                        <span style="font-family: monospace; font-size: 11px; font-weight: bold; color: #1e293b; background: #e2e8f0; padding: 1px 6px; border-radius: 4px; border: 1px solid #94a3b8; margin-right: 4px;">(کد: ${toPersianDigits(receipt.personCode)})</span>
                     </div>
                     <div style="margin-left: 15px;">
                         <span style="color: #475569; font-weight: bold;">صندوق: </span>
@@ -215,19 +215,19 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
             <!-- Signatures Section -->
             <div style="margin-top: 5px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
                 <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
-                    <span style="font-size: 10px; font-weight: 900; color: #000000;">امضای واگذارکننده:</span>
-                    <span style="font-size: 10px; font-weight: bold; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;">${receipt.personName || 'طرف‌حساب'}</span>
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">ثبت‌کننده:</span>
+                    <span style="font-size: 10px; font-weight: bold; font-family: monospace; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;">${receipt.createdByName || 'کاربر ثبت'}</span>
                 </div>
                 <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
-                    <span style="font-size: 10px; font-weight: 900; color: #000000;">تحویل‌گیرنده:</span>
-                    <span style="font-size: 10px; font-weight: bold; font-family: monospace; color: #000000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 85px;">${receipt.createdByName || 'کاربر ثبت'}</span>
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">واحد فروش:</span>
+                    <span style="font-size: 10px; font-weight: bold; color: #334155;">تایید و تحویل</span>
                 </div>
                 <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
-                    <span style="font-size: 10px; font-weight: 900; color: #000000;">امور مالی و خزانه:</span>
+                    <span style="font-size: 9.5px; font-weight: 900; color: #000000;">سرپرست مالی / مدیر مالی:</span>
                     <span style="font-size: 10px; font-weight: bold; color: #334155;">تایید شد</span>
                 </div>
                 <div style="border: 1px solid #000000; border-radius: 6px; padding: 4px 6px; height: 32px; display: flex; align-items: center; justify-content: space-between; background: #ffffff;">
-                    <span style="font-size: 10px; font-weight: 900; color: #000000;">مدیرعامل / مالی:</span>
+                    <span style="font-size: 10px; font-weight: 900; color: #000000;">مدیرعامل:</span>
                     <span style="font-size: 10px; font-weight: bold; color: #334155;">مهر و امضا</span>
                 </div>
             </div>
@@ -707,11 +707,11 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                                 {/* Party & Account Details Strip */}
                                 <div className="mt-2 pt-1.5 border-t border-dashed border-slate-400 grid grid-cols-12 gap-1.5 text-xs sm:text-[13px]">
                                     <div className="col-span-12 sm:col-span-5 flex items-center gap-1.5">
-                                        <span className="text-slate-700 text-xs shrink-0 font-bold">دریافت شد از:</span>
-                                        <span className="font-black text-slate-900 truncate text-xs sm:text-sm">
+                                        <span className="text-slate-800 text-xs shrink-0 font-black">دریافت شد از:</span>
+                                        <span className="font-black text-slate-950 truncate text-sm sm:text-base tracking-tight">
                                             {receipt.personName || 'شخص نامشخص'}
                                         </span>
-                                        <span className="text-slate-700 font-mono text-[11px] bg-slate-100 px-1 py-0.2 rounded border border-slate-300 shrink-0 font-bold">
+                                        <span className="text-slate-800 font-mono text-[11px] bg-slate-200/80 px-1.5 py-0.5 rounded border border-slate-400 shrink-0 font-black">
                                             (کد: {toPersianDigits(receipt.personCode)})
                                         </span>
                                     </div>
@@ -813,25 +813,25 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                             <div className="mt-1.5 pt-1 grid grid-cols-4 gap-2 text-center text-xs">
                                 <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
-                                        امضای واگذارکننده:
-                                    </span>
-                                    <span className="text-[10.5px] sm:text-[11.5px] text-slate-900 font-bold truncate max-w-[100px]">
-                                        {receipt.personName || 'طرف‌حساب'}
-                                    </span>
-                                </div>
-
-                                <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
-                                    <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
-                                        تحویل‌گیرنده:
+                                        ثبت‌کننده:
                                     </span>
                                     <span className="text-[10.5px] sm:text-[11.5px] text-slate-900 font-bold font-mono truncate max-w-[90px]">
-                                        {receipt.createdByName || 'کاربر'}
+                                        {receipt.createdByName || 'کاربر ثبت'}
                                     </span>
                                 </div>
 
                                 <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
-                                        امور مالی و خزانه:
+                                        واحد فروش:
+                                    </span>
+                                    <span className="text-[10.5px] sm:text-[11px] text-slate-800 font-bold">
+                                        تایید و تحویل
+                                    </span>
+                                </div>
+
+                                <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
+                                    <span className="font-black text-slate-900 text-[10px] sm:text-[11px] leading-none shrink-0">
+                                        سرپرست مالی / مدیر مالی:
                                     </span>
                                     <span className="text-[10.5px] sm:text-[11px] text-slate-800 font-bold">
                                         تایید شد
@@ -840,7 +840,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
 
                                 <div className="border-2 border-slate-900 rounded-lg p-1.5 flex items-center justify-between px-2 h-8 sm:h-9 bg-white text-slate-900">
                                     <span className="font-black text-slate-900 text-[11px] sm:text-xs leading-none shrink-0">
-                                        مدیرعامل / مالی:
+                                        مدیرعامل:
                                     </span>
                                     <span className="text-[10.5px] sm:text-[11px] text-slate-800 font-bold">
                                         مهر و امضا

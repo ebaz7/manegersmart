@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserRole, AppNotification, SystemSettings } from '../types';
 import { logout, hasPermission, getRolePermissions, updateUser } from '../services/authService';
-import { signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken } from '../services/googleWorkspaceService';
+import { signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken, getReadableGoogleAuthError } from '../services/googleWorkspaceService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp, sendNotification } from '../services/notificationService';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { apiCall, resolveImageUrl } from '../services/apiService';
@@ -396,7 +396,7 @@ const Layout: React.FC<LayoutProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to link google account:', err);
-      setGoogleError(err?.message || 'خطا در ارتباط با حساب گوگل');
+      setGoogleError(getReadableGoogleAuthError(err));
       setGoogleLinkingStatus('error');
     }
   };
@@ -967,9 +967,26 @@ const Layout: React.FC<LayoutProps> = ({
                             )}
 
                             {googleError && (
-                                <div className="text-[10px] text-rose-500 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 flex items-center gap-1.5">
-                                    <AlertCircle size={12} className="shrink-0" />
-                                    <span>{googleError}</span>
+                                <div className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 p-3 rounded-xl border border-rose-200 dark:border-rose-900/60 space-y-2">
+                                    <div className="flex items-start gap-1.5 font-bold">
+                                        <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                                        <span>{googleError}</span>
+                                    </div>
+                                    {typeof window !== 'undefined' && (
+                                        <div className="text-[10px] text-slate-600 dark:text-slate-300 bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-lg border border-rose-200/50 dark:border-rose-800/40 space-y-1.5">
+                                            <div className="font-bold text-slate-800 dark:text-slate-200">راهنمای حل در ۳۰ ثانیه:</div>
+                                            <ol className="list-decimal list-inside space-y-1 pr-1">
+                                                <li>وارد <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">کنسول فایربیس</a> پروژه شوید.</li>
+                                                <li>از منوی کناری به <strong>Authentication</strong> و سپس تب <strong>Settings</strong> بروید.</li>
+                                                <li>در بخش <strong>Authorized domains</strong> روی دکمه <strong>Add domain</strong> بزنید.</li>
+                                                <li>دامنه زیر را ثبت کنید:
+                                                    <span className="inline-flex items-center gap-1 font-mono font-bold bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-indigo-600 dark:text-indigo-400 mx-1">
+                                                        {window.location.hostname}
+                                                    </span>
+                                                </li>
+                                            </ol>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

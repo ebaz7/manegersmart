@@ -217,6 +217,11 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [highlightedPersonIdx, setHighlightedPersonIdx] = useState(0);
 
+    // Direct List Actions & Upload refs
+    const receiptFileInputRef = useRef<HTMLInputElement>(null);
+    const [uploadTargetReceipt, setUploadTargetReceipt] = useState<ChequeReceiptRecord | null>(null);
+    const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
+
     // Fetch Receipts
     const fetchMetaNumbers = async () => {
         try {
@@ -800,6 +805,110 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         }
     };
 
+    // Direct Quick Approval by Accounting (Without needing to open the full edit modal first)
+    const handleDirectApproveAccounting = async (rec: ChequeReceiptRecord) => {
+        const proceed = window.confirm(`آیا از تایید رسید چک #${toPersianDigits(rec.receiptNo || rec.id)} متعلق به «${rec.personName}» و ارسال به کارتابل مدیرعامل اطمینان دارید؟`);
+        if (!proceed) return;
+
+        setActionLoading(rec.id);
+        try {
+            const res = await fetch(`/api/sayan/cheque-receipts/${rec.id}/accounting-review`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fiscalYear: rec.fiscalYear,
+                    poshtNomreh: rec.poshtNomreh,
+                    personCode: rec.personCode,
+                    personName: rec.personName,
+                    cashboxCode: (rec as any).cashboxCode || '101',
+                    totalAmount: rec.totalAmount,
+                    description: rec.description,
+                    cheques: rec.cheques,
+                    attachments: rec.attachments,
+                    approveForCEO: true,
+                    reviewerId: currentUser?.id,
+                    reviewerName: currentUser?.name || 'کارشناس حسابداری'
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                setSuccessMessage(`رسید چک #${toPersianDigits(rec.receiptNo || rec.id)} با موفقیت تایید و به کارتابل مدیرعامل ارسال گردید.`);
+                fetchReceipts(true);
+            } else {
+                setErrorMessage(data.error || 'خطا در تایید مستقیم رسید');
+            }
+        } catch (err: any) {
+            setErrorMessage(err.message || 'خطا در برقراری ارتباط');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    // Direct Quick Upload Attachments from List Row
+    const handleDirectUploadReceiptTrigger = (rec: ChequeReceiptRecord) => {
+        setUploadTargetReceipt(rec);
+        if (receiptFileInputRef.current) {
+            receiptFileInputRef.current.value = '';
+            receiptFileInputRef.current.click();
+        }
+    };
+
+    const handleDirectReceiptFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0 || !uploadTargetReceipt) return;
+
+        const targetRec = uploadTargetReceipt;
+        setUploadingReceiptId(targetRec.id);
+
+        try {
+            const file = files[0];
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+                if (ev.target?.result) {
+                    const newAtt = {
+                        fileName: file.name,
+                        fileData: ev.target.result as string,
+                        fileType: file.type,
+                        fileSize: file.size,
+                        uploadedAt: new Date().toISOString()
+                    };
+                    const updatedAttachments = [...(targetRec.attachments || []), newAtt];
+
+                    const res = await fetch(`/api/sayan/cheque-receipts/${targetRec.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fiscalYear: targetRec.fiscalYear,
+                            poshtNomreh: targetRec.poshtNomreh,
+                            personCode: targetRec.personCode,
+                            personName: targetRec.personName,
+                            totalAmount: targetRec.totalAmount,
+                            description: targetRec.description,
+                            cheques: targetRec.cheques,
+                            attachments: updatedAttachments
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (data.success) {
+                        setSuccessMessage(`پیوست «${file.name}» به رسید #${toPersianDigits(targetRec.receiptNo || targetRec.id)} با موفقیت افزوده شد.`);
+                        fetchReceipts(true);
+                    } else {
+                        setErrorMessage(data.error || 'خطا در افزودن پیوست');
+                    }
+                    setUploadingReceiptId(null);
+                    setUploadTargetReceipt(null);
+                }
+            };
+            reader.readAsDataURL(file);
+        } catch (err: any) {
+            setErrorMessage(err.message || 'خطا در بارگذاری فایل');
+            setUploadingReceiptId(null);
+            setUploadTargetReceipt(null);
+        }
+    };
+
     // Filtered lists
     const pendingAccountingList = useMemo(() => {
         return receiptsList.filter(r => r.status === 'PENDING_ACCOUNTING');
@@ -1355,27 +1464,56 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                             {rec.description || `${toPersianDigits(rec.cheques?.length || 1)} فقره چک`}
                                         </div>
 
-                                        <div className="flex items-center justify-between pt-1">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
                                             <button
                                                 type="button"
                                                 onClick={() => setSelectedDetailReceipt(rec)}
                                                 className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1"
                                             >
                                                 <Eye className="w-3.5 h-3.5" />
-                                                <span>مشاهده جزئیات</span>
+                                                <span>جزئیات</span>
                                             </button>
 
-                                            {canEditReceipt && (
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                {/* Direct Upload */}
                                                 <button
                                                     type="button"
-                                                    onClick={() => setReviewingReceipt(rec)}
-                                                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm shadow-amber-500/20 cursor-pointer"
-                                                    title="ویرایش مشخصات و پیوست‌های رسید در همین مرحله"
+                                                    onClick={() => handleDirectUploadReceiptTrigger(rec)}
+                                                    disabled={uploadingReceiptId === rec.id}
+                                                    className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                                    title="بارگذاری مستقیم فایل یا تصویر چک و مدارک"
                                                 >
-                                                    <Edit3 className="w-3.5 h-3.5" />
-                                                    <span>ویرایش اطلاعات و مدارک</span>
+                                                    <Upload className={`w-3.5 h-3.5 ${uploadingReceiptId === rec.id ? 'animate-bounce text-indigo-600' : ''}`} />
+                                                    <span>{uploadingReceiptId === rec.id ? 'در حال آپلود...' : 'آپلود مدرک'}</span>
                                                 </button>
-                                            )}
+
+                                                {/* Direct Edit */}
+                                                {canEditReceipt && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setReviewingReceipt(rec)}
+                                                        className="px-2.5 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 dark:bg-amber-950/50 dark:text-amber-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                                        title="ویرایش مشخصات و اقلام رسید چک"
+                                                    >
+                                                        <Edit3 className="w-3.5 h-3.5" />
+                                                        <span>ویرایش</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Direct Approve */}
+                                                {isFinancialOrAdmin && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDirectApproveAccounting(rec)}
+                                                        disabled={actionLoading === rec.id}
+                                                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm shadow-emerald-500/20 cursor-pointer transition-all"
+                                                        title="تایید مستقیم رسید و ارسال به کارتابل مدیرعامل"
+                                                    >
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <span>{actionLoading === rec.id ? 'در حال تایید...' : 'تایید و ارسال'}</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -1455,7 +1593,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                 </div>
                                             )}
 
-                                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60 pt-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedDetailReceipt(rec)}
@@ -1465,7 +1603,19 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                     <span>مشاهده چک‌ها</span>
                                                 </button>
 
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    {/* Direct Upload for CEO stage too */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDirectUploadReceiptTrigger(rec)}
+                                                        disabled={uploadingReceiptId === rec.id}
+                                                        className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                                        title="بارگذاری فایل یا تصویر چک و مدارک"
+                                                    >
+                                                        <Upload className={`w-3.5 h-3.5 ${uploadingReceiptId === rec.id ? 'animate-bounce text-indigo-600' : ''}`} />
+                                                        <span>{uploadingReceiptId === rec.id ? 'در حال آپلود...' : 'آپلود مدرک'}</span>
+                                                    </button>
+
                                                     {/* Delete Draft Option if failed or pending */}
                                                     {canDeleteReceipt && (
                                                         <button
@@ -1829,6 +1979,15 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     </div>
                 </div>
             )}
+
+            {/* Hidden Direct File Upload Input */}
+            <input
+                type="file"
+                ref={receiptFileInputRef}
+                onChange={handleDirectReceiptFileSelected}
+                className="hidden"
+                accept="image/*,application/pdf"
+            />
         </div>
     );
 };

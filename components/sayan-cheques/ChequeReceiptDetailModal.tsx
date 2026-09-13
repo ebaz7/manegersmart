@@ -3,7 +3,7 @@ import {
     FileText, X, CheckCircle2, AlertCircle, Clock, ShieldCheck,
     CreditCard, Building2, User, Hash, Layers, Eye, Download, Printer,
     ArrowRight, Check, Sparkles, CornerUpLeft, Edit3, Trash2, MessageSquare, Send,
-    Upload, Plus, Loader2
+    Upload, Plus, Loader2, UserCheck
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { UserRole } from '../../types';
@@ -272,7 +272,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 {/* Body Details */}
                 <div ref={detailContentRef} className="flex-1 overflow-y-auto p-5 space-y-5 bg-white dark:bg-slate-900">
                     {/* Top Info Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 text-xs">
                         <div>
                             <span className="text-slate-400 block mb-1">طرف حساب (شخص):</span>
                             <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
@@ -283,6 +283,14 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                     کد: {toPersianDigits(receipt.personCode)}
                                 </div>
                             )}
+                        </div>
+
+                        <div>
+                            <span className="text-slate-400 block mb-1">کاربر ثبت‌کننده:</span>
+                            <span className="font-bold text-blue-700 dark:text-blue-300 text-sm flex items-center gap-1">
+                                <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                                <span>{receipt.createdByName || (receipt as any).createdBy || 'محمد ابراهیم حیدری'}</span>
+                            </span>
                         </div>
 
                         <div>

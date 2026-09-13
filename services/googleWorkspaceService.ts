@@ -64,6 +64,29 @@ export const initGoogleAuth = (
   });
 };
 
+export const getReadableGoogleAuthError = (error: any): string => {
+  const code = error?.code || '';
+  const message = error?.message || '';
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  if (code.includes('unauthorized-domain') || message.includes('unauthorized-domain')) {
+    return `دامنه فعلی (${currentHost}) در لیست دامنه‌های مجاز Firebase Authentication ثبت نشده است.`;
+  }
+  if (code.includes('popup-closed-by-user') || message.includes('popup-closed-by-user')) {
+    return 'پنجره ورود به حساب گوگل توسط کاربر قبل از تکمیل ورود بسته شد.';
+  }
+  if (code.includes('popup-blocked') || message.includes('popup-blocked')) {
+    return 'مرورگر مانع از باز شدن پنجره پاپ‌آپ گوگل شد. لطفاً اجازه باز شدن Pop-up را در مرورگر بدهید.';
+  }
+  if (code.includes('cancelled-popup-request') || message.includes('cancelled-popup-request')) {
+    return 'درخواست ورود لغو شد.';
+  }
+  if (code.includes('network-request-failed') || message.includes('network-request-failed')) {
+    return 'خطای شبکه در ارتباط با سرورهای گوگل/فایربیس. لطفاً وضعیت اینترنت را بررسی کنید.';
+  }
+  return message || 'خطا در ارتباط با حساب گوگل';
+};
+
 export const signInWithGoogleWorkspace = async (userId?: string): Promise<{ user: FirebaseUser; accessToken: string } | null> => {
   try {
     isSigningIn = true;

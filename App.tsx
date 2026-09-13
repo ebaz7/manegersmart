@@ -40,7 +40,7 @@ import { FloatingCalculator } from './components/FloatingCalculator';
 import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage, SystemAnnouncement, ChatGroup, TaskGroup, GroupTask } from './types';
-import { Loader2, Bell, X, MessageSquare, AlertTriangle, FileWarning, CreditCard, BellRing, Columns, Maximize2, Minimize2, ArrowRightLeft, Minus, ExternalLink, Calculator, Monitor, LayoutGrid, Plus, Sparkles, Grid } from 'lucide-react';
+import { Loader2, Bell, X, MessageSquare, AlertTriangle, FileWarning, CreditCard, BellRing, Columns, Maximize2, Minimize2, ArrowRightLeft, Minus, ExternalLink, Calculator, Monitor } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
 import { apiCall, getLocalData, LS_KEYS, getServerHost } from './services/apiService'; 
@@ -70,7 +70,7 @@ function App() {
     title?: string;
   }>({ isOpen: false });
 
-  // Multi-window & Split-view Workstation State (Supports 2-way and 4-way grid)
+  // Multi-window & Split-view Workstation State
   const [secondaryTab, setSecondaryTab] = useState<string | null>(() => {
     try {
       return localStorage.getItem('app_secondary_tab') || null;
@@ -78,33 +78,12 @@ function App() {
       return null;
     }
   });
-  const [tertiaryTab, setTertiaryTab] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('app_tertiary_tab') || null;
-    } catch {
-      return null;
-    }
-  });
-  const [quaternaryTab, setQuaternaryTab] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('app_quaternary_tab') || null;
-    } catch {
-      return null;
-    }
-  });
-  const [splitLayoutMode, setSplitLayoutMode] = useState<'dual' | 'quad'>(() => {
-    try {
-      return (localStorage.getItem('app_split_layout_mode') as 'dual' | 'quad') || 'dual';
-    } catch {
-      return 'dual';
-    }
-  });
   const [splitRatio, setSplitRatio] = useState<'50-50' | '60-40' | '40-60'>('50-50');
   const [isSplitSelectorOpen, setIsSplitSelectorOpen] = useState(false);
   const [openWorkstationTabs, setOpenWorkstationTabs] = useState<string[]>(['dashboard']);
   const [floatingTab, setFloatingTab] = useState<string | null>(null);
   const [isFloatingMinimized, setIsFloatingMinimized] = useState(false);
-  const [mobileActiveSplitPane, setMobileActiveSplitPane] = useState<'primary' | 'secondary' | 'tertiary' | 'quaternary'>('primary');
+  const [mobileActiveSplitPane, setMobileActiveSplitPane] = useState<'primary' | 'secondary'>('primary');
 
   // Floating Calculator State
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
@@ -209,70 +188,7 @@ function App() {
 
   const handleCloseSecondaryTab = () => {
     setSecondaryTab(null);
-    setTertiaryTab(null);
-    setQuaternaryTab(null);
-    setSplitLayoutMode('dual');
     localStorage.removeItem('app_secondary_tab');
-    localStorage.removeItem('app_tertiary_tab');
-    localStorage.removeItem('app_quaternary_tab');
-    localStorage.removeItem('app_split_layout_mode');
-  };
-
-  const handleCloseSplitPane = (slot: number) => {
-    if (slot === 1) {
-      if (secondaryTab) {
-        setActiveTabState(secondaryTab);
-        setSecondaryTab(null);
-        localStorage.removeItem('app_secondary_tab');
-      }
-    } else if (slot === 2) {
-      setSecondaryTab(null);
-      localStorage.removeItem('app_secondary_tab');
-    } else if (slot === 3) {
-      setTertiaryTab(null);
-      localStorage.removeItem('app_tertiary_tab');
-    } else if (slot === 4) {
-      setQuaternaryTab(null);
-      localStorage.removeItem('app_quaternary_tab');
-    }
-  };
-
-  const handleSelectSlotTab = (slotIndex: number, tabId: string) => {
-    if (!tabId) return;
-    setOpenWorkstationTabs(prev => prev.includes(tabId) ? prev : [...prev, tabId]);
-    if (slotIndex === 1) {
-      setActiveTabState(tabId);
-      setMobileActiveSplitPane('primary');
-    } else if (slotIndex === 2) {
-      setSecondaryTab(tabId);
-      localStorage.setItem('app_secondary_tab', tabId);
-      setMobileActiveSplitPane('secondary');
-    } else if (slotIndex === 3) {
-      setTertiaryTab(tabId);
-      setSplitLayoutMode('quad');
-      localStorage.setItem('app_tertiary_tab', tabId);
-      localStorage.setItem('app_split_layout_mode', 'quad');
-      setMobileActiveSplitPane('tertiary');
-    } else if (slotIndex === 4) {
-      setQuaternaryTab(tabId);
-      setSplitLayoutMode('quad');
-      localStorage.setItem('app_quaternary_tab', tabId);
-      localStorage.setItem('app_split_layout_mode', 'quad');
-      setMobileActiveSplitPane('quaternary');
-    }
-  };
-
-  const handleApplyQuadPreset = (panes: [string, string, string, string]) => {
-    setActiveTabState(panes[0]);
-    setSecondaryTab(panes[1]);
-    setTertiaryTab(panes[2]);
-    setQuaternaryTab(panes[3]);
-    setSplitLayoutMode('quad');
-    localStorage.setItem('app_secondary_tab', panes[1]);
-    localStorage.setItem('app_tertiary_tab', panes[2]);
-    localStorage.setItem('app_quaternary_tab', panes[3]);
-    localStorage.setItem('app_split_layout_mode', 'quad');
-    setOpenWorkstationTabs(prev => Array.from(new Set([...prev, ...panes])));
   };
 
   const handleSelectSecondaryTab = (tabId: string) => {
@@ -290,16 +206,7 @@ function App() {
     setFloatingTab(tabId);
     setIsFloatingMinimized(false);
     if (secondaryTab === tabId) {
-      setSecondaryTab(null);
-      localStorage.removeItem('app_secondary_tab');
-    }
-    if (tertiaryTab === tabId) {
-      setTertiaryTab(null);
-      localStorage.removeItem('app_tertiary_tab');
-    }
-    if (quaternaryTab === tabId) {
-      setQuaternaryTab(null);
-      localStorage.removeItem('app_quaternary_tab');
+      handleCloseSecondaryTab();
     }
   };
 
@@ -311,13 +218,7 @@ function App() {
   const handleCloseWorkstationTab = (tabId: string) => {
     setOpenWorkstationTabs(prev => prev.filter(t => t !== tabId));
     if (secondaryTab === tabId) {
-      handleCloseSplitPane(2);
-    }
-    if (tertiaryTab === tabId) {
-      handleCloseSplitPane(3);
-    }
-    if (quaternaryTab === tabId) {
-      handleCloseSplitPane(4);
+      handleCloseSecondaryTab();
     }
     if (floatingTab === tabId) {
       handleCloseFloating();
@@ -888,20 +789,6 @@ function App() {
       setCurrentUser(null); 
       isFirstLoad.current = true; 
       if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current); 
-
-      // Reset all layout tabs and floating components
-      setActiveTab('chat');
-      setSecondaryTab(null);
-      setTertiaryTab(null);
-      setQuaternaryTab(null);
-      setFloatingTab(null);
-      setSplitLayoutMode('dual');
-      setOpenWorkstationTabs([]);
-      setIsCalculatorOpen(false);
-      localStorage.removeItem('app_secondary_tab');
-      localStorage.removeItem('app_tertiary_tab');
-      localStorage.removeItem('app_quaternary_tab');
-      localStorage.removeItem('app_split_layout_mode');
 
       // 2. Perform thorough push manager unsubscription, cache clearance, and backend cleanup
       unsubscribeFromPushNotifications(user, endpoint).catch(e => {
@@ -1700,31 +1587,31 @@ function App() {
 
   const getModuleTitle = (tabId: string): string => {
     switch (tabId) {
-      case 'dashboard': return 'داشبورد';
-      case 'create': return 'ثبت پرداخت';
-      case 'manage': return 'سوابق پرداخت';
-      case 'ccti': return 'تبدیل CCTI';
-      case 'create-exit': return 'ثبت خروج';
-      case 'manage-invoices': return 'مدیریت فاکتورها';
-      case 'manage-exit': return 'سوابق خروج';
-      case 'warehouse': return 'مدیریت انبار';
-      case 'sayan': return 'گزارشات سایان';
-      case 'sayan-operations': return 'ثبت‌های سایان';
-      case 'security': return 'انتظامات';
-      case 'meetings': return 'جلسات تولید';
-      case 'purchase': return 'درخواست خرید';
-      case 'secretariat': return 'دبیرخانه اداری';
-      case 'cheque-receipts': return 'رسید دریافت چک';
-      case 'chat': return 'گفتگو';
-      case 'knowledge':
-      case 'notes': return 'اطلاعات و یادداشت ها';
-      case 'trade': return 'بازرگانی';
+      case 'dashboard': return 'داشبورد مدیریتی';
+      case 'create': return 'ثبت پرداخت جدید';
+      case 'manage': return 'سوابق و کارتابل پرداخت';
+      case 'create-exit': return 'ثبت مجوز خروج کالا';
+      case 'manage-invoices': return 'کارتابل فاکتورها';
+      case 'manage-exit': return 'مجوزهای خروج کالا';
+      case 'warehouse': return 'انبارداری و بیجک';
+      case 'trade': return 'معاملات و بازرگانی';
       case 'balances': return 'مانده حساب مشتریان';
-      case 'products': return 'کالاها';
-      case 'sales': return 'مشتریان';
-      case 'tickets': return 'تیکت‌ها';
-      case 'users': return 'کاربران';
-      case 'settings': return 'تنظیمات';
+      case 'sales': return 'فروش و CRM';
+      case 'products': return 'کاتالوگ محصولات';
+      case 'tickets': return 'تیکت‌ها و پشتیبانی';
+      case 'ccti': return 'تبدیل CCTI';
+      case 'sayan': return 'گزارشات نرم‌افزار سایان';
+      case 'sayan-operations': return 'عملیات سایان';
+      case 'users': return 'مدیریت کاربران';
+      case 'settings': return 'تنظیمات سیستم';
+      case 'knowledge':
+      case 'notes': return 'پایگاه دانش و یادداشت‌ها';
+      case 'security': return 'حراست و تردد';
+      case 'meetings': return 'جلسات و صورتجلسات';
+      case 'purchase': return 'تدارکات و خرید';
+      case 'secretariat': return 'دبیرخانه و مکاتبات';
+      case 'cheque-receipts': return 'رسید دریافت چک';
+      case 'chat': return 'گفتگوی سازمانی';
       default: return tabId;
     }
   };
@@ -1934,7 +1821,7 @@ function App() {
                     </div>
                 )}
 
-                {(!secondaryTab && !tertiaryTab && !quaternaryTab) ? (
+                {!secondaryTab ? (
                   <>
                     <div className={activeTab === 'dashboard' ? 'block h-full page-transition' : 'hidden'}>
                         <Dashboard 
@@ -1996,219 +1883,6 @@ function App() {
                         />
                     </div>
                   </>
-                ) : (splitLayoutMode === 'quad' || tertiaryTab || quaternaryTab) ? (
-                  /* 4-Way Quad Split-View Container (2x2 Grid) */
-                  <div className="flex-1 flex flex-col min-h-0 h-full">
-                    {/* Mobile Quad Switcher Bar */}
-                    <div className="md:hidden flex items-center justify-between p-2 mb-1.5 bg-gradient-to-r from-blue-50/90 via-purple-50/90 to-emerald-50/90 dark:from-blue-950/40 dark:via-purple-950/40 dark:to-emerald-950/40 border border-blue-200/70 dark:border-blue-900/60 rounded-xl shrink-0 overflow-x-auto gap-1">
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setMobileActiveSplitPane('primary')}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            mobileActiveSplitPane === 'primary'
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : 'bg-white/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                          }`}
-                        >
-                          ۱. {getModuleTitle(activeTab)}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMobileActiveSplitPane('secondary')}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            mobileActiveSplitPane === 'secondary'
-                              ? 'bg-purple-600 text-white shadow-xs'
-                              : 'bg-white/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                          }`}
-                        >
-                          ۲. {getModuleTitle(secondaryTab || 'manage')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMobileActiveSplitPane('tertiary')}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            mobileActiveSplitPane === 'tertiary'
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'bg-white/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                          }`}
-                        >
-                          ۳. {getModuleTitle(tertiaryTab || 'sayan')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMobileActiveSplitPane('quaternary')}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                            mobileActiveSplitPane === 'quaternary'
-                              ? 'bg-amber-600 text-white shadow-xs'
-                              : 'bg-white/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                          }`}
-                        >
-                          ۴. {getModuleTitle(quaternaryTab || 'chat')}
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCloseSecondaryTab}
-                        className="p-1.5 text-zinc-500 hover:text-rose-600 rounded-lg hover:bg-white dark:hover:bg-zinc-800 transition-colors shrink-0"
-                        title="خروج از حالت ۴ پنجره"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    {/* Mobile View: show the active pane */}
-                    <div className="flex-1 md:hidden flex flex-col min-h-0">
-                      {mobileActiveSplitPane === 'primary' && renderModuleContent(activeTab)}
-                      {mobileActiveSplitPane === 'secondary' && renderModuleContent(secondaryTab || 'manage', true)}
-                      {mobileActiveSplitPane === 'tertiary' && renderModuleContent(tertiaryTab || 'sayan', true)}
-                      {mobileActiveSplitPane === 'quaternary' && renderModuleContent(quaternaryTab || 'chat', true)}
-                    </div>
-
-                    {/* Desktop View: 2x2 Grid (4-Way Split) */}
-                    <div className="hidden md:grid grid-cols-2 grid-rows-2 flex-1 min-h-0 h-full gap-2 relative">
-                      {/* Slot 1: Primary Pane (Top-Right in RTL) */}
-                      <div className="flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/90 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 shadow-xs overflow-hidden">
-                        <div className="px-3 py-1.5 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-100 dark:border-blue-900/50 flex items-center justify-between shrink-0 select-none">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-xs font-black text-blue-950 dark:text-blue-200">{getModuleTitle(activeTab)}</span>
-                            <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold px-1.5 py-0.2 rounded">۱. اصلی</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setIsSplitSelectorOpen(true)}
-                              className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center gap-1 transition-colors"
-                              title="تغییر چینش یا منوها"
-                            >
-                              <LayoutGrid size={11} />
-                              <span>منو</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handlePopOutFloating(activeTab)}
-                              className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-300 transition-colors"
-                              title="شناور کردن"
-                            >
-                              <ExternalLink size={12} />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
-                          {renderModuleContent(activeTab)}
-                        </div>
-                      </div>
-
-                      {/* Slot 2: Secondary Pane (Top-Left in RTL) */}
-                      <div className="flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/90 rounded-2xl border border-purple-200/80 dark:border-purple-900/60 shadow-xs overflow-hidden">
-                        <div className="px-3 py-1.5 bg-purple-50/80 dark:bg-purple-950/40 border-b border-purple-100 dark:border-purple-900/50 flex items-center justify-between shrink-0 select-none">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-                            <span className="text-xs font-black text-purple-950 dark:text-purple-200">{getModuleTitle(secondaryTab || 'manage')}</span>
-                            <span className="text-[10px] bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold px-1.5 py-0.2 rounded">۲. دوم</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const t = secondaryTab || 'manage';
-                                handleCloseSecondaryTab();
-                                setActiveTab(t);
-                              }}
-                              className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg text-purple-600 dark:text-purple-300 transition-colors"
-                              title="تمام‌صفحه"
-                            >
-                              <Maximize2 size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCloseSplitPane(2)}
-                              className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 rounded-lg transition-colors"
-                              title="بستن پنجره دوم"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
-                          {renderModuleContent(secondaryTab || 'manage', true)}
-                        </div>
-                      </div>
-
-                      {/* Slot 3: Tertiary Pane (Bottom-Right in RTL) */}
-                      <div className="flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/90 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 shadow-xs overflow-hidden">
-                        <div className="px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/40 border-b border-emerald-100 dark:border-emerald-900/50 flex items-center justify-between shrink-0 select-none">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-xs font-black text-emerald-950 dark:text-emerald-200">{getModuleTitle(tertiaryTab || 'sayan')}</span>
-                            <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded">۳. سوم</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const t = tertiaryTab || 'sayan';
-                                handleCloseSecondaryTab();
-                                setActiveTab(t);
-                              }}
-                              className="p-1 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg text-emerald-600 dark:text-emerald-300 transition-colors"
-                              title="تمام‌صفحه"
-                            >
-                              <Maximize2 size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCloseSplitPane(3)}
-                              className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 rounded-lg transition-colors"
-                              title="بستن پنجره سوم"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
-                          {renderModuleContent(tertiaryTab || 'sayan', true)}
-                        </div>
-                      </div>
-
-                      {/* Slot 4: Quaternary Pane (Bottom-Left in RTL) */}
-                      <div className="flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/90 rounded-2xl border border-amber-200/80 dark:border-amber-900/60 shadow-xs overflow-hidden">
-                        <div className="px-3 py-1.5 bg-amber-50/80 dark:bg-amber-950/40 border-b border-amber-100 dark:border-amber-900/50 flex items-center justify-between shrink-0 select-none">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                            <span className="text-xs font-black text-amber-950 dark:text-amber-200">{getModuleTitle(quaternaryTab || 'chat')}</span>
-                            <span className="text-[10px] bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 font-bold px-1.5 py-0.2 rounded">۴. چهارم</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const t = quaternaryTab || 'chat';
-                                handleCloseSecondaryTab();
-                                setActiveTab(t);
-                              }}
-                              className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-lg text-amber-600 dark:text-amber-300 transition-colors"
-                              title="تمام‌صفحه"
-                            >
-                              <Maximize2 size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCloseSplitPane(4)}
-                              className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 rounded-lg transition-colors"
-                              title="بستن پنجره چهارم"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
-                          {renderModuleContent(quaternaryTab || 'chat', true)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 ) : (
                   /* Dual Split-View Container */
                   <div className="flex-1 flex flex-col min-h-0 h-full">
@@ -2368,24 +2042,16 @@ function App() {
                 openTabs={openWorkstationTabs}
                 activeTab={activeTab}
                 secondaryTab={secondaryTab}
-                tertiaryTab={tertiaryTab}
-                quaternaryTab={quaternaryTab}
-                splitLayoutMode={splitLayoutMode}
                 onSelectTab={(tabId) => {
                   if (tabId === activeTab) {
                     // already active
                   } else if (tabId === secondaryTab) {
                     setMobileActiveSplitPane('secondary');
-                  } else if (tabId === tertiaryTab) {
-                    setMobileActiveSplitPane('tertiary');
-                  } else if (tabId === quaternaryTab) {
-                    setMobileActiveSplitPane('quaternary');
                   } else {
                     setActiveTab(tabId);
                   }
                 }}
                 onCloseTab={handleCloseWorkstationTab}
-                onCloseSplitPane={handleCloseSplitPane}
                 onOpenSplitView={() => setIsSplitSelectorOpen(true)}
                 onCloseSecondaryTab={handleCloseSecondaryTab}
                 isCalculatorOpen={isCalculatorOpen}
@@ -2408,21 +2074,9 @@ function App() {
               onClose={() => setIsSplitSelectorOpen(false)}
               activeTab={activeTab}
               secondaryTab={secondaryTab}
-              tertiaryTab={tertiaryTab}
-              quaternaryTab={quaternaryTab}
-              splitLayoutMode={splitLayoutMode}
               onSelectModuleForSplit={(tabId) => {
                 handleSelectSecondaryTab(tabId);
                 setIsSplitSelectorOpen(false);
-              }}
-              onSelectSlotTab={(slotIndex, tabId) => {
-                handleSelectSlotTab(slotIndex, tabId);
-              }}
-              onApplyQuadPreset={(panes) => {
-                handleApplyQuadPreset(panes);
-              }}
-              onCloseSplitPane={(slot) => {
-                handleCloseSplitPane(slot);
               }}
               onCloseSplit={() => {
                 handleCloseSecondaryTab();

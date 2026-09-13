@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { Calculator, X, Minus, Copy, Check, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '../constants';
@@ -20,50 +20,6 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
   const [equation, setEquation] = useState('');
   const [copied, setCopied] = useState(false);
   const [isCalculated, setIsCalculated] = useState(false);
-  const calcRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (isOpen && !isMinimized && calcRef.current) {
-      calcRef.current.focus();
-    }
-  }, [isOpen, isMinimized]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (/^[0-9]$/.test(e.key)) {
-      handleDigit(e.key);
-    } else if (e.key === '.') {
-      handleDot();
-    } else if (e.key === '+') {
-      handleOperator('+');
-    } else if (e.key === '-') {
-      handleOperator('-');
-    } else if (e.key === '*' || e.key === 'x') {
-      handleOperator('×');
-    } else if (e.key === '/' || e.key === '÷') {
-      handleOperator('÷');
-    } else if (e.key === '%') {
-      handleOperator('%');
-    } else if (e.key === 'Enter' || e.key === '=') {
-      e.preventDefault();
-      handleCalculate();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onMinimize();
-    } else if (e.key === 'Backspace') {
-      e.preventDefault();
-      // Allow backspace to clear just the last digit if not calculated
-      if (!isCalculated && display !== '0' && display.length > 1) {
-        setDisplay(prev => prev.slice(0, -1));
-      } else if (!isCalculated && display.length === 1) {
-        setDisplay('0');
-      } else if (isCalculated) {
-        handleClear();
-      }
-    } else if (e.key === 'Delete') {
-      e.preventDefault();
-      handleClear();
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -71,7 +27,7 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
     return (
       <div 
         onClick={onMinimize}
-        className="fixed bottom-24 left-6 z-[99999] bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 border border-emerald-400/40"
+        className="fixed bottom-16 left-6 z-[9999] bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 border border-emerald-400/40"
         title="ماشین‌حساب (کوچک شده)"
       >
         <Calculator size={18} />
@@ -153,13 +109,10 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
 
   return (
     <motion.div 
-      ref={calcRef}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
       initial={{ opacity: 0, scale: 0.9, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: 20 }}
-      className="fixed bottom-28 left-4 sm:left-8 z-[99999] w-72 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden text-zinc-800 dark:text-zinc-100 flex flex-col focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+      className="fixed bottom-20 left-4 sm:left-8 z-[9999] w-72 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden text-zinc-800 dark:text-zinc-100 flex flex-col"
     >
       {/* Header */}
       <div className="bg-zinc-100/80 dark:bg-zinc-900/80 px-3.5 py-2.5 flex items-center justify-between border-b border-zinc-200/50 dark:border-zinc-800/50">

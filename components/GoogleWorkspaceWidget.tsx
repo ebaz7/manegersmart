@@ -5,8 +5,7 @@ import {
 } from 'lucide-react';
 import { 
   signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken,
-  fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem,
-  getReadableGoogleAuthError 
+  fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem 
 } from '../services/googleWorkspaceService';
 import { updateUser } from '../services/authService';
 import { User } from '../types';
@@ -97,7 +96,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ cu
         }
       }
     } catch (err: any) {
-      setError(getReadableGoogleAuthError(err));
+      setError(err?.message || 'اتصال به حساب گوگل برقرار نشد');
     } finally {
       setIsSigningIn(false);
     }

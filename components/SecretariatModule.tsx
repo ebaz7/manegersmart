@@ -136,7 +136,6 @@ import {
   Edit,
   Eye,
   Volume2,
-  Paperclip,
 } from "lucide-react";
 
 import {
@@ -1867,81 +1866,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       </div>
 
                       <div className="flex gap-4 items-center">
-                        <button
-                          onClick={() => {
-                            const input = document.createElement("input");
-                            input.type = "file";
-                            input.onchange = async (e: any) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = async (ev) => {
-                                const base64 = ev.target?.result as string;
-                                try {
-                                  const res = await uploadFile(file.name, base64);
-                                  const updatedLetter = {
-                                    ...letter,
-                                    attachments: [...(letter.attachments || []), { fileName: file.name, url: res.url }],
-                                    updatedAt: Date.now()
-                                  };
-                                  const updatedList = await updateSecretariatLetter(updatedLetter);
-                                  setLetters(updatedList);
-                                  alert("پیوست با موفقیت اضافه شد.");
-                                } catch (error) {
-                                  alert("خطا در آپلود فایل");
-                                }
-                              };
-                              reader.readAsDataURL(file);
-                            };
-                            input.click();
-                          }}
-                          className="text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5"
-                          title="آپلود پیوست سریع"
-                        >
-                          <Paperclip size={12} /> آپلود
-                        </button>
-
-                        <button
-                          onClick={() => handleEditLetter(letter)}
-                          className="text-amber-600 hover:text-amber-800 font-bold hover:underline flex items-center gap-0.5"
-                        >
-                          ویرایش <Edit size={12} />
-                        </button>
-
-                        <button
-                          onClick={async () => {
-                            if (!currentUser.signatureUrl) {
-                              alert('کاربر گرامی، امضای واقعی شما در پروفایل آپلود نشده است. لطفا ابتدا از منوی "کاربران" نسبت به آپلود تصویر امضای خود اقدام نمایید.');
-                              return;
-                            }
-                            const currentApprovers = letter.approvedBy || [];
-                            if (currentApprovers.includes(currentUser.id)) {
-                              alert("شما قبلا این نامه را تایید و امضا کرده‌اید.");
-                              return;
-                            }
-                            const currentSignatures = letter.signatureImageUrls || [];
-                            const updatedLetter = {
-                              ...letter,
-                              status: SecretariatLetterStatus.APPROVED,
-                              approvedBy: [...currentApprovers, currentUser.id],
-                              signatureImageUrls: [...currentSignatures, currentUser.signatureUrl],
-                              updatedAt: Date.now(),
-                            };
-                            try {
-                              const updatedList = await updateSecretariatLetter(updatedLetter);
-                              setLetters(updatedList);
-                              alert("نامه با موفقیت تایید و امضای واقعی شما درج گردید.");
-                            } catch (err) {
-                              alert("خطا در تایید و امضای نامه");
-                            }
-                          }}
-                          className="text-green-600 hover:text-green-800 font-bold hover:underline flex items-center gap-0.5"
-                        >
-                          تایید و امضا <CheckCircle size={12} />
-                        </button>
-
-                        <div className="h-4 w-px bg-slate-200 mx-2"></div>
-
                         <button
                           onClick={() => setIsPrintMode(letter)}
                           className="text-emerald-600 hover:text-emerald-800 font-bold hover:underline flex items-center gap-0.5"

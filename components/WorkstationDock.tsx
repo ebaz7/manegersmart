@@ -91,12 +91,7 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
   const isSplitActive = Boolean(secondaryTab || tertiaryTab || quaternaryTab);
   const isQuadSplit = isSplitActive && (splitLayoutMode === 'quad' || Boolean(tertiaryTab || quaternaryTab));
 
-  // Permitted tabs whitelist for current user
-  const allowedTabIds = allowedItems && allowedItems.length > 0 
-    ? new Set(allowedItems.map(i => i.id)) 
-    : null;
-
-  // Unique list of open tabs to show in the taskbar dock (filtered strictly by user permissions)
+  // Unique list of open tabs to show in the taskbar dock
   const displayTabs = Array.from(new Set([
     'dashboard',
     activeTab,
@@ -105,20 +100,15 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
     ...(quaternaryTab ? [quaternaryTab] : []),
     ...(floatingTab ? [floatingTab] : []),
     ...openTabs
-  ])).filter(tabId => {
-    if (!tabId) return false;
-    if (tabId === 'dashboard') return true;
-    if (allowedTabIds) return allowedTabIds.has(tabId);
-    return true;
-  });
+  ])).filter(Boolean);
 
   if (isCollapsed) {
     return (
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[9995] hidden md:block">
+      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[9980] hidden md:block">
         <button
           type="button"
           onClick={() => setIsCollapsed(false)}
-          className="bg-zinc-900/90 hover:bg-zinc-900 text-white px-3 py-1.5 rounded-full shadow-2xl border border-zinc-700/60 backdrop-blur-2xl flex items-center gap-1.5 text-[11px] font-bold transition-all hover:scale-105 active:scale-95"
+          className="bg-zinc-900/85 hover:bg-zinc-900 text-white px-3 py-1.5 rounded-full shadow-lg border border-zinc-700/60 backdrop-blur-xl flex items-center gap-1.5 text-[11px] font-bold transition-all hover:scale-105 active:scale-95"
           title="نمایش نوار وظیفه چندپنجره‌ای (Taskbar)"
         >
           <Monitor size={13} className="text-blue-400" />
@@ -130,7 +120,7 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
   }
 
   return (
-    <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[9995] hidden md:flex items-center gap-1.5 bg-white/95 dark:bg-zinc-950/95 border border-zinc-200/90 dark:border-zinc-800/90 p-1.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.22)] backdrop-blur-2xl max-w-[94vw] animate-slide-up select-none pointer-events-auto">
+    <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[9980] hidden md:flex items-center gap-1.5 bg-white/85 dark:bg-zinc-950/85 border border-zinc-200/80 dark:border-zinc-800/80 p-1.5 rounded-2xl shadow-[0_12px_30px_rgba(0,0,0,0.15)] backdrop-blur-xl max-w-[94vw] animate-slide-up select-none">
       {/* Workspace Indicator & Collapse toggle */}
       <div className="flex items-center gap-1 pl-1.5 border-l border-zinc-200 dark:border-zinc-800">
         <button

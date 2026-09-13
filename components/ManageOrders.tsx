@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PaymentOrder, OrderStatus, User, UserRole, SystemSettings, PaymentMethod } from '../types';
-import { updateOrderStatus, deleteOrder, uploadFile, editOrder } from '../services/storageService';
+import { updateOrderStatus, deleteOrder } from '../services/storageService';
 import { getRolePermissions } from '../services/authService';
 import { formatCurrency, formatDate, getStatusLabel, jalaliToGregorian, formatNumberString, deformatNumberString, parseSafeDate } from '../constants';
-import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle, Edit, UploadCloud, Check } from 'lucide-react';
+import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle } from 'lucide-react';
 import PrintVoucher from './PrintVoucher';
 import EditOrderModal from './EditOrderModal';
 import { apiCall } from '../services/apiService';
@@ -37,12 +37,6 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   const [viewOrder, setViewOrder] = useState<PaymentOrder | null>(null); 
   const [editingOrder, setEditingOrder] = useState<PaymentOrder | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Direct file upload state
-  const directFileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadTargetOrder, setUploadTargetOrder] = useState<PaymentOrder | null>(null);
-  const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
-  const [uploadSuccessOrderId, setUploadSuccessOrderId] = useState<string | null>(null);
   
   const [showFilters, setShowFilters] = useState(false);
   const [amountRange, setAmountRange] = useState({ min: '', max: '' });
@@ -309,63 +303,6 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       setViewOrder(null);
   };
 
-  const handleDirectUploadTrigger = (order: PaymentOrder) => {
-      setUploadTargetOrder(order);
-      if (directFileInputRef.current) {
-          directFileInputRef.current.value = '';
-          directFileInputRef.current.click();
-      }
-  };
-
-  const handleDirectFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !uploadTargetOrder) return;
-
-      const targetOrder = uploadTargetOrder;
-      setUploadingOrderId(targetOrder.id);
-
-      try {
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-              try {
-                  const base64Data = reader.result as string;
-                  const uploadRes = await uploadFile(file.name, base64Data);
-                  const fileUrl = typeof uploadRes === 'string' ? uploadRes : (uploadRes?.url || base64Data);
-                  
-                  const existingAttachments = Array.isArray(targetOrder.attachments) ? targetOrder.attachments : [];
-                  const newAttachment = { fileName: file.name, data: fileUrl };
-                  const updatedAttachments = [...existingAttachments, newAttachment];
-                  
-                  const updatedOrder: PaymentOrder = {
-                      ...targetOrder,
-                      attachments: updatedAttachments,
-                      updatedAt: Date.now()
-                  };
-
-                  // 1. Optimistic update
-                  setLocalOrders(prev => prev.map(o => o.id === targetOrder.id ? updatedOrder : o));
-                  
-                  // 2. Persist
-                  await editOrder(updatedOrder);
-                  refreshData();
-                  
-                  setUploadingOrderId(null);
-                  setUploadSuccessOrderId(targetOrder.id);
-                  setTimeout(() => setUploadSuccessOrderId(null), 3000);
-              } catch (err: any) {
-                  console.error("Direct upload failed", err);
-                  alert("خطا در ذخیره فایل: " + (err?.message || "خطای ناشناخته"));
-                  setUploadingOrderId(null);
-              }
-          };
-          reader.readAsDataURL(file);
-      } catch (err: any) {
-          console.error("Direct upload failed", err);
-          alert("خطا در بارگذاری فایل: " + (err?.message || "خطای ناشناخته"));
-          setUploadingOrderId(null);
-      }
-  };
-
   const handleExportCSV = () => {
       if (filteredOrders.length === 0) { alert("هیچ سفارشی موجود نیست."); return; }
       const headers = ["شماره دستور", "تاریخ", "گیرنده", "مبلغ", "شرکت پرداخت کننده", "بانک/روش", "شرح", "وضعیت", "درخواست کننده"];
@@ -543,15 +480,6 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
             </div>
         </div>
 
-        {/* Hidden File Input for Direct Upload */}
-        <input 
-            type="file" 
-            ref={directFileInputRef} 
-            className="hidden" 
-            onChange={handleDirectFileSelected} 
-            accept="image/*,application/pdf" 
-        />
-
         {/* --- RESPONSIVE LIST RENDERING --- */}
         {isMobile ? (
             <div className="p-4 bg-gray-50 min-h-[400px]">
@@ -563,15 +491,12 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                             key={order.id} 
                             order={order} 
                             onView={setViewOrder} 
-                            onEdit={handleEdit}
-                            onUpload={handleDirectUploadTrigger}
                             onDelete={handleDelete}
                             onApprove={handleApprove}
                             onReject={handleReject}
                             canDelete={canDelete(order)}
                             canApprove={canApprove(order)}
-                            canEdit={canEdit(order)}
-                            isProcessing={processingId === order.id || uploadingOrderId === order.id}
+                            isProcessing={processingId === order.id}
                         />
                     ))
                 )}
@@ -601,14 +526,12 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                           
                           // SAFE ACCESS for paymentDetails map
                           const paymentDetails = Array.isArray(order.paymentDetails) ? order.paymentDetails : [];
-                          const isUploadingThis = uploadingOrderId === order.id;
-                          const isUploadedSuccess = uploadSuccessOrderId === order.id;
 
                           return (
                           <tr key={order.id} className={rowClass}>
                             <td className="px-6 py-4 font-mono text-gray-500">#{order.trackingNumber}</td>
                             <td className="px-6 py-4 text-gray-700">{formatDate(order.date)}</td>
-                            <td className="px-6 py-4 font-medium text-gray-900 max-w-[200px]"><div className="truncate font-bold">{order.payee}</div><div className="text-xs text-gray-500 truncate mt-1">{order.description}</div><div className="flex gap-1 mt-1 flex-wrap">{order.attachments?.map((a,i) => <a key={i} href={a.data} target="_blank" className="text-blue-500 text-[10px] bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5 hover:bg-blue-100"><Paperclip size={10}/> ضمیمه {i+1}</a>)}</div></td>
+                            <td className="px-6 py-4 font-medium text-gray-900 max-w-[200px]"><div className="truncate font-bold">{order.payee}</div><div className="text-xs text-gray-500 truncate mt-1">{order.description}</div><div className="flex gap-1 mt-1">{order.attachments?.map((a,i) => <a key={i} href={a.data} target="_blank" className="text-blue-500 text-[10px] bg-blue-50 px-1 rounded flex items-center"><Paperclip size={10}/></a>)}</div></td>
                             <td className="px-6 py-4 text-xs font-bold text-gray-700">{order.payingCompany || '-'}</td>
                             <td className="px-6 py-4 text-xs text-gray-600">
                                 {paymentDetails.map((d, i) => (
@@ -635,17 +558,16 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                                     </div>
                                 )}
                             </td>
-                            <td className="px-6 py-4"><div className="flex justify-center items-center gap-1.5 flex-wrap">
+                            <td className="px-6 py-4"><div className="flex justify-center items-center gap-2">
                                  {canApprove(order) && (
                                     <>
                                        <button 
                                           onClick={(e) => { e.stopPropagation(); handleApprove(order.id, order.status); }} 
                                           disabled={processingId === order.id}
-                                          className="p-1.5 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded-lg transition-all shadow-sm border border-green-100 flex items-center gap-1 text-xs font-bold"
-                                          title="تایید مستقیم دستور پرداخت"
+                                          className="p-1.5 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded-lg transition-all shadow-sm border border-green-100"
+                                          title="تایید سریع"
                                        >
-                                          {processingId === order.id ? <Loader2 size={15} className="animate-spin" /> : <ListChecks size={15}/>}
-                                          <span>تایید</span>
+                                          {processingId === order.id ? <Loader2 size={16} className="animate-spin" /> : <ListChecks size={16}/>}
                                        </button>
                                        <button 
                                           onClick={(e) => { e.stopPropagation(); handleReject(order.id, order.status); }} 
@@ -653,37 +575,17 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                                           className="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-all shadow-sm border border-red-100"
                                           title={order.status === OrderStatus.APPROVED_MANAGER ? 'رد و بازگشت به کارتابل مدیریت' : (order.status === OrderStatus.APPROVED_FINANCE ? 'رد و بازگشت به کارتابل مالی' : 'رد درخواست')}
                                        >
-                                          <XCircle size={15}/>
+                                          <XCircle size={16}/>
                                        </button>
                                     </>
                                  )}
-                                 {canEdit(order) && (
-                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); handleEdit(order); }}
-                                        className="p-1.5 bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white rounded-lg transition-all shadow-sm border border-amber-200 flex items-center gap-1 text-xs font-bold"
-                                        title="ویرایش مستقیم اطلاعات"
-                                     >
-                                        <Edit size={14}/>
-                                        <span>ویرایش</span>
-                                     </button>
-                                 )}
-                                 <button 
-                                    onClick={(e) => { e.stopPropagation(); handleDirectUploadTrigger(order); }}
-                                    disabled={isUploadingThis}
-                                    className={`p-1.5 rounded-lg transition-all shadow-sm border flex items-center gap-1 text-xs font-bold ${isUploadedSuccess ? 'bg-green-100 text-green-700 border-green-300' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white border-indigo-200'}`}
-                                    title="آپلود مدارک و ضمائم فاکتور قبل از باز کردن"
-                                 >
-                                    {isUploadingThis ? <Loader2 size={14} className="animate-spin"/> : isUploadedSuccess ? <Check size={14}/> : <UploadCloud size={14}/>}
-                                    <span>{isUploadingThis ? 'در حال ارسال...' : isUploadedSuccess ? 'پیوست شد' : 'پیوست مدارک'}</span>
-                                 </button>
                                  <button 
                                     onClick={() => setViewOrder(order)} 
-                                    className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-bold transition-colors shadow-sm ${isRevocation ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                                    title="مشاهده سند دستور پرداخت"
+                                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs transition-colors shadow-sm ${isRevocation ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                                  >
-                                    <Eye size={15}/> <span>مشاهده</span>
+                                    <Eye size={16}/> مشاهده
                                  </button>
-                                 {canDelete(order) && <button onClick={() => handleDelete(order.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="حذف"><Trash2 size={15}/></button>}
+                                 {canDelete(order) && <button onClick={() => handleDelete(order.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="حذف"><Trash2 size={16}/></button>}
                             </div></td>
                           </tr>
                       )})

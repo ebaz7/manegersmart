@@ -1578,25 +1578,6 @@ function App() {
       syncServiceWorkerAuth(user).catch(console.error);
       setActiveTab('dashboard'); 
   };
-  const handleLogout = () => { 
-      setCurrentUser(null); 
-      setActiveTab('dashboard'); 
-      setSecondaryTab(null);
-      setTertiaryTab(null);
-      setQuaternaryTab(null);
-      setFloatingTab(null);
-      setOpenWorkstationTabs(['dashboard']);
-      setIsCalculatorOpen(false);
-      setIsCalculatorMinimized(false);
-      try {
-        localStorage.removeItem('app_active_tab');
-        localStorage.removeItem('app_open_workstation_tabs');
-        localStorage.removeItem('app_floating_tab');
-        localStorage.removeItem('app_secondary_tab');
-        localStorage.removeItem('app_tertiary_tab');
-        localStorage.removeItem('app_quaternary_tab');
-      } catch (e) {}
-  };
   const handleViewArchive = () => { setManageOrdersInitialTab('archive'); setDashboardStatusFilter(null); setActiveTab('manage'); };
   const handleDashboardFilter = (status: any) => { setDashboardStatusFilter(status); setManageOrdersInitialTab('current'); setActiveTab('manage'); };
 

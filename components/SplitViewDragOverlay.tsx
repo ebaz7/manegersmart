@@ -18,55 +18,65 @@ export const SplitViewDragOverlay: React.FC<SplitViewDragOverlayProps> = ({
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
 
   useEffect(() => {
-    let dragCounter = 0;
+    let isTabDragActive = false;
 
-    const handleDragStart = (e: DragEvent) => {
-      const tabId = e.dataTransfer?.getData('text/plain') || (e.target as HTMLElement)?.getAttribute('data-tab-id');
+    const handleCustomStart = (e: any) => {
+      const tabId = e.detail?.tabId;
       if (tabId) {
         setDraggedTabId(tabId);
         setIsDragging(true);
+        isTabDragActive = true;
       }
     };
 
+    const handleCustomEnd = () => {
+      isTabDragActive = false;
+      setIsDragging(false);
+      setHoveredZone(null);
+      setDraggedTabId(null);
+    };
+
     const handleDragEnter = (e: DragEvent) => {
-      e.preventDefault();
-      dragCounter++;
-      if (e.dataTransfer?.types.includes('text/plain')) {
+      // ONLY trigger split overlay if dragging a workstation tab specifically
+      if (e.dataTransfer?.types.includes('application/x-workstation-tab') || isTabDragActive) {
+        e.preventDefault();
         setIsDragging(true);
       }
     };
 
     const handleDragLeave = (e: DragEvent) => {
-      e.preventDefault();
-      dragCounter--;
-      if (dragCounter <= 0) {
-        dragCounter = 0;
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
         setIsDragging(false);
         setHoveredZone(null);
       }
     };
 
     const handleDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'copy';
+      if (e.dataTransfer?.types.includes('application/x-workstation-tab') || isTabDragActive) {
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'copy';
+        }
       }
     };
 
     const handleDrop = (e: DragEvent) => {
-      e.preventDefault();
-      dragCounter = 0;
       setIsDragging(false);
       setHoveredZone(null);
       setDraggedTabId(null);
+      isTabDragActive = false;
     };
 
+    window.addEventListener('workstation-tab-drag-start', handleCustomStart);
+    window.addEventListener('workstation-tab-drag-end', handleCustomEnd);
     window.addEventListener('dragenter', handleDragEnter);
     window.addEventListener('dragleave', handleDragLeave);
     window.addEventListener('dragover', handleDragOver);
     window.addEventListener('drop', handleDrop);
 
     return () => {
+      window.removeEventListener('workstation-tab-drag-start', handleCustomStart);
+      window.removeEventListener('workstation-tab-drag-end', handleCustomEnd);
       window.removeEventListener('dragenter', handleDragEnter);
       window.removeEventListener('dragleave', handleDragLeave);
       window.removeEventListener('dragover', handleDragOver);

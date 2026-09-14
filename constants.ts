@@ -195,6 +195,55 @@ export const parsePersianDate = (dateStr: string): Date | null => {
     return new Date(y, m - 1, d);
 };
 
+export const gregorianToJalali = (g_y: number, g_m: number, g_d: number): { year: number; month: number; day: number } => {
+  const g_days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const j_days_in_month = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+
+  const gy = g_y - 1600;
+  const gm = g_m - 1;
+  const gd = g_d - 1;
+
+  let g_day_no = 365 * gy + Math.floor((gy + 3) / 4) - Math.floor((gy + 99) / 100) + Math.floor((gy + 399) / 400);
+
+  for (let i = 0; i < gm; ++i) g_day_no += g_days_in_month[i];
+  if (gm > 1 && ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0))) ++g_day_no;
+  g_day_no += gd;
+
+  let j_day_no = g_day_no - 79;
+
+  const j_np = Math.floor(j_day_no / 12053);
+  j_day_no %= 12053;
+
+  let jy = 979 + 33 * j_np + 4 * Math.floor(j_day_no / 1461);
+  j_day_no %= 1461;
+
+  if (j_day_no >= 366) {
+    jy += Math.floor((j_day_no - 1) / 365);
+    j_day_no = (j_day_no - 1) % 365;
+  }
+
+  let jm = 0;
+  for (let i = 0; i < 11 && j_day_no >= j_days_in_month[i]; ++i) {
+    j_day_no -= j_days_in_month[i];
+    jm = i + 1;
+  }
+
+  return { year: jy, month: jm + 1, day: j_day_no + 1 };
+};
+
+export const addDaysToPersianDate = (dateStr: string, days: number): string => {
+  if (!dateStr || isNaN(days)) return '';
+  const parsed = parsePersianDate(dateStr);
+  if (!parsed) return '';
+  const resultDate = new Date(parsed.getTime() + days * 24 * 60 * 60 * 1000);
+  
+  const j = gregorianToJalali(resultDate.getFullYear(), resultDate.getMonth() + 1, resultDate.getDate());
+  const yStr = j.year.toString();
+  const mStr = j.month.toString().padStart(2, '0');
+  const dStr = j.day.toString().padStart(2, '0');
+  return `${yStr}/${mStr}/${dStr}`;
+};
+
 export const formatLocalDateToIso = (d: Date): string => {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');

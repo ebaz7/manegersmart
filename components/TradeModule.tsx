@@ -592,6 +592,31 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         return record.stages[stage] || { stage, isCompleted: false, description: '', costRial: 0, costCurrency: 0, currencyType: 'EUR', attachments: [], updatedAt: 0, updatedBy: '' };
     };
 
+    // --- PERSISTENCE & NAVIGATION HELPERS ---
+    const persistRecordUpdate = async (updatedRecord: TradeRecord) => {
+        setSelectedRecord(updatedRecord);
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        try {
+            const serverRecords = await updateTradeRecord(updatedRecord);
+            if (Array.isArray(serverRecords) && serverRecords.length > 0) {
+                setRecords(serverRecords);
+                const fresh = serverRecords.find(r => r.id === updatedRecord.id);
+                if (fresh) {
+                    setSelectedRecord(fresh);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to persist trade record:", err);
+        }
+    };
+
+    const handleOpenDossier = (record: TradeRecord, tab: any = 'timeline') => {
+        const fresh = records.find(r => r.id === record.id) || record;
+        setSelectedRecord(fresh);
+        setViewMode('details');
+        setActiveTab(tab);
+    };
+
     // --- HANDLERS ---
     const isDuplicateTradeRecord = (company: string, fileNumber: string, registrationNumber: string, goodsName: string, excludeId?: string, proformaNumber?: string) => {
         const safeCompany = (company || '').trim().toLowerCase();
@@ -755,9 +780,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         }
 
         const updatedRecord = { ...selectedRecord, [field]: value }; 
-        setSelectedRecord(updatedRecord); 
-        await updateTradeRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r)); 
+        await persistRecordUpdate(updatedRecord); 
     };
     
     const handleAddItem = async () => { 
@@ -788,9 +811,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             updatedItems = [...selectedRecord.items, item]; 
         
         const updatedRecord = { ...selectedRecord, items: updatedItems }; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r)); 
+        await persistRecordUpdate(updatedRecord); 
         setNewItem({ name: '', weight: 0, grossWeight: 0, unitPrice: 0, totalPrice: 0, hsCode: '', weightStr: '', grossWeightStr: '', unitPriceStr: '' }); 
         setEditingItemId(null); 
     };
@@ -808,7 +829,12 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         }); 
         setEditingItemId(item.id); 
     };
-    const handleRemoveItem = async (id: string) => { if (!selectedRecord) return; const updatedItems = selectedRecord.items.filter(i => i.id !== id); const updatedRecord = { ...selectedRecord, items: updatedItems }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); };
+    const handleRemoveItem = async (id: string) => { 
+        if (!selectedRecord) return; 
+        const updatedItems = selectedRecord.items.filter(i => i.id !== id); 
+        const updatedRecord = { ...selectedRecord, items: updatedItems }; 
+        await persistRecordUpdate(updatedRecord); 
+    };
     const handleEditLicenseTx = (tx: TradeTransaction) => {
         setEditingLicenseTxId(tx.id);
         setNewLicenseTx({
@@ -851,8 +877,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.LICENSES]) updatedRecord.stages[TradeStage.LICENSES] = getStageData(updatedRecord, TradeStage.LICENSES); 
         updatedRecord.stages[TradeStage.LICENSES].costRial = totalCost; 
         updatedRecord.stages[TradeStage.LICENSES].isCompleted = totalCost > 0; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
         setEditingLicenseTxId(null);
         setNewLicenseTx({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' }); 
     };
@@ -865,8 +890,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const totalCost = updatedTransactions.reduce((acc, t) => acc + t.amount, 0); 
         if (!updatedRecord.stages[TradeStage.LICENSES]) updatedRecord.stages[TradeStage.LICENSES] = getStageData(updatedRecord, TradeStage.LICENSES); 
         updatedRecord.stages[TradeStage.LICENSES].costRial = totalCost; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleSaveInsurance = async () => { 
         if (!selectedRecord) return; 
@@ -875,9 +899,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.INSURANCE]) updatedRecord.stages[TradeStage.INSURANCE] = getStageData(updatedRecord, TradeStage.INSURANCE); 
         updatedRecord.stages[TradeStage.INSURANCE].costRial = totalCost; 
         updatedRecord.stages[TradeStage.INSURANCE].isCompleted = !!insuranceForm.policyNumber; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
         alert("اطلاعات بیمه و نمایندگی با موفقیت ذخیره شد."); 
     };
     const handleEditEndorsement = (e: InsuranceEndorsement) => {
@@ -918,9 +940,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.INSURANCE]) updatedRecord.stages[TradeStage.INSURANCE] = getStageData(updatedRecord, TradeStage.INSURANCE); 
         updatedRecord.stages[TradeStage.INSURANCE].costRial = totalCost; 
         updatedRecord.stages[TradeStage.INSURANCE].isCompleted = !!updatedForm.policyNumber; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteEndorsement = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -933,9 +953,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.INSURANCE]) updatedRecord.stages[TradeStage.INSURANCE] = getStageData(updatedRecord, TradeStage.INSURANCE); 
         updatedRecord.stages[TradeStage.INSURANCE].costRial = totalCost; 
         updatedRecord.stages[TradeStage.INSURANCE].isCompleted = !!updatedForm.policyNumber; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
 
     const handleSaveAllocation = async (formData: AllocationFormData) => {
@@ -1005,9 +1023,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             updatedRecord.isPriority = formData.isPriority;
         }
 
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord);
     };
 
     const handleEditInspectionCertificate = (c: InspectionCertificate) => {
@@ -1045,8 +1061,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); 
         updatedRecord.stages[TradeStage.INSPECTION].isCompleted = updatedCertificates.length > 0; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteInspectionCertificate = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1055,8 +1070,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedData = { ...inspectionForm, certificates: updatedCertificates }; 
         setInspectionForm(updatedData); 
         const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleEditInspectionPayment = (p: InspectionPayment) => {
         setEditingInspectionPaymentId(p.id);
@@ -1094,8 +1108,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); 
         updatedRecord.stages[TradeStage.INSPECTION].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteInspectionPayment = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1106,8 +1119,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedRecord = { ...selectedRecord, inspectionData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.INSPECTION]) updatedRecord.stages[TradeStage.INSPECTION] = getStageData(updatedRecord, TradeStage.INSPECTION); 
         updatedRecord.stages[TradeStage.INSPECTION].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleEditWarehouseReceipt = (r: WarehouseReceipt) => {
         setEditingWarehouseReceiptId(r.id);
@@ -1147,8 +1159,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         }; 
         if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); 
         updatedRecord.stages[TradeStage.CLEARANCE_DOCS].isCompleted = updatedReceipts.length > 0; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteWarehouseReceipt = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1157,8 +1168,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedData = { ...clearanceForm, receipts: updatedReceipts }; 
         setClearanceForm(updatedData); 
         const updatedRecord = { ...selectedRecord, clearanceData: updatedData }; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleEditClearancePayment = (p: ClearancePayment) => {
         setEditingClearancePaymentId(p.id);
@@ -1198,9 +1208,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedRecord = { ...selectedRecord, clearanceData: updatedData, isInCustoms: true, isInTransit: false }; 
         if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); 
         updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteClearancePayment = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1212,9 +1220,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedRecord = { ...selectedRecord, clearanceData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.CLEARANCE_DOCS]) updatedRecord.stages[TradeStage.CLEARANCE_DOCS] = getStageData(updatedRecord, TradeStage.CLEARANCE_DOCS); 
         updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
     // Calculate total Green Leaf cost (Duties + Taxes + Road Tolls).
     // Note: dutyCashAmount is the 10% cash prepayment of the customs duty/cottage (پیش‌پرداخت حقوق ورودی) 
@@ -1233,9 +1239,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.GREEN_LEAF]) updatedRecord.stages[TradeStage.GREEN_LEAF] = getStageData(updatedRecord, TradeStage.GREEN_LEAF); 
         updatedRecord.stages[TradeStage.GREEN_LEAF].costRial = totalCost; 
         updatedRecord.stages[TradeStage.GREEN_LEAF].isCompleted = (newData.duties.length > 0); 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleEditCustomsDuty = (d: GreenLeafCustomsDuty) => {
         setEditingCustomsDutyId(d.id);
@@ -1478,9 +1482,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.INTERNAL_SHIPPING]) updatedRecord.stages[TradeStage.INTERNAL_SHIPPING] = getStageData(updatedRecord, TradeStage.INTERNAL_SHIPPING); 
         updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
         updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].isCompleted = updatedPayments.length > 0; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteShippingPayment = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1491,9 +1493,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedRecord = { ...selectedRecord, internalShippingData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.INTERNAL_SHIPPING]) updatedRecord.stages[TradeStage.INTERNAL_SHIPPING] = getStageData(updatedRecord, TradeStage.INTERNAL_SHIPPING); 
         updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
 
     const handleEditAgentPayment = (p: AgentPayment) => {
@@ -1552,9 +1552,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
         updatedRecord.stages[TradeStage.AGENT_FEES].costRial = totalPayments; 
         updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteAgentPayment = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1567,9 +1565,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
         updatedRecord.stages[TradeStage.AGENT_FEES].costRial = totalPayments; 
         updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0;
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
     };
 
     const handleOpenEditAgentStage = () => {
@@ -1624,9 +1620,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         updatedRecord.stages[TradeStage.CURRENCY_PURCHASE].costCurrency = totalPurchased; 
         updatedRecord.stages[TradeStage.CURRENCY_PURCHASE].costRial = totalRialCost; 
 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
         
         setNewCurrencyTranche({ 
             amount: 0, 
@@ -1698,8 +1692,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!updatedRecord.stages[TradeStage.CURRENCY_PURCHASE]) updatedRecord.stages[TradeStage.CURRENCY_PURCHASE] = getStageData(updatedRecord, TradeStage.CURRENCY_PURCHASE); 
         updatedRecord.stages[TradeStage.CURRENCY_PURCHASE].costCurrency = totalPurchased; 
         updatedRecord.stages[TradeStage.CURRENCY_PURCHASE].costRial = totalRialCost; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
 
     const handleToggleTrancheDelivery = async (id: string) => { 
@@ -1720,8 +1713,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const updatedForm = { ...currencyForm, tranches: updatedTranches, purchasedAmount: totalPurchased, deliveredAmount: totalDelivered }; 
         setCurrencyForm(updatedForm); 
         const updatedRecord = { ...selectedRecord, currencyPurchaseData: updatedForm }; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
 
     const handleAddTrancheDelivery = async () => {
@@ -1762,8 +1754,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setCurrencyForm(updatedForm);
         const updatedRecord = { ...selectedRecord, currencyPurchaseData: updatedForm };
 
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
+        await persistRecordUpdate(updatedRecord);
         setNewDeliveryForm({ amount: '', date: '', recipientName: '', description: '' });
     };
 
@@ -1795,8 +1786,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setCurrencyForm(updatedForm);
         const updatedRecord = { ...selectedRecord, currencyPurchaseData: updatedForm };
 
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
+        await persistRecordUpdate(updatedRecord);
     };
     const handleAddCurrencyGuarantee = async (newG: GuaranteeCheque) => {
         if (!selectedRecord) return;
@@ -1809,8 +1799,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         };
         setCurrencyForm(updatedForm);
         const updatedRecord = { ...selectedRecord, currencyPurchaseData: updatedForm };
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
+        await persistRecordUpdate(updatedRecord);
         alert("چک ضمانت ارزی جدید با موفقیت ثبت شد.");
     };
 
@@ -1826,8 +1815,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         };
         setCurrencyForm(updatedForm);
         const updatedRecord = { ...selectedRecord, currencyPurchaseData: updatedForm };
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
+        await persistRecordUpdate(updatedRecord);
         alert("چک ضمانت ارزی مورد نظر حذف شد.");
     };
 
@@ -1847,8 +1835,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         };
         setCurrencyForm(updatedForm);
         const updatedRecord = { ...selectedRecord, currencyPurchaseData: updatedForm };
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
+        await persistRecordUpdate(updatedRecord);
     };
     const handleAddInvoiceItem = () => { 
         if (!newInvoiceItem.name) return; 
@@ -1967,8 +1954,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 .reduce((acc, d) => acc + (d.invoiceItems?.reduce((sum, i) => sum + i.totalPrice, 0) || 0) + (d.freightCost || 0), 0);
         }
 
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
+        await persistRecordUpdate(updatedRecord);
         setEditingShippingDocId(null);
         setShippingDocForm({
             status: 'Draft',
@@ -2018,8 +2004,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (editingShippingDocId === id) handleCancelEditShippingDoc();
         const updatedDocs = (selectedRecord.shippingDocuments || []).filter(d => d.id !== id); 
         const updatedRecord = { ...selectedRecord, shippingDocuments: updatedDocs }; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
     };
     const handleSyncInvoiceToProforma = async () => { 
         if (!selectedRecord) return; 
@@ -2064,8 +2049,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             freightCost: Number(shippingDocForm.freightCost) || 0,
             proformaHistory: [historyEntry, ...existingHistory]
         }; 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
+        await persistRecordUpdate(updatedRecord); 
         alert('پروفرما با موفقیت بروزرسانی شد و نسخه قبلی در تاریخچه و بایگانی پرونده ذخیره گردید.'); 
     };
 
@@ -2117,7 +2101,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             }
         };
 
-        await updateTradeRecord(updatedOldRecord);
+        await persistRecordUpdate(updatedOldRecord);
         await saveTradeRecord(newRecord);
 
         setShowTransferModal(false);
@@ -2158,14 +2142,12 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             updatedRecord.currencyPurchaseData.allocationCode = stageFormData.allocationCode;
             updatedRecord.currencyPurchaseData.allocationExpiryDate = stageFormData.allocationExpiry;
         } 
-        await updateTradeRecord(updatedRecord); 
-        setSelectedRecord(updatedRecord); 
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord); 
         setEditingStage(null); 
     };
-    const toggleCommitment = async () => { if (!selectedRecord) return; const updatedRecord = { ...selectedRecord, isCommitmentFulfilled: !selectedRecord.isCommitmentFulfilled }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); setSelectedRecord(updatedRecord); };
-    const handleArchiveRecord = async () => { if (!selectedRecord) return; if (!confirm('آیا از انتقال این پرونده به بایگانی (ترخیص شده) اطمینان دارید؟')) return; const updatedRecord = { ...selectedRecord, isArchived: true, status: 'Completed' as const }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); alert('پرونده با موفقیت بایگانی شد.'); setViewMode('dashboard'); loadRecords(); };
-    const handleUnarchiveRecord = async () => { if (!selectedRecord) return; if (!confirm('آیا از بازگرداندن این پرونده به جریان کاری اطمینان دارید؟')) return; const updatedRecord = { ...selectedRecord, isArchived: false, status: 'Active' as const }; await updateTradeRecord(updatedRecord); setSelectedRecord(updatedRecord); alert('پرونده بازیابی شد.'); };
+    const toggleCommitment = async () => { if (!selectedRecord) return; const updatedRecord = { ...selectedRecord, isCommitmentFulfilled: !selectedRecord.isCommitmentFulfilled }; await persistRecordUpdate(updatedRecord); };
+    const handleArchiveRecord = async () => { if (!selectedRecord) return; if (!confirm('آیا از انتقال این پرونده به بایگانی (ترخیص شده) اطمینان دارید؟')) return; const updatedRecord = { ...selectedRecord, isArchived: true, status: 'Completed' as const }; await persistRecordUpdate(updatedRecord); alert('پرونده با موفقیت بایگانی شد.'); setViewMode('dashboard'); loadRecords(); };
+    const handleUnarchiveRecord = async () => { if (!selectedRecord) return; if (!confirm('آیا از بازگرداندن این پرونده به جریان کاری اطمینان دارید؟')) return; const updatedRecord = { ...selectedRecord, isArchived: false, status: 'Active' as const }; await persistRecordUpdate(updatedRecord); alert('پرونده بازیابی شد.'); };
     const getAllGuarantees = () => {
         const list: any[] = [];
         if (selectedRecord && selectedRecord.currencyPurchaseData) {
@@ -2221,9 +2203,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const saveMetadata = async () => {
         if (!selectedRecord) return;
         const updatedRecord = { ...selectedRecord, ...editMetadataForm };
-        await updateTradeRecord(updatedRecord);
-        setSelectedRecord(updatedRecord);
-        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+        await persistRecordUpdate(updatedRecord);
         setShowEditMetadataModal(false);
         alert('مشخصات پرونده بروزرسانی شد.');
     };

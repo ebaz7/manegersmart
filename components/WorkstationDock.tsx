@@ -193,8 +193,17 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
               draggable
               data-tab-id={tabId}
               onDragStart={(e) => {
+                e.dataTransfer.setData('application/x-workstation-tab', tabId);
                 e.dataTransfer.setData('text/plain', tabId);
                 e.dataTransfer.effectAllowed = 'copyMove';
+                try {
+                  window.dispatchEvent(new CustomEvent('workstation-tab-drag-start', { detail: { tabId } }));
+                } catch {}
+              }}
+              onDragEnd={() => {
+                try {
+                  window.dispatchEvent(new CustomEvent('workstation-tab-drag-end'));
+                } catch {}
               }}
               onClick={() => onSelectTab(tabId)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer select-none group relative ${

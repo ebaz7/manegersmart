@@ -3130,6 +3130,181 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
     } catch (e) { console.error("Payment Notification Helper Error:", e); }
 };
 
+export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
+    try {
+        if (!dp) return { success: false, error: 'No driver payment data' };
+        const isEdit = eventType === 'EDIT';
+        const isDelete = eventType === 'DELETE';
+        const isManual = eventType === 'MANUAL';
+
+        const dedupeKey = `DRIVER_PAY_${dp.id}_${eventType}`;
+        if (!isManual && isDuplicateNotification(dedupeKey)) return { success: true, deduped: true };
+
+        const settings = db?.settings || {};
+
+        const tgGroupId = settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || '';
+        const baleGroupId = settings.botDriverPaymentGroupIdBale || '';
+        const waGroupId = settings.botDriverPaymentGroupIdWhatsApp || '';
+
+        if (!tgGroupId && !baleGroupId && !waGroupId) {
+            console.log(">>> notifyDriverPayment: No driver payment bot groups configured in settings.");
+            return { success: false, message: 'هیچ گروهی برای ارسال واریزی رانندگان در تنظیمات ربات تعیین نشده است.' };
+        }
+
+        const formattedAmount = dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'مشخص نشده';
+        const dateStr = dp.date ? (toShamsiFull ? toShamsiFull(dp.date) : dp.date) : '-';
+
+        let header = isDelete 
+            ? `❌ *حذف شد: فرم حواله و واریزی راننده*` 
+            : (isEdit ? `✏️ *ویرایش شد: فرم حواله و واریزی راننده*` : `🚚 *فرم واریزی و کرایه راننده - واحد انتظامات*`);
+
+        let caption = `${header}\n\n` +
+            `👤 *نام راننده:* ${dp.driverName || '-'}\n` +
+            `📱 *تلفن تماس:* ${dp.driverPhone || 'ثبت نشده'}\n` +
+            `🚗 *شماره پلاک:* ${dp.plateNumber || 'ثبت نشده'}\n` +
+            `💰 *مبلغ واریزی:* ${formattedAmount}\n` +
+            `💳 *نوع پرداخت:* ${dp.paymentType || 'کارت به کارت'}\n` +
+            `📦 *نام کالا:* ${dp.goodsName || 'ثبت نشده'}\n` +
+            `🔢 *مقدار / تعداد:* ${dp.quantity || 'ثبت نشده'}\n` +
+            `📍 *مسیر حمل:* از *${dp.origin || 'نامشخص'}* به *${dp.destination || 'نامشخص'}*\n` +
+            (dp.permitProvider ? `🏢 *شرکت / صادرکننده:* ${dp.permitProvider}\n` : '') +
+            `👤 *ثبت‌کننده:* ${dp.registrant || 'واحد انتظامات'}\n` +
+            `📅 *تاریخ:* ${dateStr}\n` +
+            (dp.description ? `📝 *توضیحات:* ${dp.description}\n` : '') +
+            `${isEdit ? '\n⚠️ *این یک پیام ویرایشی است*' : ''}` +
+            `${isDelete ? '\n⚠️ *این سند واریزی حذف شده است*' : ''}`;
+
+        const attachments = Array.isArray(dp.attachments) ? dp.attachments : [];
+        if (attachments.length > 0) {
+            caption += `\n📎 *پیوست‌ها:* شامل ${attachments.length} فایل ضمیمه (در حال ارسال به همراه پیام...)`;
+        }
+
+        // Helper to load file buffer
+        const loadAttachmentBuffer = async (att) => {
+            if (!att || !att.url) return null;
+            try {
+                let buffer = null;
+                let mimeType = 'application/octet-stream';
+                const fileName = att.fileName || 'attachment';
+
+                if (att.url.startsWith('data:')) {
+                    const match = att.url.match(/^data:([^;]+);base64,(.+)$/);
+                    if (match) {
+                        mimeType = match[1];
+                        buffer = Buffer.from(match[2], 'base64');
+                    }
+                } else if (att.url.startsWith('http://') || att.url.startsWith('https://')) {
+                    const res = await fetch(att.url);
+                    if (res.ok) {
+                        const ab = await res.arrayBuffer();
+                        buffer = Buffer.from(ab);
+                        mimeType = res.headers.get('content-type') || mimeType;
+                    }
+                } else {
+                    // Local file from uploads dir
+                    let cleanPath = att.url.replace(/^\/?uploads\//, '');
+                    cleanPath = cleanPath.replace(/^\//, '');
+                    const fullPath = path.join(process.cwd(), 'uploads', cleanPath);
+                    if (fs.existsSync(fullPath)) {
+                        buffer = await fs.promises.readFile(fullPath);
+                    } else {
+                        const fallbackPath = path.join(process.cwd(), cleanPath);
+                        if (fs.existsSync(fallbackPath)) {
+                            buffer = await fs.promises.readFile(fallbackPath);
+                        }
+                    }
+                }
+
+                if (buffer) {
+                    if (/\.(jpg|jpeg)$/i.test(fileName)) mimeType = 'image/jpeg';
+                    else if (/\.png$/i.test(fileName)) mimeType = 'image/png';
+                    else if (/\.webp$/i.test(fileName)) mimeType = 'image/webp';
+                    else if (/\.pdf$/i.test(fileName)) mimeType = 'application/pdf';
+                    else if (/\.xlsx$/i.test(fileName)) mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+                    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+                    return { buffer, mimeType, fileName, isImage };
+                }
+            } catch (err) {
+                console.error("Error reading attachment for driver payment:", att.fileName, err.message);
+            }
+            return null;
+        };
+
+        // Load all valid buffers
+        const loadedAttachments = [];
+        for (const att of attachments) {
+            const loaded = await loadAttachmentBuffer(att);
+            if (loaded) loadedAttachments.push(loaded);
+        }
+
+        // Fire Telegram
+        if (tgGroupId && settings.telegramBotToken) {
+            const cleanId = sanitizeGroupId(tgGroupId);
+            import('./telegram.js').then(async (mod) => {
+                if (mod?.sendBotMessage) {
+                    await mod.sendBotMessage(cleanId, caption, { parse_mode: 'Markdown' }).catch(e => console.error("TG Driver Payment Text Error:", e.message));
+                    // Send attachments one by one
+                    for (const item of loadedAttachments) {
+                        await new Promise(r => setTimeout(r, 600));
+                        const fileCaption = `📎 پیوست فرم واریزی (${dp.driverName}): ${item.fileName}`;
+                        if (item.isImage && mod.sendBotPhoto) {
+                            await mod.sendBotPhoto(cleanId, item.buffer, fileCaption, { filename: item.fileName }).catch(e => console.error("TG Driver Payment Photo Error:", e.message));
+                        } else if (mod.sendBotDocument) {
+                            await mod.sendBotDocument(cleanId, item.buffer, item.fileName, fileCaption).catch(e => console.error("TG Driver Payment Doc Error:", e.message));
+                        }
+                    }
+                }
+            }).catch(e => console.error("TG Import Error", e));
+        }
+
+        // Fire Bale
+        if (baleGroupId && settings.baleBotToken) {
+            const cleanId = sanitizeGroupId(baleGroupId);
+            import('./bale.js').then(async (mod) => {
+                if (mod?.sendBotMessage) {
+                    await mod.sendBotMessage(cleanId, caption).catch(e => console.error("Bale Driver Payment Text Error:", e.message));
+                    // Send attachments one by one
+                    for (const item of loadedAttachments) {
+                        await new Promise(r => setTimeout(r, 600));
+                        const fileCaption = `📎 پیوست فرم واریزی (${dp.driverName}): ${item.fileName}`;
+                        if (item.isImage && mod.sendBotPhoto) {
+                            await mod.sendBotPhoto(cleanId, item.buffer, fileCaption, { filename: item.fileName }).catch(e => console.error("Bale Driver Payment Photo Error:", e.message));
+                        } else if (mod.sendBotDocument) {
+                            await mod.sendBotDocument(cleanId, item.buffer, item.fileName, fileCaption).catch(e => console.error("Bale Driver Payment Doc Error:", e.message));
+                        }
+                    }
+                }
+            }).catch(e => console.error("Bale Import Error", e));
+        }
+
+        // Fire WhatsApp
+        if (waGroupId && settings.whatsappEnabled) {
+            import('./whatsapp.js').then(async (mod) => {
+                if (mod?.sendMessage) {
+                    await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Driver Payment Text Error:", e.message));
+                    // Send attachments one by one
+                    for (const item of loadedAttachments) {
+                        await new Promise(r => setTimeout(r, 800));
+                        const fileCaption = `📎 پیوست فرم واریزی (${dp.driverName}): ${item.fileName}`;
+                        const b64 = item.buffer.toString('base64');
+                        await mod.sendMessage(waGroupId, fileCaption, {
+                            data: b64,
+                            mimeType: item.mimeType,
+                            filename: item.fileName
+                        }).catch(e => console.error("WA Driver Payment Media Error:", e.message));
+                    }
+                }
+            }).catch(e => console.error("WA Import Error", e));
+        }
+
+        return { success: true, count: loadedAttachments.length };
+    } catch (e) {
+        console.error("notifyDriverPayment Error:", e);
+        return { success: false, error: e.message };
+    }
+};
+
 export const notifyWarehouseBijak = async (tx, db, stepName, eventType = 'STEP') => {
     try {
         const isEdit = eventType === 'EDIT';

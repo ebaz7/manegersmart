@@ -303,6 +303,10 @@ const Settings: React.FC<SettingsProps> = ({
     botAccountingGroupIdTele: "",
     botAccountingGroupIdBale: "",
     botAccountingGroupIdWhatsApp: "",
+    botDriverPaymentGroupIdTele: "",
+    botDriverPaymentGroupIdBale: "",
+    botDriverPaymentGroupIdWhatsApp: "",
+    botDriverPaymentAutoSendEnabled: true,
     purchaseRolePermissions: {},
   });
 
@@ -4847,6 +4851,98 @@ const Settings: React.FC<SettingsProps> = ({
                         className="w-full border rounded-lg p-2 text-sm dir-ltr"
                         placeholder="...@g.us"
                       />
+                    </div>
+
+                    {/* Driver Payments Bot Notification Groups */}
+                    <div className="md:col-span-2 bg-gradient-to-r from-purple-50/70 to-indigo-50/70 dark:from-purple-950/20 dark:to-indigo-950/20 p-5 rounded-2xl border border-purple-200/80 dark:border-purple-800/40 space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2 border-b border-purple-200/60 dark:border-purple-800/40 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 bg-purple-600 text-white rounded-xl shadow-sm">
+                            <Truck size={18} />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-sm text-purple-950 dark:text-purple-200">
+                              🚚 تنظیمات گروه ارسال واریزی رانندگان (تلگرام، بله، واتساپ)
+                            </h4>
+                            <p className="text-[11px] text-purple-700 dark:text-purple-300">
+                              ارسال خودکار متن فرم حواله واریزی به همراه فایل‌های پیوست شده (تصاویر، PDF و ...) به صورت دانه‌به‌دانه
+                            </p>
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl border border-purple-200 dark:border-purple-700 shadow-xs">
+                          <input
+                            type="checkbox"
+                            checked={settings.botDriverPaymentAutoSendEnabled !== false}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                botDriverPaymentAutoSendEnabled: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                            ارسال خودکار هنگام ثبت و ویرایش فرم واریزی
+                          </span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                            شناسه گروه تلگرام واریزی رانندگان
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || ""}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                botDriverPaymentGroupIdTele: e.target.value,
+                                botDriverPaymentGroupId: e.target.value,
+                              })
+                            }
+                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                            placeholder="-100... یا @group"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                            شناسه گروه بله واریزی رانندگان
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.botDriverPaymentGroupIdBale || ""}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                botDriverPaymentGroupIdBale: e.target.value,
+                              })
+                            }
+                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                            placeholder="شناسه عددی گروه یا لینک"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                            شناسه گروه واتساپ واریزی رانندگان
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.botDriverPaymentGroupIdWhatsApp || ""}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                botDriverPaymentGroupIdWhatsApp: e.target.value,
+                              })
+                            }
+                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                            placeholder="...@g.us"
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     <div className="border-t pt-4 mt-4 space-y-4">

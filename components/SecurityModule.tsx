@@ -8,7 +8,7 @@ import {
     getPersonnelOvertimes, savePersonnelOvertime, updatePersonnelOvertime, deletePersonnelOvertime,
     getSecurityIncidents, saveSecurityIncident, updateSecurityIncident, deleteSecurityIncident, 
     getSettings, saveSettings,
-    getDriverPayments, saveDriverPayment, updateDriverPayment, deleteDriverPayment,
+    getDriverPayments, saveDriverPayment, updateDriverPayment, deleteDriverPayment, notifyDriverPaymentToBots,
     getGroups, sendMessage
 } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, getYesterdayShamsiDate, jalaliToGregorian, formatDate, getShamsiDateFromIso, formatLocalDateToIso, getIsoFromJalali } from '../constants';
@@ -282,6 +282,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const [showDriverPaymentForm, setShowDriverPaymentForm] = useState(false);
     const [isUploadingPaymentFile, setIsUploadingPaymentFile] = useState(false);
     const [driverPaymentSearchQuery, setDriverPaymentSearchQuery] = useState('');
+    const [sharingPaymentId, setSharingPaymentId] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
 
     const [overtimes, setOvertimes] = useState<PersonnelOvertime[]>([]);
@@ -1328,6 +1329,17 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
     const handleSharePaymentToGroup = async (dp: DriverPayment) => {
         try {
+            setSharingPaymentId(dp.id);
+
+            // 1. Notify messenger bots (Telegram, Bale, WhatsApp) configured in settings
+            let botResult: any = null;
+            try {
+                botResult = await notifyDriverPaymentToBots(dp);
+            } catch (bErr) {
+                console.warn("Could not notify external bots directly:", bErr);
+            }
+
+            // 2. Share to internal chat
             const groupsList = await getGroups();
             let targetGroupId = undefined;
             if (groupsList && groupsList.length > 0) {
@@ -1381,10 +1393,14 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 }
             }
 
-            alert('اطلاعات فرم واریزی و پیوست‌ها با موفقیت به گروه گفتگو ارسال شد.');
+            const attCount = dp.attachments?.length || 0;
+            const extraMsg = attCount > 0 ? ` و ${attCount} فایل پیوست دونه‌به‌دونه` : '';
+            alert(`فرم واریزی راننده (${dp.driverName})${extraMsg} با موفقیت به ربات‌های پیام‌رسان (تلگرام/بله/واتساپ) و گروه گفتگو ارسال شد ✅`);
         } catch (err) {
             console.error('Error sharing driver payment to group:', err);
-            alert('خطا در ارسال اطلاعات به گروه گفتگو.');
+            alert('خطا در ارسال اطلاعات به گروه‌ها.');
+        } finally {
+            setSharingPaymentId(null);
         }
     };
 
@@ -2262,10 +2278,10 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                             </button>
                             <button 
                                 onClick={() => handleSaveDriverPayment(true)}
-                                className="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                                className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
                             >
                                 <Send size={14}/>
-                                <span>ثبت و ارسال به گروه گفتگو</span>
+                                <span>ثبت و ارسال به بات و گروه‌ها</span>
                             </button>
                         </div>
                     </div>
@@ -3544,6 +3560,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                     <td className="p-3 text-center whitespace-nowrap">
                                                         <div className="flex items-center justify-center gap-1">
                                                             <button 
+                                                                disabled={sharingPaymentId === dp.id}
                                                                 onClick={async () => {
                                                                     try {
                                                                         await handleSharePaymentToGroup(dp);
@@ -3551,10 +3568,10 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                                         alert('خطا در ارسال پیام به گروه گفتگو');
                                                                     }
                                                                 }}
-                                                                className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all"
-                                                                title="ارسال به گروه گفتگو"
+                                                                className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all disabled:opacity-50"
+                                                                title="ارسال به بات و گروه‌ها (تلگرام، بله، واتساپ و چت)"
                                                             >
-                                                                <Send size={14}/>
+                                                                {sharingPaymentId === dp.id ? <Loader2 size={14} className="animate-spin text-purple-600" /> : <Send size={14}/>}
                                                             </button>
                                                             <button 
                                                                 onClick={() => {

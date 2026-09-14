@@ -419,6 +419,11 @@ export interface SystemSettings {
   botMeetingMinutesSecondGroupIdWhatsApp?: string;
   botMeetingMinutesNotificationMode?: 'after_approval' | 'immediately';
   botPaymentNotificationMode?: 'after_submit' | 'after_final' | 'step_by_step';
+  botDriverPaymentGroupId?: string;
+  botDriverPaymentGroupIdTele?: string;
+  botDriverPaymentGroupIdBale?: string;
+  botDriverPaymentGroupIdWhatsApp?: string;
+  botDriverPaymentAutoSendEnabled?: boolean;
   botForceJoinChannels?: { name: string; link: string; id: string; platform?: 'telegram' | 'bale' | 'all' }[];
   botForceJoinEnabled?: boolean;
   botStoreLinks?: { title: string; url: string }[];

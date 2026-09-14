@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TradeRecord, TradeStage } from '../types';
 import { TradeDatePicker } from './TradeDatePicker';
 import FormattedNumberInput from './FormattedNumberInput';
-import { formatCurrency, formatNumberString, calculateDaysDiff, calculateDaysBetween, parsePersianDate } from '../constants';
+import { formatCurrency, formatNumberString, calculateDaysDiff, calculateDaysBetween, parsePersianDate, addDaysToPersianDate } from '../constants';
 import { 
     Clock, 
     CheckCircle2, 
@@ -106,7 +106,32 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [durationDaysInput, setDurationDaysInput] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Synchronize duration days when dates are present
+    useEffect(() => {
+        if (form.allocationDate && form.allocationExpiry) {
+            const diff = calculateDaysBetween(form.allocationDate, form.allocationExpiry);
+            if (diff && diff > 0) {
+                setDurationDaysInput(diff.toString());
+            }
+        }
+    }, [form.allocationDate, form.allocationExpiry]);
+
+    const handleApplyDurationDays = (daysCount: number | string) => {
+        const days = typeof daysCount === 'string' ? parseInt(daysCount, 10) : daysCount;
+        setDurationDaysInput(days ? days.toString() : '');
+        if (days && !isNaN(days) && days > 0) {
+            const baseDate = form.allocationDate || form.queueDate;
+            if (baseDate) {
+                const calculatedExpiry = addDaysToPersianDate(baseDate, days);
+                if (calculatedExpiry) {
+                    setForm(prev => ({ ...prev, allocationExpiry: calculatedExpiry }));
+                }
+            }
+        }
+    };
 
     // Keep form synced if record ID changes
     useEffect(() => {
@@ -451,7 +476,19 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
                                 </label>
                                 <TradeDatePicker 
                                     value={form.allocationDate} 
-                                    onChange={val => setForm(prev => ({ ...prev, allocationDate: val }))}
+                                    onChange={val => {
+                                        setForm(prev => {
+                                            const updated = { ...prev, allocationDate: val };
+                                            if (val && durationDaysInput) {
+                                                const d = parseInt(durationDaysInput, 10);
+                                                if (!isNaN(d) && d > 0) {
+                                                    const newExpiry = addDaysToPersianDate(val, d);
+                                                    if (newExpiry) updated.allocationExpiry = newExpiry;
+                                                }
+                                            }
+                                            return updated;
+                                        });
+                                    }}
                                     placeholder="۱۴۰۳/۰۲/۰۱"
                                 />
                             </div>
@@ -466,6 +503,45 @@ export const AllocationTab: React.FC<AllocationTabProps> = ({
                                     onChange={val => setForm(prev => ({ ...prev, allocationExpiry: val }))}
                                     placeholder="۱۴۰۳/۰۳/۰۱"
                                 />
+                            </div>
+                        </div>
+
+                        {/* Quick Days Duration Option */}
+                        <div className="bg-emerald-100/50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 space-y-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <label className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1">
+                                    <Clock size={12} className="text-emerald-600" />
+                                    <span>تنظیم مهلت بر اساس تعداد روز (از تاریخ تخصیص):</span>
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        max="365"
+                                        value={durationDaysInput} 
+                                        onChange={e => handleApplyDurationDays(e.target.value)}
+                                        placeholder="مثلاً 30"
+                                        className="w-20 px-2 py-1 text-center font-mono font-bold text-xs bg-white dark:bg-zinc-800 border border-emerald-300 dark:border-emerald-700 rounded-lg text-emerald-900 dark:text-emerald-100 focus:ring-2 focus:ring-emerald-500"
+                                    />
+                                    <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-bold">روز</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1 flex-wrap">
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">مهلت‌های متداول:</span>
+                                {[15, 30, 45, 60, 90, 180].map(days => (
+                                    <button
+                                        key={days}
+                                        type="button"
+                                        onClick={() => handleApplyDurationDays(days)}
+                                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                                            durationDaysInput === days.toString()
+                                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                                : 'bg-white dark:bg-zinc-800 hover:bg-emerald-200/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80'
+                                        }`}
+                                    >
+                                        {days} روز
+                                    </button>
+                                ))}
                             </div>
                         </div>
 

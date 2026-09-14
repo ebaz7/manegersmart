@@ -230,13 +230,10 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
         </div>
       )}
 
-      {/* Top Customizer Bar (visible in customize mode or on widget hover) */}
-      <div className={`transition-all duration-200 ${
-        isCustomizing 
-          ? 'opacity-100 mb-1.5' 
-          : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto absolute -top-3.5 right-3 z-40'
-      }`}>
-        <div className="flex items-center gap-1 bg-zinc-900/95 hover:bg-zinc-900 text-white rounded-xl px-2 py-1 shadow-lg border border-zinc-700/70 backdrop-blur-md text-[10px]">
+      {/* Top Customizer Bar (ONLY visible when customize mode is active) */}
+      {isCustomizing && (
+        <div className="transition-all duration-200 opacity-100 mb-1.5">
+          <div className="flex items-center gap-1 bg-zinc-900/95 hover:bg-zinc-900 text-white rounded-xl px-2 py-1 shadow-lg border border-zinc-700/70 backdrop-blur-md text-[10px]">
           {/* Drag Grip Handle */}
           <div
             draggable={!isLocked}
@@ -387,7 +384,8 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Widget Content Container */}
       {isCollapsed ? (
@@ -418,14 +416,14 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
         </div>
       )}
 
-      {/* --- MOUSE DRAG RESIZE HANDLES (Active when not collapsed) --- */}
-      {!isCollapsed && (
+      {/* --- MOUSE DRAG RESIZE HANDLES (Active when not collapsed and in customize mode) --- */}
+      {!isCollapsed && isCustomizing && (
         <>
           {/* 1. Bottom-Left Corner Resize Handle (in RTL, left is where dragging expands width and bottom expands height) */}
           <div
             onMouseDown={(e) => handleMouseDown(e, 'both')}
             onDoubleClick={onResetSize}
-            className="absolute -bottom-1 -left-1 z-30 w-5 h-5 flex items-center justify-center cursor-nesw-resize opacity-0 group-hover:opacity-90 hover:!opacity-100 transition-opacity select-none"
+            className="absolute -bottom-1 -left-1 z-30 w-5 h-5 flex items-center justify-center cursor-nesw-resize opacity-80 hover:!opacity-100 transition-opacity select-none"
             title="بکشید تا اندازه (عرض و ارتفاع) تغییر کند (دابل‌کلیک برای بازنشانی)"
           >
             <div className="w-3.5 h-3.5 rounded-bl-md border-b-2 border-l-2 border-blue-500 bg-white dark:bg-zinc-900 shadow-sm flex items-center justify-center">
@@ -437,7 +435,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
           <div
             onMouseDown={(e) => handleMouseDown(e, 'both')}
             onDoubleClick={onResetSize}
-            className="absolute -bottom-1 -right-1 z-30 w-5 h-5 flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-90 hover:!opacity-100 transition-opacity select-none"
+            className="absolute -bottom-1 -right-1 z-30 w-5 h-5 flex items-center justify-center cursor-nwse-resize opacity-80 hover:!opacity-100 transition-opacity select-none"
             title="بکشید تا اندازه تغییر کند"
           >
             <div className="w-3.5 h-3.5 rounded-br-md border-b-2 border-r-2 border-blue-500 bg-white dark:bg-zinc-900 shadow-sm flex items-center justify-center">
@@ -449,7 +447,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
           <div
             onMouseDown={(e) => handleMouseDown(e, 'height')}
             onDoubleClick={onResetSize}
-            className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-20 w-16 h-3 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-opacity select-none"
+            className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-20 w-16 h-3 flex items-center justify-center cursor-ns-resize opacity-80 hover:!opacity-100 transition-opacity select-none"
             title="بکشید تا ارتفاع تنظیم شود"
           >
             <div className="w-10 h-1 rounded-full bg-blue-500/70 shadow-sm" />
@@ -459,7 +457,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
           <div
             onMouseDown={(e) => handleMouseDown(e, 'width')}
             onDoubleClick={onResetSize}
-            className="absolute top-1/2 -left-1.5 -translate-y-1/2 z-20 w-3 h-16 flex items-center justify-center cursor-ew-resize opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-opacity select-none"
+            className="absolute top-1/2 -left-1.5 -translate-y-1/2 z-20 w-3 h-16 flex items-center justify-center cursor-ew-resize opacity-80 hover:!opacity-100 transition-opacity select-none"
             title="بکشید تا عرض تنظیم شود"
           >
             <div className="w-1 h-10 rounded-full bg-blue-500/70 shadow-sm" />

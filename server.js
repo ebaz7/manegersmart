@@ -33,7 +33,7 @@ import AdmZip from 'adm-zip';
 import webpush from 'web-push';
 import * as dbManager from './backend/db-manager.js';
 import * as utils from './backend/utils.js';
-import { notifyExitPermitStep, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport } from './backend/bot-core.js';
+import { notifyExitPermitStep, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport, notifyDriverPayment } from './backend/bot-core.js';
 import * as telegram from './backend/telegram.js';
 import * as bale from './backend/bale.js';
 import * as Renderer from './backend/renderer.js';
@@ -6524,6 +6524,19 @@ CRUD_COLLECTIONS.forEach(({ route, dbKey }) => {
         }
         saveDb(db);
         res.json(db[dbKey]);
+
+        if (route === 'security/driver-payments' && item) {
+            setImmediate(async () => {
+                try {
+                    const freshDb = getDb();
+                    if (freshDb.settings?.botDriverPaymentAutoSendEnabled !== false) {
+                        await notifyDriverPayment(item, freshDb, existingIdx > -1 ? 'EDIT' : 'CREATE');
+                    }
+                } catch (err) {
+                    console.error("Auto notifyDriverPayment on POST error:", err);
+                }
+            });
+        }
     });
 
     // PUT
@@ -6531,14 +6544,30 @@ CRUD_COLLECTIONS.forEach(({ route, dbKey }) => {
         const db = getDb();
         if (!db[dbKey]) db[dbKey] = [];
         const idx = db[dbKey].findIndex(x => x.id === req.params.id);
+        let updatedItem;
         if (idx > -1) {
-            db[dbKey][idx] = { ...db[dbKey][idx], ...req.body };
+            updatedItem = { ...db[dbKey][idx], ...req.body };
+            db[dbKey][idx] = updatedItem;
             saveDb(db);
             res.json(db[dbKey]);
         } else {
-            db[dbKey].push({ id: req.params.id, ...req.body });
+            updatedItem = { id: req.params.id, ...req.body };
+            db[dbKey].push(updatedItem);
             saveDb(db);
             res.json(db[dbKey]);
+        }
+
+        if (route === 'security/driver-payments' && updatedItem) {
+            setImmediate(async () => {
+                try {
+                    const freshDb = getDb();
+                    if (freshDb.settings?.botDriverPaymentAutoSendEnabled !== false) {
+                        await notifyDriverPayment(updatedItem, freshDb, 'EDIT');
+                    }
+                } catch (err) {
+                    console.error("Auto notifyDriverPayment on PUT error:", err);
+                }
+            });
         }
     });
 
@@ -6546,10 +6575,40 @@ CRUD_COLLECTIONS.forEach(({ route, dbKey }) => {
     app.delete(`/api/${route}/:id`, (req, res) => {
         const db = getDb();
         if (!db[dbKey]) db[dbKey] = [];
+        const deletedItem = db[dbKey].find(x => x.id === req.params.id);
         db[dbKey] = db[dbKey].filter(x => x.id !== req.params.id);
         saveDb(db);
         res.json(db[dbKey]);
+
+        if (route === 'security/driver-payments' && deletedItem) {
+            setImmediate(async () => {
+                try {
+                    const freshDb = getDb();
+                    if (freshDb.settings?.botDriverPaymentAutoSendEnabled !== false) {
+                        await notifyDriverPayment(deletedItem, freshDb, 'DELETE');
+                    }
+                } catch (err) {
+                    console.error("Auto notifyDriverPayment on DELETE error:", err);
+                }
+            });
+        }
     });
+});
+
+// --- DRIVER PAYMENTS NOTIFICATION ENDPOINT ---
+app.post('/api/security/driver-payments/notify', async (req, res) => {
+    try {
+        const payment = req.body;
+        if (!payment || !payment.id) {
+            return res.status(400).json({ success: false, error: 'اطلاعات فرم واریزی نامعتبر است.' });
+        }
+        const db = getDb();
+        const result = await notifyDriverPayment(payment, db, 'MANUAL');
+        res.json(result || { success: true });
+    } catch (e) {
+        console.error("Manual driver payment notify error:", e);
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 // --- SECURITY MODULE CAMERA & ALPR ENDPOINTS ---

@@ -909,5 +909,9 @@ export const deleteDriverPayment = async (id: string): Promise<DriverPayment[]> 
     return await apiCall<DriverPayment[]>(`/security/driver-payments/${id}`, 'DELETE');
 };
 
+export const notifyDriverPaymentToBots = async (payment: DriverPayment): Promise<{ success: boolean; message?: string; count?: number }> => {
+    return await apiCall<{ success: boolean; message?: string; count?: number }>('/security/driver-payments/notify', 'POST', payment);
+};
+
 
 

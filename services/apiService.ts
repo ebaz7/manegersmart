@@ -200,13 +200,13 @@ export const apiCall = async <T>(
 
                 // --- CACHING ENABLED ---
                 // Crucial for Android app to prevent "raw/empty" state if network fluctuates
-                if (method === 'GET') {
+                if (method === 'GET' || ((method === 'POST' || method === 'PUT' || method === 'DELETE') && Array.isArray(data))) {
                     try {
                         if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
                         else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
                         else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
                         else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
-                        else if (endpoint === '/trade') localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
+                        else if (endpoint === '/trade' || endpoint.startsWith('/trade/')) localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
                         else if (endpoint === '/customer-balances') localStorage.setItem('app_data_balances', JSON.stringify(data));
                         else if (endpoint === '/customer-balances/chat-codes') localStorage.setItem('app_data_balances_mappings', JSON.stringify(data));
                         else if (endpoint === '/customer-balances/statements/all') localStorage.setItem('app_data_balances_statements', JSON.stringify(data));

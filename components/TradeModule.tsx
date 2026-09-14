@@ -428,9 +428,25 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 payments: isData.payments || []
             });
 
-            const agData = selectedRecord.agentData || { payments: [] };
+            // Comprehensive extraction of agent payments from any possible structure
+            let extractedAgentPayments: AgentPayment[] = [];
+            const anyRec = selectedRecord as any;
+            if (selectedRecord.agentData && Array.isArray(selectedRecord.agentData.payments)) {
+                extractedAgentPayments = selectedRecord.agentData.payments;
+            } else if (Array.isArray(selectedRecord.agentData)) {
+                extractedAgentPayments = selectedRecord.agentData as any;
+            } else if (Array.isArray(anyRec.agentPayments)) {
+                extractedAgentPayments = anyRec.agentPayments;
+            } else if (Array.isArray(anyRec.agentFees)) {
+                extractedAgentPayments = anyRec.agentFees;
+            } else if (Array.isArray(anyRec.clearanceAgentPayments)) {
+                extractedAgentPayments = anyRec.clearanceAgentPayments;
+            } else if (selectedRecord.stages?.[TradeStage.AGENT_FEES] && Array.isArray((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments)) {
+                extractedAgentPayments = (selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments;
+            }
+
             setAgentForm({
-                payments: agData.payments || []
+                payments: extractedAgentPayments || []
             });
 
             const curData = (selectedRecord.currencyPurchaseData || {}) as CurrencyPurchaseData;
@@ -1184,6 +1200,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; 
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
     const handleDeleteClearancePayment = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1197,6 +1214,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         updatedRecord.stages[TradeStage.CLEARANCE_DOCS].costRial = totalCost; 
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
     // Calculate total Green Leaf cost (Duties + Taxes + Road Tolls).
     // Note: dutyCashAmount is the 10% cash prepayment of the customs duty/cottage (پیش‌پرداخت حقوق ورودی) 
@@ -1217,6 +1235,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         updatedRecord.stages[TradeStage.GREEN_LEAF].isCompleted = (newData.duties.length > 0); 
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
     const handleEditCustomsDuty = (d: GreenLeafCustomsDuty) => {
         setEditingCustomsDutyId(d.id);
@@ -1461,6 +1480,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].isCompleted = updatedPayments.length > 0; 
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
     const handleDeleteShippingPayment = async (id: string) => { 
         if (!selectedRecord) return; 
@@ -1473,6 +1493,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         updatedRecord.stages[TradeStage.INTERNAL_SHIPPING].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
 
     const handleEditAgentPayment = (p: AgentPayment) => {
@@ -1491,44 +1512,68 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         setNewAgentPayment({ agentName: '', amount: 0, bank: '', date: '', part: '', description: '' });
     };
     const handleAddAgentPayment = async () => { 
-        if (!selectedRecord || !newAgentPayment.amount || !newAgentPayment.agentName) return; 
+        if (!selectedRecord) return; 
+        const amountNum = Number(newAgentPayment.amount) || 0;
+        if (amountNum <= 0) {
+            alert('لطفاً مبلغ هزینه را به ریال وارد نمایید.');
+            return;
+        }
+        const agentNameClean = (newAgentPayment.agentName || newAgentPayment.description || newAgentPayment.part || 'سایر هزینه‌های ترخیص').trim();
+
         let updatedPayments = [...(agentForm.payments || [])];
         if (editingAgentPaymentId) {
             updatedPayments = updatedPayments.map(p => p.id === editingAgentPaymentId ? {
                 ...p,
-                agentName: newAgentPayment.agentName || '',
-                amount: Number(newAgentPayment.amount),
+                agentName: agentNameClean,
+                amount: amountNum,
                 bank: newAgentPayment.bank || '',
                 date: newAgentPayment.date || '',
                 part: newAgentPayment.part || '',
                 description: newAgentPayment.description || ''
             } : p);
         } else {
-            const payment: AgentPayment = { id: generateUUID(), agentName: newAgentPayment.agentName, amount: Number(newAgentPayment.amount), bank: newAgentPayment.bank || '', date: newAgentPayment.date || '', part: newAgentPayment.part || '', description: newAgentPayment.description || '' }; 
+            const payment: AgentPayment = { 
+                id: generateUUID(), 
+                agentName: agentNameClean, 
+                amount: amountNum, 
+                bank: newAgentPayment.bank || '', 
+                date: newAgentPayment.date || '', 
+                part: newAgentPayment.part || '', 
+                description: newAgentPayment.description || '' 
+            }; 
             updatedPayments.push(payment);
         }
+        const totalPayments = updatedPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
         const updatedData = { ...agentForm, payments: updatedPayments }; 
         setAgentForm(updatedData); 
         setEditingAgentPaymentId(null);
-        setNewAgentPayment({ agentName: newAgentPayment.agentName, amount: 0, bank: '', date: '', part: '', description: '' }); 
+        setNewAgentPayment({ agentName: '', amount: 0, bank: '', date: '', part: '', description: '' }); 
         const updatedRecord = { ...selectedRecord, agentData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
-        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = totalPayments; 
         updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0; 
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
     };
     const handleDeleteAgentPayment = async (id: string) => { 
         if (!selectedRecord) return; 
         if (editingAgentPaymentId === id) handleCancelEditAgentPayment();
         const updatedPayments = (agentForm.payments || []).filter(p => p.id !== id); 
+        const totalPayments = updatedPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
         const updatedData = { ...agentForm, payments: updatedPayments }; 
         setAgentForm(updatedData); 
         const updatedRecord = { ...selectedRecord, agentData: updatedData }; 
         if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
-        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = updatedPayments.reduce((acc, p) => acc + p.amount, 0); 
+        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = totalPayments; 
+        updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0;
         await updateTradeRecord(updatedRecord); 
         setSelectedRecord(updatedRecord); 
+        setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+    };
+
+    const handleOpenEditAgentStage = () => {
+        handleStageClick(TradeStage.AGENT_FEES);
     };
     const handleAddCurrencyTranche = async () => { 
         if (!selectedRecord || !newCurrencyTranche.amountStr || !newCurrencyTranche.rialAmountStr) return; 
@@ -4093,57 +4138,114 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         </div>
                     )}
 
-                    {activeTab === 'agent_fees' && (
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
-                            <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2"><UserCheck size={20} className="text-teal-600"/> هزینه‌های ترخیص</h3>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-teal-50 p-4 rounded-lg">
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">محل هزینه یا نام هزینه</label><input className="w-full border rounded p-2 text-sm" placeholder="مثال: آزمایشگاه، ترخیص‌کار، انبارداری" value={newAgentPayment.agentName} onChange={e => setNewAgentPayment({...newAgentPayment,agentName: e.target.value})} /></div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-gray-700">مبلغ هزینه (ریال)</label>
-                                        <FormattedNumberInput className="w-full border rounded p-2 text-sm dir-ltr font-bold text-gray-800" value={newAgentPayment.amount} onChange={val => setNewAgentPayment({...newAgentPayment, amount: val})} />
+                    {activeTab === 'agent_fees' && (() => {
+                        const currentPaymentsTotal = agentForm.payments?.reduce((acc, p) => acc + (Number(p.amount) || 0), 0) || 0;
+                        const stageRegisteredCost = selectedRecord?.stages?.[TradeStage.AGENT_FEES]?.costRial || 0;
+
+                        return (
+                            <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+                                {/* Summary Overview Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="glass-panel p-4 rounded-2xl border border-teal-200 dark:border-teal-900 bg-teal-50/40 dark:bg-teal-950/20 flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <span className="text-xs font-bold text-teal-800 dark:text-teal-300">مبلغ کل هزینه ترخیص ثبت‌شده در پرونده:</span>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-lg font-black font-mono text-teal-900 dark:text-teal-100">{formatCurrency(stageRegisteredCost)}</span>
+                                                <span className="text-xs text-teal-700 dark:text-teal-400">ریال</span>
+                                                <span className="text-xs font-bold text-teal-600 dark:text-teal-400">({formatCurrency(Math.round(stageRegisteredCost / 10))} تومان)</span>
+                                            </div>
+                                            <span className="text-[11px] text-gray-500 block">مبلغ اعمال‌شده در محاسبه نهایی و قیمت تمام‌شده</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleOpenEditAgentStage}
+                                            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1 shrink-0"
+                                            title="ویرایش کل مرحله"
+                                        >
+                                            <Edit size={14}/>
+                                            <span>ویرایش کل</span>
+                                        </button>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-bold text-gray-700">تاریخ پرداخت</label>
-                                        <TradeDatePicker 
-                                            value={newAgentPayment.date || ''} 
-                                            onChange={val => setNewAgentPayment({...newAgentPayment, date: val})} 
-                                            placeholder="۱۴۰۳/۰۱/۰۱"
-                                        />
+
+                                    <div className="glass-panel p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/60 flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">جمع کل ردیف‌های پرداخت تفکیک‌شده:</span>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-lg font-black font-mono text-gray-900 dark:text-gray-100">{formatCurrency(currentPaymentsTotal)}</span>
+                                                <span className="text-xs text-gray-500">ریال</span>
+                                                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">({formatCurrency(Math.round(currentPaymentsTotal / 10))} تومان)</span>
+                                            </div>
+                                            <span className="text-[11px] text-gray-500 block">{agentForm.payments?.length || 0} ردیف پرداخت ثبت‌شده در این بخش</span>
+                                        </div>
                                     </div>
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">بانک</label><select className="w-full border rounded p-2 text-sm" value={newAgentPayment.bank} onChange={e => setNewAgentPayment({...newAgentPayment, bank: e.target.value})}><option value="">انتخاب بانک</option>{companySpecificBanks.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
-                                    <div className="md:col-span-2 space-y-1"><label className="text-xs font-bold text-gray-700">پارت / مرحله</label><input className="w-full border rounded p-2 text-sm" placeholder="مثال: پیش پرداخت" value={newAgentPayment.part} onChange={e => setNewAgentPayment({...newAgentPayment, part: e.target.value})} /></div>
-                                    <div className="md:col-span-2 space-y-1"><label className="text-xs font-bold text-gray-700">توضیحات</label><input className="w-full border rounded p-2 text-sm" placeholder="..." value={newAgentPayment.description} onChange={e => setNewAgentPayment({...newAgentPayment, description: e.target.value})} /></div>
-                                    <div className="md:col-span-4 flex justify-end gap-2">{editingAgentPaymentId && (<button type="button" onClick={handleCancelEditAgentPayment} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition-all">انصراف</button>)}<button type="button" onClick={handleAddAgentPayment} className={`${editingAgentPaymentId ? "bg-amber-600 hover:bg-amber-700" : "bg-teal-600 hover:bg-teal-700"} text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all`}>{editingAgentPaymentId ? <><Save size={16}/> بروزرسانی پرداخت</> : <><Plus size={16}/> ثبت پرداخت</>}</button></div>
                                 </div>
-                                
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-right">
-                                        <thead className="bg-gray-100 text-gray-700"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
-                                        <tbody>
-                                            {agentForm.payments?.map((p) => (
-                                                <tr key={p.id} className="border-b hover:bg-gray-50">
-                                                    <td className="p-3 font-bold">{p.agentName}</td>
-                                                    <td className="p-3 font-mono">{formatCurrency(p.amount)}</td>
-                                                    <td className="p-3">{p.bank}</td>
-                                                    <td className="p-3">{p.date}</td>
-                                                    <td className="p-3">{p.part}</td>
-                                                    <td className="p-3 text-gray-500 text-xs">{p.description}</td>
-                                                    <td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={() => handleEditAgentPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={() => handleDeleteAgentPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td>
+
+                                <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                                            <UserCheck size={20} className="text-teal-600"/> ردیف‌های هزینه ترخیص
+                                        </h3>
+                                        <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full font-mono font-bold">
+                                            تعداد ردیف: {agentForm.payments?.length || 0}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-teal-50/70 dark:bg-teal-950/20 p-4 rounded-xl border border-teal-100 dark:border-teal-900/40">
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">محل هزینه یا نام هزینه</label><input className="w-full border rounded-lg p-2 text-sm bg-white dark:bg-gray-800" placeholder="مثال: آزمایشگاه، ترخیص‌کار، انبارداری" value={newAgentPayment.agentName} onChange={e => setNewAgentPayment({...newAgentPayment, agentName: e.target.value})} /></div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">مبلغ هزینه (ریال)</label>
+                                            <FormattedNumberInput className="w-full border rounded-lg p-2 text-sm dir-ltr font-bold text-gray-800 dark:text-gray-100 bg-white dark:bg-gray-800" value={newAgentPayment.amount} onChange={val => setNewAgentPayment({...newAgentPayment, amount: val})} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">تاریخ پرداخت</label>
+                                            <TradeDatePicker 
+                                                value={newAgentPayment.date || ''} 
+                                                onChange={val => setNewAgentPayment({...newAgentPayment, date: val})} 
+                                                placeholder="۱۴۰۳/۰۱/۰۱"
+                                            />
+                                        </div>
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">بانک</label><select className="w-full border rounded-lg p-2 text-sm bg-white dark:bg-gray-800" value={newAgentPayment.bank} onChange={e => setNewAgentPayment({...newAgentPayment, bank: e.target.value})}><option value="">انتخاب بانک</option>{companySpecificBanks.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
+                                        <div className="md:col-span-2 space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">پارت / مرحله</label><input className="w-full border rounded-lg p-2 text-sm bg-white dark:bg-gray-800" placeholder="مثال: پیش پرداخت" value={newAgentPayment.part} onChange={e => setNewAgentPayment({...newAgentPayment, part: e.target.value})} /></div>
+                                        <div className="md:col-span-2 space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">توضیحات</label><input className="w-full border rounded-lg p-2 text-sm bg-white dark:bg-gray-800" placeholder="..." value={newAgentPayment.description} onChange={e => setNewAgentPayment({...newAgentPayment, description: e.target.value})} /></div>
+                                        <div className="md:col-span-4 flex justify-end gap-2">{editingAgentPaymentId && (<button type="button" onClick={handleCancelEditAgentPayment} className="bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition-all">انصراف</button>)}<button type="button" onClick={handleAddAgentPayment} className={`${editingAgentPaymentId ? "bg-amber-600 hover:bg-amber-700" : "bg-teal-600 hover:bg-teal-700"} text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all`}>{editingAgentPaymentId ? <><Save size={16}/> بروزرسانی پرداخت</> : <><Plus size={16}/> ثبت پرداخت</>}</button></div>
+                                    </div>
+                                    
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-right">
+                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">معادل تومان</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
+                                            <tbody>
+                                                {agentForm.payments?.map((p) => (
+                                                    <tr key={p.id} className="border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                                        <td className="p-3 font-bold">{p.agentName}</td>
+                                                        <td className="p-3 font-mono font-bold text-gray-900 dark:text-gray-100">{formatCurrency(p.amount)}</td>
+                                                        <td className="p-3 font-mono text-xs text-gray-500">{formatCurrency(Math.round(p.amount / 10))} تومان</td>
+                                                        <td className="p-3">{p.bank || '---'}</td>
+                                                        <td className="p-3 font-mono text-xs">{p.date || '---'}</td>
+                                                        <td className="p-3">{p.part || '---'}</td>
+                                                        <td className="p-3 text-gray-500 text-xs max-w-xs truncate">{p.description || '---'}</td>
+                                                        <td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={() => handleEditAgentPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={() => handleDeleteAgentPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td>
+                                                    </tr>
+                                                ))}
+                                                {(!agentForm.payments || agentForm.payments.length === 0) && (
+                                                    <tr>
+                                                        <td colSpan={8} className="p-6 text-center text-gray-400 text-sm">
+                                                            هنوز ردیف تفکیک‌شده‌ای ثبت نشده است. (مبلغ کل هزینه ترخیص پرونده بر اساس رقم صورت کلی {formatCurrency(Math.round(stageRegisteredCost / 10))} تومان محاسبه می‌شود)
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                                <tr className="bg-teal-50 dark:bg-teal-950/40 font-bold border-t-2 border-teal-200 dark:border-teal-800">
+                                                    <td className="p-3">جمع کل ردیف‌های ثبت‌شده</td>
+                                                    <td className="p-3 font-mono text-teal-700 dark:text-teal-400 text-base">{formatCurrency(currentPaymentsTotal)}</td>
+                                                    <td className="p-3 font-mono text-teal-700 dark:text-teal-400">{formatCurrency(Math.round(currentPaymentsTotal / 10))} تومان</td>
+                                                    <td colSpan={5}></td>
                                                 </tr>
-                                            ))}
-                                            <tr className="bg-teal-50 font-bold border-t-2 border-teal-200">
-                                                <td className="p-3">جمع کل هزینه‌های ترخیص</td>
-                                                <td className="p-3 font-mono text-teal-700">{formatCurrency(agentForm.payments?.reduce((acc, p) => acc + p.amount, 0) || 0)}</td>
-                                                <td colSpan={5}></td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {activeTab === 'final_calculation' && (
                         /* ... Final Calculation Logic ... */

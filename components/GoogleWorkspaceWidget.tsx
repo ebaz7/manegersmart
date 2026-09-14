@@ -6,7 +6,7 @@ import {
 import { 
   signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken,
   fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem,
-  isRunningInIframe, openInStandaloneTab 
+  isRunningInIframe, openInStandaloneTab, removeGoogleTokenForUser 
 } from '../services/googleWorkspaceService';
 import { updateUser } from '../services/authService';
 import { User } from '../types';

@@ -586,6 +586,53 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     } catch {}
   };
 
+  // Drag and Drop reordering state for widgets
+  const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
+  const [dragOverWidgetId, setDragOverWidgetId] = useState<string | null>(null);
+
+  const handleWidgetDragStart = (id: string, e: React.DragEvent) => {
+    if (isWidgetLockedForCurrentUser(id)) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedWidgetId(id);
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleWidgetDragOver = (targetId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedWidgetId && draggedWidgetId !== targetId && dragOverWidgetId !== targetId) {
+      setDragOverWidgetId(targetId);
+    }
+  };
+
+  const handleWidgetDragLeave = (targetId: string) => {
+    if (dragOverWidgetId === targetId) {
+      setDragOverWidgetId(null);
+    }
+  };
+
+  const handleWidgetDrop = (targetId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    const sourceId = draggedWidgetId || e.dataTransfer.getData('text/plain');
+    if (sourceId && sourceId !== targetId) {
+      const fromIdx = widgetsOrder.indexOf(sourceId);
+      const toIdx = widgetsOrder.indexOf(targetId);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        moveWidget(fromIdx, toIdx);
+      }
+    }
+    setDraggedWidgetId(null);
+    setDragOverWidgetId(null);
+  };
+
+  const handleWidgetDragEnd = () => {
+    setDraggedWidgetId(null);
+    setDragOverWidgetId(null);
+  };
+
   const handleToggleClearDesktop = () => {
     setIsClearDesktop(prev => {
       const next = !prev;
@@ -1437,13 +1484,15 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     <div className="space-y-6 pb-20 md:pb-0 animate-fade-in">
       
       {/* ENTERPRISE DASHBOARD CUSTOMIZER TOOLBAR (MINIMAL & UNINTRUSIVE) */}
-      <div className="rounded-2xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white/75 dark:bg-zinc-900/75 backdrop-blur-md shadow-xs px-3 py-1.5 transition-all relative z-[85]">
+      <div className={`rounded-2xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md shadow-xs transition-all relative z-[85] ${
+        isToolbarCollapsed ? 'px-2.5 py-1 max-w-fit ml-auto' : 'px-3 py-1.5 w-full'
+      }`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Left / Title & Indicator */}
           <div 
             onClick={() => setIsToolbarCollapsed(!isToolbarCollapsed)}
-            className="flex items-center gap-2 cursor-pointer select-none group py-0.5"
-            title={isToolbarCollapsed ? 'کلیک جهت مشاهده گزینه‌های پیشرفته نوار ابزار' : 'کلیک جهت کوچک‌سازی نوار'}
+            className="flex items-center gap-1.5 cursor-pointer select-none group py-0.5"
+            title={isToolbarCollapsed ? 'کلیک جهت باز کردن نوار ابزار تنظیمات پیشخوان' : 'کلیک جهت بستن و کوچک‌سازی نوار'}
           >
             <div className="p-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 group-hover:bg-blue-100 transition-colors">
               <Sliders size={13} />
@@ -1453,12 +1502,15 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 چیدمان ابزارک‌ها
               </span>
               <span className="text-[9px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-bold px-1.5 py-0.2 rounded-full">
-                {Object.values(widgetsVisibility).filter(Boolean).length} فعال
+                {Object.values(widgetsVisibility).filter(Boolean).length}
               </span>
             </div>
+            <span className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-[10px] pr-0.5">
+              {isToolbarCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+            </span>
           </div>
 
-          {/* Right / Actions */}
+          {/* Right / Actions - Only fully visible or condensed */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {/* Customization Mode Toggle */}
             <button
@@ -1468,163 +1520,167 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                   ? 'bg-amber-500 text-white shadow-amber-500/20 ring-2 ring-amber-300'
                   : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300'
               }`}
-              title="جابجایی، تغییر اندازه و پنهان‌سازی ابزارک‌ها در صفحه"
+              title="جابجایی، تغییر اندازه و پنهان‌سازی ابزارک‌ها در صفحه با ماوس و کشیدن (Drag & Drop)"
             >
               <Monitor size={12} />
               <span>{isCustomizingWidgets ? 'اتمام چیدمان' : 'تغییر چیدمان'}</span>
             </button>
 
-            {/* Clear Desktop (Windows Style) Toggle */}
-            <button
-              onClick={handleToggleClearDesktop}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                isClearDesktop
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-              }`}
-              title={isClearDesktop ? 'نمایش مجدد تمام ابزارک‌ها' : 'مخفی‌سازی موقت ابزارک‌ها و نمایش تصویر زمینه ویندوز'}
-            >
-              {isClearDesktop ? <Eye size={12} /> : <EyeOff size={12} />}
-              <span className="hidden sm:inline">{isClearDesktop ? 'نمایش ابزارک‌ها' : 'پاکسازی صفحه'}</span>
-            </button>
+            {!isToolbarCollapsed && (
+              <>
+                {/* Clear Desktop (Windows Style) Toggle */}
+                <button
+                  onClick={handleToggleClearDesktop}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                    isClearDesktop
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  }`}
+                  title={isClearDesktop ? 'نمایش مجدد تمام ابزارک‌ها' : 'مخفی‌سازی موقت ابزارک‌ها و نمایش تصویر زمینه ویندوز'}
+                >
+                  {isClearDesktop ? <Eye size={12} /> : <EyeOff size={12} />}
+                  <span className="hidden sm:inline">{isClearDesktop ? 'نمایش ابزارک‌ها' : 'پاکسازی صفحه'}</span>
+                </button>
 
-            {/* Layout Presets Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowPresetsDropdown(!showPresetsDropdown)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 transition-all border border-zinc-200/50 dark:border-zinc-700/50"
-                title="قالب‌ها و الگوهای آماده چیدمان"
-              >
-                <LayoutGrid size={12} className="text-indigo-500" />
-                <span>قالب‌ها</span>
-                <ChevronDown size={11} className={showPresetsDropdown ? 'rotate-180 transition-transform' : 'transition-transform'} />
-              </button>
-              {showPresetsDropdown && (
-                <div className="absolute left-0 mt-1.5 w-64 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-2 z-[100] animate-fade-in text-right space-y-1">
-                  <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border-b border-zinc-100 dark:border-zinc-800">
-                    انتخاب الگوی چیدمان پیشخوان
-                  </div>
-                  
-                  {/* Classic Pre-update Default */}
+                {/* Layout Presets Dropdown */}
+                <div className="relative">
                   <button
-                    type="button"
-                    onClick={() => handleApplyLayoutPreset('classic_default')}
-                    className="w-full p-2 text-right rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all flex items-start gap-2 group"
+                    onClick={() => setShowPresetsDropdown(!showPresetsDropdown)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 transition-all border border-zinc-200/50 dark:border-zinc-700/50"
+                    title="قالب‌ها و الگوهای آماده چیدمان"
                   >
-                    <div className="p-1 rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors mt-0.5">
-                      <LayoutGrid size={12} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان کلاسیک (قبل از آپدیت)</div>
-                      <div className="text-[10px] text-zinc-500">تمام‌عرض ۱۰۰٪ و بدون ستون‌بندی</div>
-                    </div>
+                    <LayoutGrid size={12} className="text-indigo-500" />
+                    <span>قالب‌ها</span>
+                    <ChevronDown size={11} className={showPresetsDropdown ? 'rotate-180 transition-transform' : 'transition-transform'} />
                   </button>
+                  {showPresetsDropdown && (
+                    <div className="absolute left-0 mt-1.5 w-64 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-2 z-[100] animate-fade-in text-right space-y-1">
+                      <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border-b border-zinc-100 dark:border-zinc-800">
+                        انتخاب الگوی چیدمان پیشخوان
+                      </div>
+                      
+                      {/* Classic Pre-update Default */}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyLayoutPreset('classic_default')}
+                        className="w-full p-2 text-right rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all flex items-start gap-2 group"
+                      >
+                        <div className="p-1 rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors mt-0.5">
+                          <LayoutGrid size={12} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان کلاسیک (قبل از آپدیت)</div>
+                          <div className="text-[10px] text-zinc-500">تمام‌عرض ۱۰۰٪ و بدون ستون‌بندی</div>
+                        </div>
+                      </button>
 
-                  {/* Modern Responsive Multi-column */}
-                  <button
-                    type="button"
-                    onClick={() => handleApplyLayoutPreset('modern_responsive')}
-                    className="w-full p-2 text-right rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-all flex items-start gap-2 group"
-                  >
-                    <div className="p-1 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors mt-0.5">
-                      <Sliders size={12} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان مدرن چندستونه</div>
-                      <div className="text-[10px] text-zinc-500">تطبیقی هوشمند (۳ و ۲ ستونه)</div>
-                    </div>
-                  </button>
+                      {/* Modern Responsive Multi-column */}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyLayoutPreset('modern_responsive')}
+                        className="w-full p-2 text-right rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-all flex items-start gap-2 group"
+                      >
+                        <div className="p-1 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors mt-0.5">
+                          <Sliders size={12} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان مدرن چندستونه</div>
+                          <div className="text-[10px] text-zinc-500">تطبیقی هوشمند (۳ و ۲ ستونه)</div>
+                        </div>
+                      </button>
 
-                  {/* Company Default Layout */}
-                  <button
-                    type="button"
-                    onClick={() => handleApplyLayoutPreset('company_default')}
-                    className="w-full p-2 text-right rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-all flex items-start gap-2 group"
-                  >
-                    <div className="p-1 rounded-lg bg-amber-100 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-colors mt-0.5">
-                      <ShieldCheck size={12} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان سازمانی مدیر</div>
-                      <div className="text-[10px] text-zinc-500">الگوی استاندارد تعریف‌شده شرکت</div>
-                    </div>
-                  </button>
+                      {/* Company Default Layout */}
+                      <button
+                        type="button"
+                        onClick={() => handleApplyLayoutPreset('company_default')}
+                        className="w-full p-2 text-right rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-all flex items-start gap-2 group"
+                      >
+                        <div className="p-1 rounded-lg bg-amber-100 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-colors mt-0.5">
+                          <ShieldCheck size={12} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان سازمانی مدیر</div>
+                          <div className="text-[10px] text-zinc-500">الگوی استاندارد تعریف‌شده شرکت</div>
+                        </div>
+                      </button>
 
-                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-1 mt-1">
-                    <button
-                      type="button"
-                      onClick={handleResetWidgets}
-                      className="w-full p-1.5 text-right rounded-xl hover:bg-red-50 text-red-600 transition-all flex items-center justify-between text-[11px] font-bold"
-                    >
-                      <span>بازنشانی کامل پیشخوان</span>
-                      <RotateCw size={11} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Admin Role Locks Modal Button */}
-            {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER) && (
-              <button
-                onClick={() => setShowAdminLocksModal(true)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 transition-all border border-amber-200/60 dark:border-amber-800/60"
-                title="تعیین ابزارک‌های قفل‌شده برای هر نقش سازمانی"
-              >
-                <Lock size={12} className="text-amber-600 dark:text-amber-400" />
-                <span>قفل ابزارک‌ها</span>
-              </button>
-            )}
-
-            {/* Add Widget Dropdown Button */}
-            <div className="relative">
-              <button
-                onClick={() => setShowAddWidgetsDropdown(!showAddWidgetsDropdown)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-xs"
-                title="نمایش یا پنهان‌سازی ابزارک‌های خاص"
-              >
-                <Plus size={12} />
-                <span>ابزارک‌ها</span>
-              </button>
-              {showAddWidgetsDropdown && (
-                <div className="absolute left-0 mt-1.5 w-60 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-2 z-[100] animate-fade-in text-right">
-                  <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">لیست ابزارک‌های فعال</div>
-                  <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-0.5">
-                    {Object.entries(widgetNames).map(([id, label]) => {
-                      const isVisible = widgetsVisibility[id];
-                      const isLocked = isWidgetLockedForCurrentUser(id);
-                      return (
+                      <div className="border-t border-zinc-100 dark:border-zinc-800 pt-1 mt-1">
                         <button
-                          key={id}
-                          disabled={isLocked}
-                          onClick={() => toggleWidgetVisibility(id)}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                            isLocked 
-                              ? 'opacity-50 cursor-not-allowed bg-zinc-50 dark:bg-zinc-900' 
-                              : 'hover:bg-blue-50/60 hover:text-blue-600 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200'
-                          }`}
+                          type="button"
+                          onClick={handleResetWidgets}
+                          className="w-full p-1.5 text-right rounded-xl hover:bg-red-50 text-red-600 transition-all flex items-center justify-between text-[11px] font-bold"
                         >
-                          <span className="flex items-center gap-1.5 truncate">
-                            {isLocked && <Lock size={10} className="text-amber-500 shrink-0" />}
-                            <span className="truncate">{label}</span>
-                          </span>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${isVisible ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-700'}`} />
+                          <span>بازنشانی کامل پیشخوان</span>
+                          <RotateCw size={11} />
                         </button>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* Quick Reset Button */}
-            <button
-              onClick={handleResetWidgets}
-              className="p-1 text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all"
-              title="بازنشانی چیدمان به پیش‌فرض"
-            >
-              <RotateCw size={12} />
-            </button>
+                {/* Admin Role Locks Modal Button */}
+                {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER) && (
+                  <button
+                    onClick={() => setShowAdminLocksModal(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 transition-all border border-amber-200/60 dark:border-amber-800/60"
+                    title="تعیین ابزارک‌های قفل‌شده برای هر نقش سازمانی"
+                  >
+                    <Lock size={12} className="text-amber-600 dark:text-amber-400" />
+                    <span>قفل ابزارک‌ها</span>
+                  </button>
+                )}
+
+                {/* Add Widget Dropdown Button */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowAddWidgetsDropdown(!showAddWidgetsDropdown)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-xs"
+                    title="نمایش یا پنهان‌سازی ابزارک‌های خاص"
+                  >
+                    <Plus size={12} />
+                    <span>ابزارک‌ها</span>
+                  </button>
+                  {showAddWidgetsDropdown && (
+                    <div className="absolute left-0 mt-1.5 w-60 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-2 z-[100] animate-fade-in text-right">
+                      <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">لیست ابزارک‌های فعال</div>
+                      <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-0.5">
+                        {Object.entries(widgetNames).map(([id, label]) => {
+                          const isVisible = widgetsVisibility[id];
+                          const isLocked = isWidgetLockedForCurrentUser(id);
+                          return (
+                            <button
+                              key={id}
+                              disabled={isLocked}
+                              onClick={() => toggleWidgetVisibility(id)}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                isLocked 
+                                  ? 'opacity-50 cursor-not-allowed bg-zinc-50 dark:bg-zinc-900' 
+                                  : 'hover:bg-blue-50/60 hover:text-blue-600 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5 truncate">
+                                {isLocked && <Lock size={10} className="text-amber-500 shrink-0" />}
+                                <span className="truncate">{label}</span>
+                              </span>
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${isVisible ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-700'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Reset Button */}
+                <button
+                  onClick={handleResetWidgets}
+                  className="p-1 text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all"
+                  title="بازنشانی چیدمان به پیش‌فرض"
+                >
+                  <RotateCw size={12} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1650,6 +1706,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('warehouse_alert')}
             isCollapsed={!!collapsedWidgets.warehouse_alert}
             onToggleCollapse={() => handleToggleCollapseWidget('warehouse_alert')}
+            onDragStart={(e) => handleWidgetDragStart('warehouse_alert', e)}
+            onDragOver={(e) => handleWidgetDragOver('warehouse_alert', e)}
+            onDragLeave={() => handleWidgetDragLeave('warehouse_alert')}
+            onDrop={(e) => handleWidgetDrop('warehouse_alert', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'warehouse_alert'}
+            isDropTarget={dragOverWidgetId === 'warehouse_alert'}
           >
             <div 
                 onClick={() => onNavigate && onNavigate('sayan')}
@@ -1709,6 +1772,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('date_card')}
             isCollapsed={!!collapsedWidgets.date_card}
             onToggleCollapse={() => handleToggleCollapseWidget('date_card')}
+            onDragStart={(e) => handleWidgetDragStart('date_card', e)}
+            onDragOver={(e) => handleWidgetDragOver('date_card', e)}
+            onDragLeave={() => handleWidgetDragLeave('date_card')}
+            onDrop={(e) => handleWidgetDrop('date_card', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'date_card'}
+            isDropTarget={dragOverWidgetId === 'date_card'}
           >
             <div 
                 onClick={() => setShowGoogleWidget(prev => !prev)}
@@ -1760,6 +1830,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('poetry_card')}
             isCollapsed={!!collapsedWidgets.poetry_card}
             onToggleCollapse={() => handleToggleCollapseWidget('poetry_card')}
+            onDragStart={(e) => handleWidgetDragStart('poetry_card', e)}
+            onDragOver={(e) => handleWidgetDragOver('poetry_card', e)}
+            onDragLeave={() => handleWidgetDragLeave('poetry_card')}
+            onDrop={(e) => handleWidgetDrop('poetry_card', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'poetry_card'}
+            isDropTarget={dragOverWidgetId === 'poetry_card'}
           >
             <div className="glass-panel rounded-2xl px-3.5 py-3 border border-rose-100 dark:border-rose-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-rose-300 dark:hover:border-rose-800/60 transition-colors">
                 <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-rose-400 to-indigo-500"></div>
@@ -1856,6 +1933,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('motivation_card')}
             isCollapsed={!!collapsedWidgets.motivation_card}
             onToggleCollapse={() => handleToggleCollapseWidget('motivation_card')}
+            onDragStart={(e) => handleWidgetDragStart('motivation_card', e)}
+            onDragOver={(e) => handleWidgetDragOver('motivation_card', e)}
+            onDragLeave={() => handleWidgetDragLeave('motivation_card')}
+            onDrop={(e) => handleWidgetDrop('motivation_card', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'motivation_card'}
+            isDropTarget={dragOverWidgetId === 'motivation_card'}
           >
             <div className="glass-panel rounded-2xl px-3.5 py-3 border border-amber-100 dark:border-amber-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-amber-300 dark:hover:border-amber-800/60 transition-colors">
                 <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 to-emerald-500"></div>
@@ -1946,6 +2030,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('google_widget')}
             isCollapsed={!!collapsedWidgets.google_widget}
             onToggleCollapse={() => handleToggleCollapseWidget('google_widget')}
+            onDragStart={(e) => handleWidgetDragStart('google_widget', e)}
+            onDragOver={(e) => handleWidgetDragOver('google_widget', e)}
+            onDragLeave={() => handleWidgetDragLeave('google_widget')}
+            onDrop={(e) => handleWidgetDrop('google_widget', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'google_widget'}
+            isDropTarget={dragOverWidgetId === 'google_widget'}
           >
             <GoogleWorkspaceWidget currentUser={currentUser} />
           </ResizableWidget>
@@ -1970,6 +2061,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('announcements')}
             isCollapsed={!!collapsedWidgets.announcements}
             onToggleCollapse={() => handleToggleCollapseWidget('announcements')}
+            onDragStart={(e) => handleWidgetDragStart('announcements', e)}
+            onDragOver={(e) => handleWidgetDragOver('announcements', e)}
+            onDragLeave={() => handleWidgetDragLeave('announcements')}
+            onDrop={(e) => handleWidgetDrop('announcements', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'announcements'}
+            isDropTarget={dragOverWidgetId === 'announcements'}
           >
                 <div className={`rounded-2xl border border-blue-100 shadow-sm relative transition-all h-full ${visibleAnnouncements.length === 0 ? 'bg-transparent p-2 border-dashed' : 'bg-blue-50/50 p-6'}`}>
                     
@@ -2058,6 +2156,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('task_groups')}
             isCollapsed={!!collapsedWidgets.task_groups}
             onToggleCollapse={() => handleToggleCollapseWidget('task_groups')}
+            onDragStart={(e) => handleWidgetDragStart('task_groups', e)}
+            onDragOver={(e) => handleWidgetDragOver('task_groups', e)}
+            onDragLeave={() => handleWidgetDragLeave('task_groups')}
+            onDrop={(e) => handleWidgetDrop('task_groups', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'task_groups'}
+            isDropTarget={dragOverWidgetId === 'task_groups'}
           >
                 {!showTasksInDashboard ? (
                     <div className="flex justify-end my-3">
@@ -2209,6 +2314,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('notes')}
             isCollapsed={!!collapsedWidgets.notes}
             onToggleCollapse={() => handleToggleCollapseWidget('notes')}
+            onDragStart={(e) => handleWidgetDragStart('notes', e)}
+            onDragOver={(e) => handleWidgetDragOver('notes', e)}
+            onDragLeave={() => handleWidgetDragLeave('notes')}
+            onDrop={(e) => handleWidgetDrop('notes', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'notes'}
+            isDropTarget={dragOverWidgetId === 'notes'}
           >
                 <div className="bg-yellow-50/50 rounded-2xl p-6 border border-yellow-100 shadow-sm h-full">
                     <div className="flex justify-between items-center mb-4">
@@ -2280,6 +2392,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('quick_tiles')}
             isCollapsed={!!collapsedWidgets.quick_tiles}
             onToggleCollapse={() => handleToggleCollapseWidget('quick_tiles')}
+            onDragStart={(e) => handleWidgetDragStart('quick_tiles', e)}
+            onDragOver={(e) => handleWidgetDragOver('quick_tiles', e)}
+            onDragLeave={() => handleWidgetDragLeave('quick_tiles')}
+            onDrop={(e) => handleWidgetDrop('quick_tiles', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'quick_tiles'}
+            isDropTarget={dragOverWidgetId === 'quick_tiles'}
           >
                 <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative h-full">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-4">
@@ -2497,6 +2616,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('cartable')}
             isCollapsed={!!collapsedWidgets.cartable}
             onToggleCollapse={() => handleToggleCollapseWidget('cartable')}
+            onDragStart={(e) => handleWidgetDragStart('cartable', e)}
+            onDragOver={(e) => handleWidgetDragOver('cartable', e)}
+            onDragLeave={() => handleWidgetDragLeave('cartable')}
+            onDrop={(e) => handleWidgetDrop('cartable', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'cartable'}
+            isDropTarget={dragOverWidgetId === 'cartable'}
           >
             <div className="h-full">
                 <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-200 mb-4 flex items-center gap-2">
@@ -2662,6 +2788,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('payment_stats')}
             isCollapsed={!!collapsedWidgets.payment_stats}
             onToggleCollapse={() => handleToggleCollapseWidget('payment_stats')}
+            onDragStart={(e) => handleWidgetDragStart('payment_stats', e)}
+            onDragOver={(e) => handleWidgetDragOver('payment_stats', e)}
+            onDragLeave={() => handleWidgetDragLeave('payment_stats')}
+            onDrop={(e) => handleWidgetDrop('payment_stats', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'payment_stats'}
+            isDropTarget={dragOverWidgetId === 'payment_stats'}
           >
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 h-full">
                     {statusWidgets.map((widget) => (
@@ -2698,6 +2831,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('payment_chart')}
             isCollapsed={!!collapsedWidgets.payment_chart}
             onToggleCollapse={() => handleToggleCollapseWidget('payment_chart')}
+            onDragStart={(e) => handleWidgetDragStart('payment_chart', e)}
+            onDragOver={(e) => handleWidgetDragOver('payment_chart', e)}
+            onDragLeave={() => handleWidgetDragLeave('payment_chart')}
+            onDrop={(e) => handleWidgetDrop('payment_chart', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'payment_chart'}
+            isDropTarget={dragOverWidgetId === 'payment_chart'}
           >
                 <div className="grid grid-cols-1 gap-6 h-full">
                     <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-sm flex flex-col h-full">
@@ -2737,6 +2877,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                     isLocked={isWidgetLockedForCurrentUser('warehouse_status')}
                     isCollapsed={!!collapsedWidgets.warehouse_status}
                     onToggleCollapse={() => handleToggleCollapseWidget('warehouse_status')}
+                    onDragStart={(e) => handleWidgetDragStart('warehouse_status', e)}
+                    onDragOver={(e) => handleWidgetDragOver('warehouse_status', e)}
+                    onDragLeave={() => handleWidgetDragLeave('warehouse_status')}
+                    onDrop={(e) => handleWidgetDrop('warehouse_status', e)}
+                    onDragEnd={handleWidgetDragEnd}
+                    isDragging={draggedWidgetId === 'warehouse_status'}
+                    isDropTarget={dragOverWidgetId === 'warehouse_status'}
                   >
                         <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-md flex flex-col relative overflow-hidden h-full">
                         {/* Sub-background decoration to emphasize managerial feel */}
@@ -2885,6 +3032,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isLocked={isWidgetLockedForCurrentUser('recent_activities')}
             isCollapsed={!!collapsedWidgets.recent_activities}
             onToggleCollapse={() => handleToggleCollapseWidget('recent_activities')}
+            onDragStart={(e) => handleWidgetDragStart('recent_activities', e)}
+            onDragOver={(e) => handleWidgetDragOver('recent_activities', e)}
+            onDragLeave={() => handleWidgetDragLeave('recent_activities')}
+            onDrop={(e) => handleWidgetDrop('recent_activities', e)}
+            onDragEnd={handleWidgetDragEnd}
+            isDragging={draggedWidgetId === 'recent_activities'}
+            isDropTarget={dragOverWidgetId === 'recent_activities'}
           >
                 <div className="glass-panel rounded-2xl border border-gray-200 shadow-sm overflow-hidden h-full">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200/50">
@@ -2927,173 +3081,6 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 </div>
           </ResizableWidget>
         )}
-
-        {/* QUICK ACCESS SQUARE TILES GRID */}
-        <div className="glass-panel p-4 md:p-5 rounded-3xl border border-blue-100/80 shadow-sm bg-gradient-to-br from-white via-blue-50/20 to-indigo-50/20 dark:from-gray-800 dark:to-gray-900 transition-all duration-300">
-            <div className="flex items-center justify-between mb-2">
-                <div 
-                    onClick={toggleQuickTiles}
-                    className="flex items-center gap-2 cursor-pointer select-none group"
-                >
-                    <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping"></div>
-                    <h3 className="font-black text-sm md:text-base text-gray-800 dark:text-gray-100 group-hover:text-blue-600 transition-colors flex items-center gap-1.5">
-                        کاشی‌های دسترسی سریع (Windows Tiles)
-                    </h3>
-                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded-full">
-                        {visibleTiles.length} از {quickTiles.length} میانبر
-                    </span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setIsCustomizingTiles(prev => !prev)}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all active:scale-95 ${
-                            isCustomizingTiles 
-                                ? 'bg-amber-500 text-white shadow-sm' 
-                                : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'
-                        }`}
-                        title="شخصی‌سازی، جابجایی و حذف/اضافه میانبرها به سبک ویندوز"
-                    >
-                        <Settings2 size={14} className={isCustomizingTiles ? 'animate-spin' : ''} />
-                        <span>{isCustomizingTiles ? 'اتمام چینش' : 'شخصی‌سازی'}</span>
-                    </button>
-                    <button
-                        onClick={toggleQuickTiles}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs font-bold transition-all active:scale-95"
-                        title={showQuickTiles ? 'بستن منو و آزادسازی فضای صفحه' : 'باز کردن منوی دسترسی سریع'}
-                    >
-                        <span>{showQuickTiles ? 'بستن' : 'نمایش'}</span>
-                        {showQuickTiles ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
-                </div>
-            </div>
-
-            {/* Customization instruction banner */}
-            {isCustomizingTiles && (
-                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 animate-fade-in">
-                    <div className="flex items-center gap-2">
-                        <GripVertical size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                        <span>می‌توانید با دکمه‌های چپ/راست جایگاه هر کاشی را تغییر دهید یا با کلیک روی چشم آن را پنهان/آشکار سازید.</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        <button
-                            type="button"
-                            onClick={toggleGoogleWidgetVisibility}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
-                                showGoogleWidget 
-                                    ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' 
-                                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50'
-                            }`}
-                            title="نمایش یا پنهان‌سازی ویجت تقویم و کارهای گوگل"
-                        >
-                            {showGoogleWidget ? <Eye size={13} /> : <EyeOff size={13} />}
-                            <span>ویجت تقویم گوگل: {showGoogleWidget ? 'فعال' : 'پنهان'}</span>
-                        </button>
-                        <button
-                            onClick={() => {
-                                saveTileOrder([]);
-                                setHiddenTileIds([]);
-                                setShowGoogleWidget(true);
-                                try {
-                                    localStorage.removeItem('dashboard_show_google_widget');
-                                } catch {}
-                            }}
-                            className="text-[11px] font-bold text-amber-700 dark:text-amber-300 underline hover:text-amber-900 px-2 py-0.5"
-                        >
-                            بازنشانی پیش‌فرض
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {showQuickTiles && (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-9 gap-2.5 md:gap-3 mt-3 animate-fade-in">
-                    {(isCustomizingTiles ? displayTiles : visibleTiles).map((tile, idx) => {
-                        const isHidden = hiddenTileIds.includes(tile.id);
-                        return (
-                            <div
-                                key={tile.id}
-                                className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 rounded-2xl bg-white dark:bg-gray-800/90 border shadow-sm transition-all aspect-square ${
-                                    isHidden 
-                                        ? 'opacity-40 border-dashed border-gray-300 dark:border-gray-600' 
-                                        : 'border-gray-100 dark:border-gray-700/60 hover:shadow-lg hover:border-blue-300'
-                                }`}
-                            >
-                                {/* Pending Count Badge */}
-                                {!isCustomizingTiles && tile.count !== undefined && tile.count > 0 && (
-                                    <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-bounce z-20">
-                                        {tile.count}
-                                    </span>
-                                )}
-
-                                {/* Top Bar in Customization Mode */}
-                                {isCustomizingTiles ? (
-                                    <div className="w-full flex items-center justify-between z-20">
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                toggleTileVisibility(tile.id);
-                                            }}
-                                            className={`p-1 rounded-md transition-colors ${isHidden ? 'bg-gray-200 text-gray-600' : 'bg-blue-100 text-blue-700'}`}
-                                            title={isHidden ? 'نمایش کاشی' : 'پنهان کردن کاشی'}
-                                        >
-                                            {isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
-                                        </button>
-                                        <div className="flex items-center gap-0.5">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    moveTile(idx, idx - 1);
-                                                }}
-                                                disabled={idx === 0}
-                                                className="p-1 rounded hover:bg-gray-100 disabled:opacity-20 text-gray-600"
-                                                title="انتقال به راست"
-                                            >
-                                                <ChevronRight size={12} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    moveTile(idx, idx + 1);
-                                                }}
-                                                disabled={idx === displayTiles.length - 1}
-                                                className="p-1 rounded hover:bg-gray-100 disabled:opacity-20 text-gray-600"
-                                                title="انتقال به چپ"
-                                            >
-                                                <ChevronLeft size={12} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    /* Top Category Badge / Pill */
-                                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800/40 truncate max-w-full">
-                                        {tile.badge}
-                                    </span>
-                                )}
-
-                                {/* Vibrant Gradient Icon Box */}
-                                <div 
-                                    onClick={() => !isCustomizingTiles && tile.onClick && tile.onClick()}
-                                    className={`w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br ${tile.gradient} text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform my-1 cursor-pointer`}
-                                >
-                                    <tile.icon size={20} className="sm:w-5 sm:h-5" />
-                                </div>
-
-                                {/* Title */}
-                                <span 
-                                    onClick={() => !isCustomizingTiles && tile.onClick && tile.onClick()}
-                                    className="text-[10px] sm:text-[11px] font-black text-gray-800 dark:text-gray-200 text-center leading-tight line-clamp-1 cursor-pointer"
-                                >
-                                    {tile.title}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
       </div>
     )}
 

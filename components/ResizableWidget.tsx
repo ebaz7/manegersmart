@@ -1,11 +1,11 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { 
   ChevronUp, ChevronDown, X, Maximize2, Minimize2, RotateCcw, 
-  ArrowLeftRight, Lock, Eye, EyeOff, ChevronsUpDown
+  ArrowLeftRight, Lock, Eye, EyeOff, ChevronsUpDown, GripVertical, Move
 } from 'lucide-react';
 
 export interface WidgetSize {
-  widthPercent?: number; // 25 to 100
+  widthPercent?: number; // 15 to 100
   minHeight?: number;    // in pixels
 }
 
@@ -28,6 +28,14 @@ interface ResizableWidgetProps {
   isLocked?: boolean;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  // Drag and drop props
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
+  isDragging?: boolean;
+  isDropTarget?: boolean;
 }
 
 export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
@@ -49,6 +57,13 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
   isLocked = false,
   isCollapsed = false,
   onToggleCollapse,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  isDragging = false,
+  isDropTarget = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -103,23 +118,24 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
       // and dragging to the RIGHT decreases width
       if (mode === 'both' || mode === 'width') {
         const adjustedDeltaX = -deltaX; // In RTL, left is positive growth
-        const newWidthPx = Math.max(260, Math.min(parentWidthPx, initialWidthPx + adjustedDeltaX));
+        const newWidthPx = Math.max(160, Math.min(parentWidthPx, initialWidthPx + adjustedDeltaX));
         let rawPercent = Math.round((newWidthPx / parentWidthPx) * 100);
 
-        // Snap to common clean steps if close (25%, 33%, 50%, 66%, 75%, 100%)
-        if (Math.abs(rawPercent - 25) < 3) rawPercent = 25;
-        else if (Math.abs(rawPercent - 33.33) < 3.5) rawPercent = 33.33;
+        // Snap to common clean steps if close (20%, 25%, 33%, 50%, 66%, 75%, 100%)
+        if (Math.abs(rawPercent - 20) < 2.5) rawPercent = 20;
+        else if (Math.abs(rawPercent - 25) < 2.5) rawPercent = 25;
+        else if (Math.abs(rawPercent - 33.33) < 3) rawPercent = 33.33;
         else if (Math.abs(rawPercent - 50) < 3.5) rawPercent = 50;
         else if (Math.abs(rawPercent - 66.66) < 3.5) rawPercent = 66.66;
         else if (Math.abs(rawPercent - 75) < 3.5) rawPercent = 75;
         else if (rawPercent > 92) rawPercent = 100;
-        else if (rawPercent < 25) rawPercent = 25;
+        else if (rawPercent < 16) rawPercent = 16.66;
 
-        newWidthPercent = Math.min(100, Math.max(25, rawPercent));
+        newWidthPercent = Math.min(100, Math.max(15, rawPercent));
       }
 
       if (mode === 'both' || mode === 'height') {
-        newHeightPx = Math.max(90, Math.min(1200, Math.round(initialHeightPx + deltaY)));
+        newHeightPx = Math.max(60, Math.min(1200, Math.round(initialHeightPx + deltaY)));
       }
 
       lastCalculatedSize = {
@@ -147,7 +163,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
   }, [currentWidthPercent, currentMinHeight, onSizeChange]);
 
-  // Clean responsive width style
+  // Clean responsive width style allowing smaller widgets to sit side by side
   const getResponsiveStyle = (): React.CSSProperties => {
     const style: React.CSSProperties = {
       order: orderIndex,
@@ -155,9 +171,9 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
 
     // On desktop, apply width percentage and flex-basis
     if (currentWidthPercent && currentWidthPercent < 100) {
-      style.flex = `0 0 calc(${currentWidthPercent}% - 0.9rem)`;
-      style.maxWidth = `calc(${currentWidthPercent}% - 0.9rem)`;
-      style.minWidth = '280px';
+      style.flex = `0 0 calc(${currentWidthPercent}% - 0.75rem)`;
+      style.maxWidth = `calc(${currentWidthPercent}% - 0.75rem)`;
+      style.minWidth = '160px';
     } else {
       style.flex = '1 1 100%';
       style.width = '100%';
@@ -179,8 +195,15 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
       ref={containerRef}
       id={`widget-${id}`}
       style={getResponsiveStyle()}
-      className={`relative group transition-[flex,width,max-width] duration-150 ease-out flex flex-col ${
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`relative group transition-[flex,width,max-width,opacity,transform] duration-200 ease-out flex flex-col ${
         isResizing ? 'ring-2 ring-blue-500 shadow-xl z-30' : ''
+      } ${
+        isDragging ? 'opacity-35 scale-[0.98] border-2 border-dashed border-blue-400 dark:border-blue-600 rounded-3xl' : ''
+      } ${
+        isDropTarget ? 'ring-2 ring-blue-500/80 ring-offset-2 ring-offset-transparent shadow-xl rounded-3xl scale-[1.01]' : ''
       } ${className}`}
     >
       {/* Real-time floating dimension badge while dragging with mouse */}
@@ -197,13 +220,38 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
         </div>
       )}
 
+      {/* Drop Target Guide Indicator */}
+      {isDropTarget && !isDragging && (
+        <div className="absolute inset-0 z-40 bg-blue-500/10 dark:bg-blue-500/20 border-2 border-blue-500 rounded-3xl flex items-center justify-center pointer-events-none backdrop-blur-[1px] animate-pulse">
+          <div className="bg-blue-600 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-md flex items-center gap-1.5">
+            <Move size={14} />
+            <span>رها کنید تا در این جایگاه قرار گیرد</span>
+          </div>
+        </div>
+      )}
+
       {/* Top Customizer Bar (visible in customize mode or on widget hover) */}
       <div className={`transition-all duration-200 ${
         isCustomizing 
           ? 'opacity-100 mb-1.5' 
           : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto absolute -top-3.5 right-3 z-40'
       }`}>
-        <div className="flex items-center gap-1 bg-zinc-900/90 hover:bg-zinc-900 text-white rounded-xl px-2 py-1 shadow-lg border border-zinc-700/60 backdrop-blur-md text-[10px]">
+        <div className="flex items-center gap-1 bg-zinc-900/95 hover:bg-zinc-900 text-white rounded-xl px-2 py-1 shadow-lg border border-zinc-700/70 backdrop-blur-md text-[10px]">
+          {/* Drag Grip Handle */}
+          <div
+            draggable={!isLocked}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            className={`p-1 rounded flex items-center justify-center transition-all ${
+              isLocked 
+                ? 'opacity-40 cursor-not-allowed text-zinc-500' 
+                : 'cursor-grab active:cursor-grabbing hover:bg-zinc-800 text-blue-400 hover:text-white'
+            }`}
+            title={isLocked ? 'ابزارک قفل شده است' : 'با ماوس بکشید تا جایگاه ابزارک را بالا/پایین یا کنار هم تغییر دهید'}
+          >
+            <GripVertical size={13} />
+          </div>
+
           {/* Lock indicator */}
           {isLocked && (
             <span className="flex items-center gap-1 text-amber-400 bg-amber-950/60 px-1.5 py-0.5 rounded text-[9px] font-bold border border-amber-500/30" title="قفل‌شده توسط مدیر سیستم">
@@ -212,10 +260,30 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
             </span>
           )}
 
-          <span className="font-bold text-zinc-300 ml-1 hidden sm:inline max-w-[110px] truncate">{title}</span>
+          <span className="font-bold text-zinc-300 ml-1 hidden sm:inline max-w-[100px] truncate">{title}</span>
 
-          {/* Quick preset width buttons */}
+          {/* Quick preset width buttons - including compact 20% and 25% */}
           <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 mr-0.5">
+            <button
+              type="button"
+              onClick={() => onSizeChange({ widthPercent: 20, minHeight: currentMinHeight })}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                Math.round(currentWidthPercent) === 20 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
+              }`}
+              title="یک‌پنجم (۲۰٪) - بسیار کوچک"
+            >
+              ۲۰٪
+            </button>
+            <button
+              type="button"
+              onClick={() => onSizeChange({ widthPercent: 25, minHeight: currentMinHeight })}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                Math.round(currentWidthPercent) === 25 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
+              }`}
+              title="یک‌چهارم (۲۵٪)"
+            >
+              ۲۵٪
+            </button>
             <button
               type="button"
               onClick={() => onSizeChange({ widthPercent: 33.33, minHeight: currentMinHeight })}
@@ -238,16 +306,6 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onSizeChange({ widthPercent: 75, minHeight: currentMinHeight })}
-              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
-                Math.round(currentWidthPercent) === 75 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
-              }`}
-              title="سه‌چهارم (۷۵٪)"
-            >
-              ۷۵٪
-            </button>
-            <button
-              type="button"
               onClick={() => onSizeChange({ widthPercent: 100, minHeight: currentMinHeight })}
               className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
                 Math.round(currentWidthPercent) === 100 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
@@ -261,9 +319,9 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
           {/* Maximize / Minimize toggle button */}
           <button
             type="button"
-            onClick={() => onSizeChange({ widthPercent: isFullWidth ? (defaultWidthPercent < 100 ? defaultWidthPercent : 50) : 100, minHeight: currentMinHeight })}
+            onClick={() => onSizeChange({ widthPercent: isFullWidth ? (defaultWidthPercent < 100 ? defaultWidthPercent : 33.33) : 100, minHeight: currentMinHeight })}
             className="p-1 hover:bg-zinc-800 rounded text-zinc-300 hover:text-white transition-all cursor-pointer flex items-center justify-center"
-            title={isFullWidth ? 'کوچک کردن (۵۰٪)' : 'بزرگ کردن کامل (۱۰۰٪)'}
+            title={isFullWidth ? 'کوچک کردن' : 'بزرگ کردن کامل (۱۰۰٪)'}
           >
             {isFullWidth ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
           </button>
@@ -411,3 +469,4 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
     </div>
   );
 };
+

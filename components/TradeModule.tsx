@@ -4686,13 +4686,12 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-right">
-                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">معادل تومان</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
+                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
                                             <tbody>
                                                 {agentForm.payments?.map((p) => (
                                                     <tr key={p.id} className="border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                                         <td className="p-3 font-bold">{p.agentName}</td>
                                                         <td className="p-3 font-mono font-bold text-gray-900 dark:text-gray-100">{formatCurrency(p.amount)}</td>
-                                                        <td className="p-3 font-mono text-xs text-gray-500">{formatCurrency(Math.round(p.amount / 10))} تومان</td>
                                                         <td className="p-3">{p.bank || '---'}</td>
                                                         <td className="p-3 font-mono text-xs">{p.date || '---'}</td>
                                                         <td className="p-3">{p.part || '---'}</td>
@@ -4702,15 +4701,14 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                 ))}
                                                 {(!agentForm.payments || agentForm.payments.length === 0) && (
                                                     <tr>
-                                                        <td colSpan={8} className="p-6 text-center text-gray-400 text-sm">
-                                                            هنوز ردیف تفکیک‌شده‌ای ثبت نشده است. (مبلغ کل هزینه ترخیص پرونده بر اساس رقم صورت کلی {formatCurrency(Math.round(stageRegisteredCost / 10))} تومان محاسبه می‌شود)
+                                                        <td colSpan={7} className="p-6 text-center text-gray-400 text-sm">
+                                                            هنوز ردیف تفکیک‌شده‌ای ثبت نشده است. (مبلغ کل هزینه ترخیص پرونده بر اساس رقم صورت کلی {formatCurrency(stageRegisteredCost)} ریال محاسبه می‌شود)
                                                         </td>
                                                     </tr>
                                                 )}
                                                 <tr className="bg-teal-50 dark:bg-teal-950/40 font-bold border-t-2 border-teal-200 dark:border-teal-800">
                                                     <td className="p-3">جمع کل ردیف‌های ثبت‌شده</td>
                                                     <td className="p-3 font-mono text-teal-700 dark:text-teal-400 text-base">{formatCurrency(currentPaymentsTotal)}</td>
-                                                    <td className="p-3 font-mono text-teal-700 dark:text-teal-400">{formatCurrency(Math.round(currentPaymentsTotal / 10))} تومان</td>
                                                     <td colSpan={5}></td>
                                                 </tr>
                                             </tbody>

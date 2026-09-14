@@ -148,6 +148,16 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         }
     }, [canRegisterReceipt, activeSubTab]);
 
+    useEffect(() => {
+        const handleSubTabChange = (e: any) => {
+            if (e.detail === 'ARCHIVE' || e.detail === 'CARTABLE' || e.detail === 'NEW_RECEIPT') {
+                setActiveSubTab(e.detail);
+            }
+        };
+        window.addEventListener('CHEQUE_RECEIPTS_SUB_TAB_CHANGE', handleSubTabChange);
+        return () => window.removeEventListener('CHEQUE_RECEIPTS_SUB_TAB_CHANGE', handleSubTabChange);
+    }, []);
+
     // Form States
     const [personQuery, setPersonQuery] = useState('');
     const [selectedPerson, setSelectedPerson] = useState<SayanPerson | null>(null);

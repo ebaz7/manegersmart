@@ -2737,12 +2737,15 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         <div 
                             onClick={() => {
                                 if (onNavigate) {
-                                    onNavigate('sayan');
+                                    onNavigate('sayan-operations');
                                 } else {
-                                    window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'sayan_registrations' }));
+                                    window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'sayan-operations' }));
                                 }
                                 setTimeout(() => {
                                     window.dispatchEvent(new CustomEvent('SAYAN_SUB_TAB_CHANGE', { detail: 'CHEQUE_RECEIPTS' }));
+                                    setTimeout(() => {
+                                        window.dispatchEvent(new CustomEvent('CHEQUE_RECEIPTS_SUB_TAB_CHANGE', { detail: 'ARCHIVE' }));
+                                    }, 100);
                                 }, 150);
                             }} 
                             className="bg-gradient-to-br from-[#059669] to-[#047857] rounded-2xl p-6 text-white shadow-lg shadow-emerald-500/10 cursor-pointer transform hover:scale-[1.03] hover:-translate-y-1 transition-all relative overflow-hidden group"

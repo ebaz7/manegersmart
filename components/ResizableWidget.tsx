@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
-  ChevronUp, ChevronDown, X, Maximize2, Minimize2, Move, RotateCcw, 
-  Columns, GripHorizontal, ArrowLeftRight, Check
+  ChevronUp, ChevronDown, X, Maximize2, Minimize2, RotateCcw, 
+  ArrowLeftRight, Lock, Eye, EyeOff, ChevronsUpDown
 } from 'lucide-react';
 
 export interface WidgetSize {
@@ -25,6 +25,9 @@ interface ResizableWidgetProps {
   children: React.ReactNode;
   defaultWidthPercent?: number;
   className?: string;
+  isLocked?: boolean;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
@@ -43,16 +46,18 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
   children,
   defaultWidthPercent = 100,
   className = '',
+  isLocked = false,
+  isCollapsed = false,
+  onToggleCollapse,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeMode, setResizeMode] = useState<'both' | 'width' | 'height' | null>(null);
   const [tempSize, setTempSize] = useState<WidgetSize | null>(null);
-  const [showQuickSizes, setShowQuickSizes] = useState(false);
 
   // Active size calculation
   const currentWidthPercent = tempSize?.widthPercent ?? size?.widthPercent ?? defaultWidthPercent;
-  const currentMinHeight = tempSize?.minHeight ?? size?.minHeight;
+  const currentMinHeight = isCollapsed ? undefined : (tempSize?.minHeight ?? size?.minHeight);
 
   // Mouse Drag Resize Handler
   const handleMouseDown = useCallback((
@@ -101,13 +106,14 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
         const newWidthPx = Math.max(260, Math.min(parentWidthPx, initialWidthPx + adjustedDeltaX));
         let rawPercent = Math.round((newWidthPx / parentWidthPx) * 100);
 
-        // Snap to common clean steps if close (33%, 50%, 66%, 75%, 100%)
-        if (Math.abs(rawPercent - 33.33) < 4) rawPercent = 33.33;
-        else if (Math.abs(rawPercent - 50) < 4) rawPercent = 50;
-        else if (Math.abs(rawPercent - 66.66) < 4) rawPercent = 66.66;
-        else if (Math.abs(rawPercent - 75) < 4) rawPercent = 75;
+        // Snap to common clean steps if close (25%, 33%, 50%, 66%, 75%, 100%)
+        if (Math.abs(rawPercent - 25) < 3) rawPercent = 25;
+        else if (Math.abs(rawPercent - 33.33) < 3.5) rawPercent = 33.33;
+        else if (Math.abs(rawPercent - 50) < 3.5) rawPercent = 50;
+        else if (Math.abs(rawPercent - 66.66) < 3.5) rawPercent = 66.66;
+        else if (Math.abs(rawPercent - 75) < 3.5) rawPercent = 75;
         else if (rawPercent > 92) rawPercent = 100;
-        else if (rawPercent < 28) rawPercent = 25;
+        else if (rawPercent < 25) rawPercent = 25;
 
         newWidthPercent = Math.min(100, Math.max(25, rawPercent));
       }
@@ -158,7 +164,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
       style.maxWidth = '100%';
     }
 
-    if (currentMinHeight) {
+    if (currentMinHeight && !isCollapsed) {
       style.minHeight = `${currentMinHeight}px`;
     }
 
@@ -166,6 +172,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
   };
 
   const isCustomizedSize = size?.widthPercent !== undefined || size?.minHeight !== undefined;
+  const isFullWidth = Math.round(currentWidthPercent) >= 98;
 
   return (
     <div
@@ -190,54 +197,90 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
         </div>
       )}
 
-      {/* Top Customizer Bar (visible in customize mode or on desktop hover) */}
-      {(isCustomizing || showQuickSizes) && (
-        <div className="absolute -top-3.5 right-3 z-40 flex items-center gap-1 bg-zinc-900/90 hover:bg-zinc-900 text-white rounded-xl px-2 py-1 shadow-lg border border-zinc-700/60 backdrop-blur-md animate-fade-in text-[10px]">
-          <span className="font-bold text-zinc-300 ml-1 hidden sm:inline max-w-[120px] truncate">{title}</span>
+      {/* Top Customizer Bar (visible in customize mode or on widget hover) */}
+      <div className={`transition-all duration-200 ${
+        isCustomizing 
+          ? 'opacity-100 mb-1.5' 
+          : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto absolute -top-3.5 right-3 z-40'
+      }`}>
+        <div className="flex items-center gap-1 bg-zinc-900/90 hover:bg-zinc-900 text-white rounded-xl px-2 py-1 shadow-lg border border-zinc-700/60 backdrop-blur-md text-[10px]">
+          {/* Lock indicator */}
+          {isLocked && (
+            <span className="flex items-center gap-1 text-amber-400 bg-amber-950/60 px-1.5 py-0.5 rounded text-[9px] font-bold border border-amber-500/30" title="قفل‌شده توسط مدیر سیستم">
+              <Lock size={10} />
+              <span>قفل مدیر</span>
+            </span>
+          )}
+
+          <span className="font-bold text-zinc-300 ml-1 hidden sm:inline max-w-[110px] truncate">{title}</span>
 
           {/* Quick preset width buttons */}
-          <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 mr-1">
+          <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 mr-0.5">
             <button
               type="button"
               onClick={() => onSizeChange({ widthPercent: 33.33, minHeight: currentMinHeight })}
-              className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
                 Math.round(currentWidthPercent) === 33 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
               }`}
-              title="سایز ۳۳٪ (یک‌سوم صفحه)"
+              title="یک‌سوم (۳۳٪)"
             >
               ۳۳٪
             </button>
             <button
               type="button"
               onClick={() => onSizeChange({ widthPercent: 50, minHeight: currentMinHeight })}
-              className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
                 Math.round(currentWidthPercent) === 50 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
               }`}
-              title="سایز ۵۰٪ (نیم‌صفحه)"
+              title="نیم‌صفحه (۵۰٪)"
             >
               ۵۰٪
             </button>
             <button
               type="button"
               onClick={() => onSizeChange({ widthPercent: 75, minHeight: currentMinHeight })}
-              className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
                 Math.round(currentWidthPercent) === 75 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
               }`}
-              title="سایز ۷۵٪"
+              title="سه‌چهارم (۷۵٪)"
             >
               ۷۵٪
             </button>
             <button
               type="button"
               onClick={() => onSizeChange({ widthPercent: 100, minHeight: currentMinHeight })}
-              className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold transition-all cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
                 Math.round(currentWidthPercent) === 100 ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'
               }`}
-              title="سایز ۱۰۰٪ (تمام‌عرض)"
+              title="تمام‌عرض (۱۰۰٪)"
             >
               ۱۰۰٪
             </button>
           </div>
+
+          {/* Maximize / Minimize toggle button */}
+          <button
+            type="button"
+            onClick={() => onSizeChange({ widthPercent: isFullWidth ? (defaultWidthPercent < 100 ? defaultWidthPercent : 50) : 100, minHeight: currentMinHeight })}
+            className="p-1 hover:bg-zinc-800 rounded text-zinc-300 hover:text-white transition-all cursor-pointer flex items-center justify-center"
+            title={isFullWidth ? 'کوچک کردن (۵۰٪)' : 'بزرگ کردن کامل (۱۰۰٪)'}
+          >
+            {isFullWidth ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+          </button>
+
+          {/* Collapse/Expand toggle button */}
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className={`p-1 hover:bg-zinc-800 rounded transition-all cursor-pointer flex items-center justify-center ${
+                isCollapsed ? 'text-amber-400' : 'text-zinc-300 hover:text-white'
+              }`}
+              title={isCollapsed ? 'گسترش و باز کردن محتوای ابزارک' : 'جمع کردن و فشرده‌سازی ابزارک'}
+            >
+              <ChevronsUpDown size={11} />
+            </button>
+          )}
 
           {/* Reset button if custom size exists */}
           {isCustomizedSize && (
@@ -248,7 +291,6 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
               title="بازنشانی اندازه به حالت پیش‌فرض"
             >
               <RotateCcw size={11} />
-              <span className="hidden md:inline">پیش‌فرض</span>
             </button>
           )}
 
@@ -274,68 +316,98 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
             </button>
             <button
               type="button"
+              disabled={isLocked}
               onClick={onRemove}
-              className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500/80 text-white"
-              title="حذف ابزارک از پیشخوان"
+              className={`p-1 rounded transition-all flex items-center justify-center ${
+                isLocked 
+                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50' 
+                  : 'hover:bg-red-600 cursor-pointer bg-red-500/80 text-white'
+              }`}
+              title={isLocked ? 'این ابزارک توسط مدیر قفل شده و قابل حذف نیست' : 'حذف ابزارک از پیشخوان'}
             >
               <X size={12} />
             </button>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Widget Content Container */}
-      <div 
-        className="w-full flex-1 flex flex-col relative"
-        style={{ minHeight: currentMinHeight ? `${currentMinHeight}px` : undefined }}
-      >
-        {children}
-      </div>
-
-      {/* --- MOUSE DRAG RESIZE HANDLES --- */}
-      {/* 1. Bottom-Left Corner Resize Handle (in RTL, left is where dragging expands width and bottom expands height) */}
-      <div
-        onMouseDown={(e) => handleMouseDown(e, 'both')}
-        onDoubleClick={onResetSize}
-        className="absolute -bottom-1 -left-1 z-30 w-5 h-5 flex items-center justify-center cursor-nesw-resize opacity-0 group-hover:opacity-90 hover:!opacity-100 transition-opacity select-none"
-        title="بکشید تا اندازه (عرض و ارتفاع) تغییر کند (دابل‌کلیک برای بازنشانی)"
-      >
-        <div className="w-3.5 h-3.5 rounded-bl-md border-b-2 border-l-2 border-blue-500 bg-white dark:bg-zinc-900 shadow-sm flex items-center justify-center">
-          <div className="w-1 h-1 bg-blue-500 rounded-full" />
+      {isCollapsed ? (
+        <div 
+          onClick={onToggleCollapse}
+          className="w-full bg-white/70 dark:bg-zinc-900/70 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-3 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between backdrop-blur-md group/collapsed"
+          title="کلیک برای باز کردن کامل ابزارک"
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            <span className="font-black text-xs text-zinc-800 dark:text-zinc-200">{title}</span>
+            <span className="text-[10px] text-zinc-400 font-medium">(فشرده‌شده)</span>
+          </div>
+          <button 
+            type="button"
+            className="text-xs text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1 group-hover/collapsed:translate-x-[-2px] transition-transform"
+          >
+            <span>باز کردن</span>
+            <ChevronDown size={14} />
+          </button>
         </div>
-      </div>
-
-      {/* 2. Bottom-Right Corner Handle (alternate corner) */}
-      <div
-        onMouseDown={(e) => handleMouseDown(e, 'both')}
-        onDoubleClick={onResetSize}
-        className="absolute -bottom-1 -right-1 z-30 w-5 h-5 flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-90 hover:!opacity-100 transition-opacity select-none"
-        title="بکشید تا اندازه تغییر کند"
-      >
-        <div className="w-3.5 h-3.5 rounded-br-md border-b-2 border-r-2 border-blue-500 bg-white dark:bg-zinc-900 shadow-sm flex items-center justify-center">
-          <div className="w-1 h-1 bg-blue-500 rounded-full" />
+      ) : (
+        <div 
+          className="w-full flex-1 flex flex-col relative"
+          style={{ minHeight: currentMinHeight ? `${currentMinHeight}px` : undefined }}
+        >
+          {children}
         </div>
-      </div>
+      )}
 
-      {/* 3. Bottom Edge Resize Handle (Adjust height) */}
-      <div
-        onMouseDown={(e) => handleMouseDown(e, 'height')}
-        onDoubleClick={onResetSize}
-        className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-20 w-16 h-3 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-opacity select-none"
-        title="بکشید تا ارتفاع تنظیم شود"
-      >
-        <div className="w-10 h-1 rounded-full bg-blue-500/70 shadow-sm" />
-      </div>
+      {/* --- MOUSE DRAG RESIZE HANDLES (Active when not collapsed) --- */}
+      {!isCollapsed && (
+        <>
+          {/* 1. Bottom-Left Corner Resize Handle (in RTL, left is where dragging expands width and bottom expands height) */}
+          <div
+            onMouseDown={(e) => handleMouseDown(e, 'both')}
+            onDoubleClick={onResetSize}
+            className="absolute -bottom-1 -left-1 z-30 w-5 h-5 flex items-center justify-center cursor-nesw-resize opacity-0 group-hover:opacity-90 hover:!opacity-100 transition-opacity select-none"
+            title="بکشید تا اندازه (عرض و ارتفاع) تغییر کند (دابل‌کلیک برای بازنشانی)"
+          >
+            <div className="w-3.5 h-3.5 rounded-bl-md border-b-2 border-l-2 border-blue-500 bg-white dark:bg-zinc-900 shadow-sm flex items-center justify-center">
+              <div className="w-1 h-1 bg-blue-500 rounded-full" />
+            </div>
+          </div>
 
-      {/* 4. Left Edge Resize Handle (Adjust width) */}
-      <div
-        onMouseDown={(e) => handleMouseDown(e, 'width')}
-        onDoubleClick={onResetSize}
-        className="absolute top-1/2 -left-1.5 -translate-y-1/2 z-20 w-3 h-16 flex items-center justify-center cursor-ew-resize opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-opacity select-none"
-        title="بکشید تا عرض تنظیم شود"
-      >
-        <div className="w-1 h-10 rounded-full bg-blue-500/70 shadow-sm" />
-      </div>
+          {/* 2. Bottom-Right Corner Handle (alternate corner) */}
+          <div
+            onMouseDown={(e) => handleMouseDown(e, 'both')}
+            onDoubleClick={onResetSize}
+            className="absolute -bottom-1 -right-1 z-30 w-5 h-5 flex items-center justify-center cursor-nwse-resize opacity-0 group-hover:opacity-90 hover:!opacity-100 transition-opacity select-none"
+            title="بکشید تا اندازه تغییر کند"
+          >
+            <div className="w-3.5 h-3.5 rounded-br-md border-b-2 border-r-2 border-blue-500 bg-white dark:bg-zinc-900 shadow-sm flex items-center justify-center">
+              <div className="w-1 h-1 bg-blue-500 rounded-full" />
+            </div>
+          </div>
+
+          {/* 3. Bottom Edge Resize Handle (Adjust height) */}
+          <div
+            onMouseDown={(e) => handleMouseDown(e, 'height')}
+            onDoubleClick={onResetSize}
+            className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-20 w-16 h-3 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-opacity select-none"
+            title="بکشید تا ارتفاع تنظیم شود"
+          >
+            <div className="w-10 h-1 rounded-full bg-blue-500/70 shadow-sm" />
+          </div>
+
+          {/* 4. Left Edge Resize Handle (Adjust width) */}
+          <div
+            onMouseDown={(e) => handleMouseDown(e, 'width')}
+            onDoubleClick={onResetSize}
+            className="absolute top-1/2 -left-1.5 -translate-y-1/2 z-20 w-3 h-16 flex items-center justify-center cursor-ew-resize opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-opacity select-none"
+            title="بکشید تا عرض تنظیم شود"
+          >
+            <div className="w-1 h-10 rounded-full bg-blue-500/70 shadow-sm" />
+          </div>
+        </>
+      )}
     </div>
   );
 };

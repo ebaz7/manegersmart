@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Columns, X, Calculator, ChevronUp, ChevronDown, Monitor
+  Columns, X, Calculator, ChevronUp, ChevronDown, Monitor, Minus, Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, SystemSettings } from '../types';
@@ -39,7 +39,44 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
   settings,
   allowedItems
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const isInChat = activeTab === 'chat';
+
+  // Persistence for user dock collapse preference
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('app_dock_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [isHidden, setIsHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('app_dock_hidden') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleCollapse = () => {
+    setIsCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('app_dock_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleToggleHidden = () => {
+    setIsHidden(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('app_dock_hidden', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Derive allowed navigation items for current user
   const permittedItems = useMemo(() => {
@@ -70,40 +107,70 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
     ...openTabs
   ])).filter(tabId => Boolean(tabId) && allowedSet.has(tabId));
 
-  const isInChat = activeTab === 'chat';
-
-  if (isCollapsed || isInChat) {
+  // If user completely hid the dock, show a minimal restore trigger in a safe corner
+  if (isHidden) {
     return (
-      <div className={`fixed z-[9980] hidden md:block ${
-        isInChat ? 'bottom-3 left-4 rtl:left-4 rtl:right-auto' : 'bottom-2 left-1/2 -translate-x-1/2'
-      }`}>
+      <div className="fixed top-3 left-20 z-[9980] hidden md:block animate-fade-in">
         <button
           type="button"
-          onClick={() => setIsCollapsed(prev => !prev)}
-          className="bg-zinc-900/90 hover:bg-zinc-900 text-white px-3 py-1.5 rounded-full shadow-lg border border-zinc-700/60 backdrop-blur-xl flex items-center gap-1.5 text-[11px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          title="نمایش نوار وظیفه چندپنجره‌ای (Taskbar)"
+          onClick={handleToggleHidden}
+          className="bg-zinc-900/80 hover:bg-zinc-900 text-white/80 hover:text-white px-2.5 py-1 rounded-xl shadow-md border border-zinc-700/50 backdrop-blur-md flex items-center gap-1.5 text-[10px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
+          title="نمایش نوار وظایف میز کار (Taskbar)"
         >
-          <Monitor size={13} className="text-blue-400" />
-          <span>میز کار ({displayTabs.length})</span>
-          {isCollapsed || isInChat ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          <Monitor size={12} className="text-blue-400" />
+          <span>میز کار</span>
         </button>
       </div>
     );
   }
 
+  // When collapsed or in Chat mode with collapse
+  if (isCollapsed) {
+    return (
+      <div className={`fixed z-[9980] hidden md:block transition-all duration-200 ${
+        isInChat 
+          ? 'top-3 left-24' 
+          : 'bottom-2 left-1/2 -translate-x-1/2'
+      }`}>
+        <div className="flex items-center gap-1 bg-zinc-900/90 text-white p-1 rounded-full shadow-xl border border-zinc-700/60 backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={handleToggleCollapse}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="باز کردن نوار وظایف میز کار"
+          >
+            <Monitor size={13} className="text-blue-400" />
+            <span>میز کار ({displayTabs.length})</span>
+            {isInChat ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleHidden}
+            className="p-1 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-zinc-200 transition-colors"
+            title="مخفی‌کردن کامل"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`fixed z-[9980] hidden md:flex items-center gap-1.5 bg-white/90 dark:bg-zinc-950/90 border border-zinc-200/80 dark:border-zinc-800/80 p-1.5 rounded-2xl shadow-[0_12px_30px_rgba(0,0,0,0.15)] backdrop-blur-xl max-w-[94vw] animate-slide-up select-none ${
-      isInChat ? 'bottom-14 left-4 rtl:left-4 rtl:right-auto' : 'bottom-2 left-1/2 right-auto -translate-x-1/2 transform rtl:left-1/2 rtl:right-auto rtl:-translate-x-1/2'
+    <div className={`fixed z-[9980] hidden md:flex items-center gap-1.5 bg-white/95 dark:bg-zinc-950/95 border border-zinc-200/90 dark:border-zinc-800/90 p-1.5 rounded-2xl shadow-[0_12px_35px_rgba(0,0,0,0.18)] backdrop-blur-2xl max-w-[94vw] transition-all duration-200 select-none ${
+      isInChat 
+        ? 'top-3 left-24 shadow-md' 
+        : 'bottom-2 left-1/2 right-auto -translate-x-1/2 transform rtl:left-1/2 rtl:right-auto rtl:-translate-x-1/2'
     }`}>
       {/* Workspace Indicator & Collapse toggle */}
       <div className="flex items-center gap-1 pl-1.5 border-l border-zinc-200 dark:border-zinc-800">
         <button
           type="button"
-          onClick={() => setIsCollapsed(true)}
-          className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
-          title="جمع‌کردن نوار میز کار"
+          onClick={handleToggleCollapse}
+          className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+          title="کوچک کردن نوار وظایف"
         >
-          <ChevronDown size={14} />
+          {isInChat ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
         <div className="flex items-center gap-1.5 px-1">
           <Monitor size={14} className="text-blue-600 dark:text-blue-400" />
@@ -112,7 +179,7 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
       </div>
 
       {/* Open Tabs on the Taskbar */}
-      <div className="flex items-center gap-1 overflow-x-auto max-w-[65vw] custom-scrollbar py-0.5 px-1">
+      <div className="flex items-center gap-1 overflow-x-auto max-w-[55vw] lg:max-w-[65vw] custom-scrollbar py-0.5 px-1">
         {displayTabs.map((tabId) => {
           const { label, Icon } = getTabInfo(tabId);
           const isPrimary = activeTab === tabId;
@@ -214,6 +281,16 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
             <X size={14} />
           </button>
         )}
+
+        {/* Hide Dock Button */}
+        <button
+          type="button"
+          onClick={handleToggleHidden}
+          className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg text-zinc-400 hover:text-zinc-600 transition-colors"
+          title="مخفی‌کردن نوار وظایف"
+        >
+          <X size={13} />
+        </button>
       </div>
     </div>
   );

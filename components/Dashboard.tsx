@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PaymentOrder, OrderStatus, SystemSettings, User, ExitPermit, ExitPermitStatus, WarehouseTransaction, UserRole, SystemAnnouncement } from '../types';
 import { formatCurrency, getShamsiDateFromIso } from '../constants';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase, Settings2, GripVertical, Eye, EyeOff, Monitor, Image } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase, Settings2, GripVertical, Eye, EyeOff, Monitor, Image, Lock, Unlock, Sliders, LayoutGrid } from 'lucide-react';
 import { getRolePermissions } from '../services/authService';
 import { getExitPermits, getWarehouseTransactions, getNotes, getPurchaseRequests, getTaskGroups, getTasks, updateTask } from '../services/storageService';
 import { isInFinancialYear } from '../utils/dateUtils';
@@ -21,6 +21,7 @@ import {
   QuickTilesWidget 
 } from './DashboardWidgets';
 import { ResizableWidget, WidgetSize } from './ResizableWidget';
+import { DashboardAdminRoleLocksModal } from './DashboardAdminRoleLocksModal';
 
 interface DashboardProps {
   orders: PaymentOrder[];
@@ -40,6 +41,23 @@ interface DashboardProps {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 const MONTHS = [ 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند' ];
+
+const DASHBOARD_WIDGET_NAMES: Record<string, string> = {
+  warehouse_alert: 'هشدار موجودی بحرانی انبار',
+  date_card: 'کارت تقویم، زمان و سررسید',
+  poetry_card: 'کارت شعر و ادب پارسی',
+  motivation_card: 'کارت حکمت، انگیزش و تفکر',
+  google_widget: 'ابزارک دستیار گوگل و ارتباطات سازمانی',
+  announcements: 'تابلو اعلانات و پیام‌های سیستمی',
+  task_groups: 'دسترسی سریع به گروه‌های وظایف و پروژه‌ها',
+  notes: 'یادداشت‌های اختصاصی و دستور کارها',
+  cartable: 'کارتابل اسناد و تاییدیه‌های منتظر اقدام',
+  payment_stats: 'شاخص‌ها و آمارهای مالی و پرداختی',
+  payment_chart: 'نمودار تفکیکی وضعیت اسناد پرداخت',
+  warehouse_status: 'داشبورد تراز وزنی زنجیره تامین و انبارها',
+  recent_activities: 'آخرین فعالیت‌ها و تراکنش‌های پرداخت',
+  quick_tiles: 'کاشی‌های دسترسی سریع (Windows Tiles)',
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, currentUser, onViewArchive, onFilterByStatus, onGoToPaymentApprovals, onGoToExitApprovals, onGoToBijakApprovals, onGoToPurchaseApprovals, onGoToTaskGroup, onNavigate, financialYear, activeTab }) => {
   const [realtimeOrders, setRealtimeOrders] = useState<PaymentOrder[]>(() => {
@@ -178,10 +196,76 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   const [isCustomizingTiles, setIsCustomizingTiles] = useState(false);
 
+  // User-specific customization storage key
+  const userStorageKey = useMemo(() => {
+    return currentUser?.id ? String(currentUser.id) : (currentUser?.username || 'default_user');
+  }, [currentUser]);
+
+  // Admin Role-based widget locking state
+  const [roleLocks, setRoleLocks] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_role_locks');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [showAdminLocksModal, setShowAdminLocksModal] = useState<boolean>(false);
+  const [showPresetsDropdown, setShowPresetsDropdown] = useState<boolean>(false);
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_toolbar_collapsed');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Check if a widget is locked for the current user's role/group
+  const isWidgetLockedForCurrentUser = (widgetId: string): boolean => {
+    if (!currentUser) return false;
+    // Admins and CEOs can always customize and edit their layout
+    if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || permissions.isSuperUser) {
+      return false;
+    }
+    const globalLocks = roleLocks['all'] || [];
+    if (globalLocks.includes(widgetId)) return true;
+    if (roleLocks[currentUser.role]?.includes(widgetId)) return true;
+    const userRoles = (currentUser as any).roles;
+    if (Array.isArray(userRoles)) {
+      for (const r of userRoles) {
+        if (roleLocks[r]?.includes(widgetId)) return true;
+      }
+    }
+    return false;
+  };
+
+  // Collapsed widgets state (Minimize / Maximize per widget)
+  const [collapsedWidgets, setCollapsedWidgets] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(`dashboard_collapsed_widgets_${userStorageKey}`) || localStorage.getItem('dashboard_collapsed_widgets');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleCollapseWidget = (id: string) => {
+    setCollapsedWidgets(prev => {
+      const updated = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(`dashboard_collapsed_widgets_${userStorageKey}`, JSON.stringify(updated));
+        localStorage.setItem('dashboard_collapsed_widgets', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
   // Full-dashboard interactive widgets management (customizable grid/list)
   const [widgetsVisibility, setWidgetsVisibility] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem('dashboard_widgets_visibility');
+      const saved = localStorage.getItem(`dashboard_widgets_visibility_${userStorageKey}`) || localStorage.getItem('dashboard_widgets_visibility');
       if (saved) {
         const parsed = JSON.parse(saved);
         return {
@@ -222,7 +306,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   const [widgetsOrder, setWidgetsOrder] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('dashboard_widgets_order');
+      const saved = localStorage.getItem(`dashboard_widgets_order_${userStorageKey}`) || localStorage.getItem('dashboard_widgets_order');
       if (saved) {
         const parsed = JSON.parse(saved);
         const defaultWidgets = [
@@ -267,7 +351,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   // Widget Resizing State (Width percentage and Height px per widget)
   const [widgetSizes, setWidgetSizes] = useState<Record<string, WidgetSize>>(() => {
     try {
-      const saved = localStorage.getItem('dashboard_widget_sizes');
+      const saved = localStorage.getItem(`dashboard_widget_sizes_${userStorageKey}`) || localStorage.getItem('dashboard_widget_sizes');
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -275,9 +359,11 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   });
 
   const handleUpdateWidgetSize = (id: string, newSize: WidgetSize) => {
+    if (isWidgetLockedForCurrentUser(id)) return;
     setWidgetSizes(prev => {
       const updated = { ...prev, [id]: newSize };
       try {
+        localStorage.setItem(`dashboard_widget_sizes_${userStorageKey}`, JSON.stringify(updated));
         localStorage.setItem('dashboard_widget_sizes', JSON.stringify(updated));
       } catch {}
       return updated;
@@ -285,14 +371,123 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   };
 
   const handleResetWidgetSize = (id: string) => {
+    if (isWidgetLockedForCurrentUser(id)) return;
     setWidgetSizes(prev => {
       const updated = { ...prev };
       delete updated[id];
       try {
+        localStorage.setItem(`dashboard_widget_sizes_${userStorageKey}`, JSON.stringify(updated));
         localStorage.setItem('dashboard_widget_sizes', JSON.stringify(updated));
       } catch {}
       return updated;
     });
+  };
+
+  // Layout Presets Switcher (including pre-update classic full-width default)
+  const handleApplyLayoutPreset = (preset: 'classic_default' | 'modern_responsive' | 'company_default') => {
+    if (preset === 'classic_default') {
+      // 1. Classic Default (Before update - 100% full width, uncollapsed, classic sequence)
+      const classicOrder = [
+        'warehouse_alert',
+        'date_card',
+        'poetry_card',
+        'motivation_card',
+        'google_widget',
+        'announcements',
+        'task_groups',
+        'notes',
+        'cartable',
+        'payment_stats',
+        'payment_chart',
+        'warehouse_status',
+        'recent_activities',
+        'quick_tiles',
+      ];
+      const all100Sizes: Record<string, WidgetSize> = {};
+      classicOrder.forEach(id => {
+        all100Sizes[id] = { widthPercent: 100 };
+      });
+      const allVisible: Record<string, boolean> = {};
+      classicOrder.forEach(id => {
+        allVisible[id] = true;
+      });
+
+      setWidgetsOrder(classicOrder);
+      setWidgetSizes(all100Sizes);
+      setCollapsedWidgets({});
+      setWidgetsVisibility(allVisible);
+
+      try {
+        localStorage.setItem(`dashboard_widgets_order_${userStorageKey}`, JSON.stringify(classicOrder));
+        localStorage.setItem(`dashboard_widget_sizes_${userStorageKey}`, JSON.stringify(all100Sizes));
+        localStorage.setItem(`dashboard_collapsed_widgets_${userStorageKey}`, JSON.stringify({}));
+        localStorage.setItem(`dashboard_widgets_visibility_${userStorageKey}`, JSON.stringify(allVisible));
+        localStorage.setItem('dashboard_widgets_order', JSON.stringify(classicOrder));
+        localStorage.setItem('dashboard_widget_sizes', JSON.stringify(all100Sizes));
+        localStorage.setItem('dashboard_collapsed_widgets', JSON.stringify({}));
+        localStorage.setItem('dashboard_widgets_visibility', JSON.stringify(allVisible));
+      } catch {}
+    } else if (preset === 'modern_responsive') {
+      // 2. Modern Multi-Column Responsive Layout
+      const modernSizes: Record<string, WidgetSize> = {
+        date_card: { widthPercent: 33.33 },
+        poetry_card: { widthPercent: 33.33 },
+        motivation_card: { widthPercent: 33.33 },
+        google_widget: { widthPercent: 100 },
+        announcements: { widthPercent: 100 },
+        task_groups: { widthPercent: 50 },
+        notes: { widthPercent: 50 },
+        cartable: { widthPercent: 100 },
+        payment_stats: { widthPercent: 50 },
+        payment_chart: { widthPercent: 50 },
+        warehouse_status: { widthPercent: 100 },
+        recent_activities: { widthPercent: 100 },
+        quick_tiles: { widthPercent: 100 },
+        warehouse_alert: { widthPercent: 100 },
+      };
+      setWidgetSizes(modernSizes);
+      try {
+        localStorage.setItem(`dashboard_widget_sizes_${userStorageKey}`, JSON.stringify(modernSizes));
+        localStorage.setItem('dashboard_widget_sizes', JSON.stringify(modernSizes));
+      } catch {}
+    } else if (preset === 'company_default') {
+      // 3. Organization layout published by Admin
+      try {
+        const savedCompany = localStorage.getItem('dashboard_company_default_layout');
+        if (savedCompany) {
+          const parsed = JSON.parse(savedCompany);
+          if (parsed.order) setWidgetsOrder(parsed.order);
+          if (parsed.sizes) setWidgetSizes(parsed.sizes);
+          if (parsed.visibility) setWidgetsVisibility(parsed.visibility);
+          if (parsed.collapsed) setCollapsedWidgets(parsed.collapsed);
+        } else {
+          handleApplyLayoutPreset('modern_responsive');
+        }
+      } catch {}
+    }
+    setShowPresetsDropdown(false);
+  };
+
+  const handlePublishCompanyDefaultLayout = () => {
+    try {
+      const companyPayload = {
+        order: widgetsOrder,
+        sizes: widgetSizes,
+        visibility: widgetsVisibility,
+        collapsed: collapsedWidgets,
+        updatedAt: Date.now(),
+        publishedBy: currentUser?.fullName || currentUser?.username,
+      };
+      localStorage.setItem('dashboard_company_default_layout', JSON.stringify(companyPayload));
+      alert('چیدمان فعلی به عنوان چیدمان پیش‌فرض سازمانی برای تمام پرسنل با موفقیت ذخیره شد.');
+    } catch {}
+  };
+
+  const handleSaveRoleLocks = (newLocks: Record<string, string[]>) => {
+    setRoleLocks(newLocks);
+    try {
+      localStorage.setItem('dashboard_role_locks', JSON.stringify(newLocks));
+    } catch {}
   };
 
   const [isClearDesktop, setIsClearDesktop] = useState<boolean>(() => {
@@ -360,9 +555,14 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   const [showWallpaperDropdown, setShowWallpaperDropdown] = useState(false);
 
   const toggleWidgetVisibility = (id: string) => {
+    if (isWidgetLockedForCurrentUser(id)) {
+      alert('این ابزارک توسط مدیر سیستم برای نقش کاربری شما قفل شده است و قابل حذف یا پنهان‌سازی نیست.');
+      return;
+    }
     setWidgetsVisibility(prev => {
       const next = { ...prev, [id]: !prev[id] };
       try {
+        localStorage.setItem(`dashboard_widgets_visibility_${userStorageKey}`, JSON.stringify(next));
         localStorage.setItem('dashboard_widgets_visibility', JSON.stringify(next));
       } catch {}
       return next;
@@ -372,10 +572,16 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   const moveWidget = (fromIdx: number, toIdx: number) => {
     const list = [...widgetsOrder];
     if (fromIdx < 0 || toIdx < 0 || fromIdx >= list.length || toIdx >= list.length) return;
+    const widgetId = list[fromIdx];
+    if (isWidgetLockedForCurrentUser(widgetId)) {
+      alert('این ابزارک توسط مدیریت برای نقش کاربری شما قفل شده است.');
+      return;
+    }
     const [moved] = list.splice(fromIdx, 1);
     list.splice(toIdx, 0, moved);
     setWidgetsOrder(list);
     try {
+      localStorage.setItem(`dashboard_widgets_order_${userStorageKey}`, JSON.stringify(list));
       localStorage.setItem('dashboard_widgets_order', JSON.stringify(list));
     } catch {}
   };
@@ -426,12 +632,18 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     setWidgetsVisibility(defaultVisibility);
     setWidgetsOrder(defaultOrder);
     setWidgetSizes({});
+    setCollapsedWidgets({});
     setIsClearDesktop(false);
     setIsCustomizingWidgets(false);
     try {
+      localStorage.setItem(`dashboard_widgets_visibility_${userStorageKey}`, JSON.stringify(defaultVisibility));
+      localStorage.setItem(`dashboard_widgets_order_${userStorageKey}`, JSON.stringify(defaultOrder));
+      localStorage.removeItem(`dashboard_widget_sizes_${userStorageKey}`);
+      localStorage.removeItem(`dashboard_collapsed_widgets_${userStorageKey}`);
       localStorage.setItem('dashboard_widgets_visibility', JSON.stringify(defaultVisibility));
       localStorage.setItem('dashboard_widgets_order', JSON.stringify(defaultOrder));
       localStorage.removeItem('dashboard_widget_sizes');
+      localStorage.removeItem('dashboard_collapsed_widgets');
       localStorage.setItem('dashboard_clear_desktop', 'false');
     } catch {}
   };
@@ -1224,188 +1436,198 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   return (
     <div className="space-y-6 pb-20 md:pb-0 animate-fade-in">
       
-      {/* ENTERPRISE DASHBOARD CUSTOMIZER TOOLBAR */}
-      <div className="glass-panel p-4 rounded-3xl border border-blue-100/70 dark:border-white/10 shadow-md flex flex-wrap items-center justify-between gap-4 bg-white/70 backdrop-blur-xl relative z-[85]">
-        <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 p-2.5 rounded-2xl text-white shadow-md shadow-blue-500/15">
-            <Settings2 size={20} />
-          </div>
-          <div>
-            <h2 className="font-extrabold text-sm text-gray-800 dark:text-white">داشبورد شخصی‌سازی شده</h2>
-            <p className="text-[10px] text-gray-500 font-medium">امکان چیدمان، حذف، اضافه، و تغییر تصویر زمینه ویندوزی</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Customization Toggle */}
-          <button
-            onClick={() => setIsCustomizingWidgets(!isCustomizingWidgets)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
-              isCustomizingWidgets
-                ? 'bg-amber-500 text-white shadow-md'
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-            }`}
+      {/* ENTERPRISE DASHBOARD CUSTOMIZER TOOLBAR (MINIMAL & UNINTRUSIVE) */}
+      <div className="rounded-2xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white/75 dark:bg-zinc-900/75 backdrop-blur-md shadow-xs px-3 py-1.5 transition-all relative z-[85]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Left / Title & Indicator */}
+          <div 
+            onClick={() => setIsToolbarCollapsed(!isToolbarCollapsed)}
+            className="flex items-center gap-2 cursor-pointer select-none group py-0.5"
+            title={isToolbarCollapsed ? 'کلیک جهت مشاهده گزینه‌های پیشرفته نوار ابزار' : 'کلیک جهت کوچک‌سازی نوار'}
           >
-            <Monitor size={14} />
-            <span>{isCustomizingWidgets ? 'اتمام چیدمان' : 'تغییر چیدمان / حذف'}</span>
-          </button>
+            <div className="p-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 group-hover:bg-blue-100 transition-colors">
+              <Sliders size={13} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300">
+                چیدمان ابزارک‌ها
+              </span>
+              <span className="text-[9px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-bold px-1.5 py-0.2 rounded-full">
+                {Object.values(widgetsVisibility).filter(Boolean).length} فعال
+              </span>
+            </div>
+          </div>
 
-          {/* Clear Desktop Toggle */}
-          <button
-            onClick={handleToggleClearDesktop}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
-              isClearDesktop
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-            }`}
-          >
-            {isClearDesktop ? <Eye size={14} /> : <EyeOff size={14} />}
-            <span>{isClearDesktop ? 'نمایش ابزارک‌ها' : 'پاکسازی صفحه (ویندوز)'}</span>
-          </button>
-
-          {/* Add Widget Dropdown Button */}
-          <div className="relative">
+          {/* Right / Actions */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Customization Mode Toggle */}
             <button
-              onClick={() => setShowAddWidgetsDropdown(!showAddWidgetsDropdown)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm"
+              onClick={() => setIsCustomizingWidgets(!isCustomizingWidgets)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black transition-all shadow-xs ${
+                isCustomizingWidgets
+                  ? 'bg-amber-500 text-white shadow-amber-500/20 ring-2 ring-amber-300'
+                  : 'bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300'
+              }`}
+              title="جابجایی، تغییر اندازه و پنهان‌سازی ابزارک‌ها در صفحه"
             >
-              <Plus size={14} />
-              <span>افزودن ابزارک</span>
+              <Monitor size={12} />
+              <span>{isCustomizingWidgets ? 'اتمام چیدمان' : 'تغییر چیدمان'}</span>
             </button>
-            {showAddWidgetsDropdown && (
-              <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-2 z-[100] animate-fade-in text-right">
-                <div className="text-[10px] text-gray-400 font-bold px-3 py-1.5 border-b border-gray-50 mb-1">لیست ابزارک‌های سیستم</div>
-                {Object.entries(widgetNames).map(([id, label]) => {
-                  const isVisible = widgetsVisibility[id];
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => toggleWidgetVisibility(id)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl hover:bg-blue-50/50 hover:text-blue-600 dark:hover:bg-white/5 transition-all text-gray-700 dark:text-gray-200"
-                    >
-                      <span>{label}</span>
-                      <span className={`w-2.5 h-2.5 rounded-full ${isVisible ? 'bg-emerald-500' : 'bg-gray-200'}`} />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
-          {/* Wallpaper Selection Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowWallpaperDropdown(!showWallpaperDropdown)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-gray-100 hover:bg-gray-200 text-gray-700 transition-all border border-gray-200/50"
-            >
-              <Image size={14} />
-              <span>تصویر زمینه</span>
-            </button>
-            {showWallpaperDropdown && (
-              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-3.5 z-[100] animate-fade-in text-right space-y-3">
-                <div className="text-[10px] text-gray-400 font-bold border-b border-gray-50 pb-1.5">تنظیمات تصویر زمینه</div>
-                
-                {/* Enable Wallpaper Toggle */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700 dark:text-gray-200">پس‌زمینه فعال باشد</span>
-                  <input
-                    type="checkbox"
-                    checked={bgEnabled}
-                    onChange={(e) => updateBgSetting('app_enable_bg_image', e.target.checked ? 'true' : 'false')}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Preset Wallpapers Grid */}
-                <div className="space-y-1.5">
-                  <span className="text-[10px] text-gray-400 font-bold block">انتخاب پوسته آماده</span>
-                  <div className="grid grid-cols-2 gap-1">
-                    {[
-                      { id: 'aurora-light', label: 'شفق روشن' },
-                      { id: 'cosmic-dark', label: 'کیهانی تیره' },
-                      { id: 'cyan-cosmic', label: 'آبی اقیانوس' },
-                      { id: 'dark-midnight', label: 'نیمه‌شب تاریک' },
-                      { id: 'light-modern', label: 'مدرن مینیمال' },
-                    ].map((preset) => (
-                      <button
-                        key={preset.id}
-                        onClick={() => {
-                          updateBgSetting('app_bg_mode', 'preset');
-                          updateBgSetting('app_preset_bg', preset.id);
-                        }}
-                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all truncate text-center ${
-                          bgMode === 'preset' && bgPreset === preset.id
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom URL Input */}
-                <div className="space-y-1">
-                  <span className="text-[10px] text-gray-400 font-bold block">آدرس تصویر سفارشی (URL)</span>
-                  <input
-                    type="text"
-                    value={customBgUrl}
-                    placeholder="https://example.com/image.jpg"
-                    onChange={(e) => {
-                      updateBgSetting('app_bg_mode', 'custom');
-                      updateBgSetting('app_custom_bg_image', e.target.value);
-                    }}
-                    className="w-full text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-blue-500 dark:bg-gray-900"
-                  />
-                </div>
-
-                {/* Blur Slider */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-[10px] text-gray-400 font-bold">
-                    <span>مات‌سازی (Blur)</span>
-                    <span>{bgBlur}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="40"
-                    value={bgBlur}
-                    onChange={(e) => updateBgSetting('app_custom_bg_blur', parseInt(e.target.value))}
-                    className="w-full accent-blue-600"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Reset Settings Button */}
-          <button
-            onClick={handleResetWidgets}
-            className="p-2 text-gray-500 hover:text-red-500 hover:bg-gray-50 rounded-xl transition-all"
-            title="بازنشانی به چیدمان اولیه"
-          >
-            <RotateCw size={14} />
-          </button>
-        </div>
-      </div>
-
-      {isClearDesktop && (
-        <div className="flex flex-col items-center justify-center py-28 select-none animate-fade-in text-center relative">
-          <div className="bg-white/30 backdrop-blur-xl border border-white/20 shadow-2xl p-8 rounded-3xl max-w-sm space-y-4">
-            <Sparkles size={40} className="text-white/80 mx-auto animate-pulse" />
-            <h3 className="text-lg font-black text-white">نمای تصویر پس‌زمینه ویندوز فعال است</h3>
-            <p className="text-xs text-white/70 font-medium">تمامی ابزارک‌ها و کاشی‌های دسترسی سریع برای مشاهده زیباتر عکس پس‌زمینه موقتاً پاکسازی شده‌اند.</p>
+            {/* Clear Desktop (Windows Style) Toggle */}
             <button
               onClick={handleToggleClearDesktop}
-              className="w-full bg-white text-indigo-600 hover:bg-gray-50 px-4 py-2.5 rounded-xl font-black text-xs transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5"
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                isClearDesktop
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              }`}
+              title={isClearDesktop ? 'نمایش مجدد تمام ابزارک‌ها' : 'مخفی‌سازی موقت ابزارک‌ها و نمایش تصویر زمینه ویندوز'}
             >
-              <Eye size={14} />
-              <span>بازگرداندن ابزارک‌های داشبورد</span>
+              {isClearDesktop ? <Eye size={12} /> : <EyeOff size={12} />}
+              <span className="hidden sm:inline">{isClearDesktop ? 'نمایش ابزارک‌ها' : 'پاکسازی صفحه'}</span>
+            </button>
+
+            {/* Layout Presets Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowPresetsDropdown(!showPresetsDropdown)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 transition-all border border-zinc-200/50 dark:border-zinc-700/50"
+                title="قالب‌ها و الگوهای آماده چیدمان"
+              >
+                <LayoutGrid size={12} className="text-indigo-500" />
+                <span>قالب‌ها</span>
+                <ChevronDown size={11} className={showPresetsDropdown ? 'rotate-180 transition-transform' : 'transition-transform'} />
+              </button>
+              {showPresetsDropdown && (
+                <div className="absolute left-0 mt-1.5 w-64 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-2 z-[100] animate-fade-in text-right space-y-1">
+                  <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border-b border-zinc-100 dark:border-zinc-800">
+                    انتخاب الگوی چیدمان پیشخوان
+                  </div>
+                  
+                  {/* Classic Pre-update Default */}
+                  <button
+                    type="button"
+                    onClick={() => handleApplyLayoutPreset('classic_default')}
+                    className="w-full p-2 text-right rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all flex items-start gap-2 group"
+                  >
+                    <div className="p-1 rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors mt-0.5">
+                      <LayoutGrid size={12} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان کلاسیک (قبل از آپدیت)</div>
+                      <div className="text-[10px] text-zinc-500">تمام‌عرض ۱۰۰٪ و بدون ستون‌بندی</div>
+                    </div>
+                  </button>
+
+                  {/* Modern Responsive Multi-column */}
+                  <button
+                    type="button"
+                    onClick={() => handleApplyLayoutPreset('modern_responsive')}
+                    className="w-full p-2 text-right rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-all flex items-start gap-2 group"
+                  >
+                    <div className="p-1 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors mt-0.5">
+                      <Sliders size={12} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان مدرن چندستونه</div>
+                      <div className="text-[10px] text-zinc-500">تطبیقی هوشمند (۳ و ۲ ستونه)</div>
+                    </div>
+                  </button>
+
+                  {/* Company Default Layout */}
+                  <button
+                    type="button"
+                    onClick={() => handleApplyLayoutPreset('company_default')}
+                    className="w-full p-2 text-right rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-all flex items-start gap-2 group"
+                  >
+                    <div className="p-1 rounded-lg bg-amber-100 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-colors mt-0.5">
+                      <ShieldCheck size={12} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-zinc-800 dark:text-zinc-100">چیدمان سازمانی مدیر</div>
+                      <div className="text-[10px] text-zinc-500">الگوی استاندارد تعریف‌شده شرکت</div>
+                    </div>
+                  </button>
+
+                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-1 mt-1">
+                    <button
+                      type="button"
+                      onClick={handleResetWidgets}
+                      className="w-full p-1.5 text-right rounded-xl hover:bg-red-50 text-red-600 transition-all flex items-center justify-between text-[11px] font-bold"
+                    >
+                      <span>بازنشانی کامل پیشخوان</span>
+                      <RotateCw size={11} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Admin Role Locks Modal Button */}
+            {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER) && (
+              <button
+                onClick={() => setShowAdminLocksModal(true)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 transition-all border border-amber-200/60 dark:border-amber-800/60"
+                title="تعیین ابزارک‌های قفل‌شده برای هر نقش سازمانی"
+              >
+                <Lock size={12} className="text-amber-600 dark:text-amber-400" />
+                <span>قفل ابزارک‌ها</span>
+              </button>
+            )}
+
+            {/* Add Widget Dropdown Button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowAddWidgetsDropdown(!showAddWidgetsDropdown)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-xs"
+                title="نمایش یا پنهان‌سازی ابزارک‌های خاص"
+              >
+                <Plus size={12} />
+                <span>ابزارک‌ها</span>
+              </button>
+              {showAddWidgetsDropdown && (
+                <div className="absolute left-0 mt-1.5 w-60 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl p-2 z-[100] animate-fade-in text-right">
+                  <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border-b border-zinc-100 dark:border-zinc-800 mb-1">لیست ابزارک‌های فعال</div>
+                  <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-0.5">
+                    {Object.entries(widgetNames).map(([id, label]) => {
+                      const isVisible = widgetsVisibility[id];
+                      const isLocked = isWidgetLockedForCurrentUser(id);
+                      return (
+                        <button
+                          key={id}
+                          disabled={isLocked}
+                          onClick={() => toggleWidgetVisibility(id)}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                            isLocked 
+                              ? 'opacity-50 cursor-not-allowed bg-zinc-50 dark:bg-zinc-900' 
+                              : 'hover:bg-blue-50/60 hover:text-blue-600 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 truncate">
+                            {isLocked && <Lock size={10} className="text-amber-500 shrink-0" />}
+                            <span className="truncate">{label}</span>
+                          </span>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${isVisible ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-700'}`} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Reset Button */}
+            <button
+              onClick={handleResetWidgets}
+              className="p-1 text-zinc-400 hover:text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-all"
+              title="بازنشانی چیدمان به پیش‌فرض"
+            >
+              <RotateCw size={12} />
             </button>
           </div>
         </div>
-      )}
+      </div>
 
       {!isClearDesktop && (
         <div className="flex flex-wrap gap-4 items-stretch w-full" id="dashboard-widgets-container">
@@ -1425,6 +1647,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={100}
             onSizeChange={(size) => handleUpdateWidgetSize('warehouse_alert', size)}
             onResetSize={() => handleResetWidgetSize('warehouse_alert')}
+            isLocked={isWidgetLockedForCurrentUser('warehouse_alert')}
+            isCollapsed={!!collapsedWidgets.warehouse_alert}
+            onToggleCollapse={() => handleToggleCollapseWidget('warehouse_alert')}
           >
             <div 
                 onClick={() => onNavigate && onNavigate('sayan')}
@@ -1481,6 +1706,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={33}
             onSizeChange={(size) => handleUpdateWidgetSize('date_card', size)}
             onResetSize={() => handleResetWidgetSize('date_card')}
+            isLocked={isWidgetLockedForCurrentUser('date_card')}
+            isCollapsed={!!collapsedWidgets.date_card}
+            onToggleCollapse={() => handleToggleCollapseWidget('date_card')}
           >
             <div 
                 onClick={() => setShowGoogleWidget(prev => !prev)}
@@ -1529,6 +1757,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={33}
             onSizeChange={(size) => handleUpdateWidgetSize('poetry_card', size)}
             onResetSize={() => handleResetWidgetSize('poetry_card')}
+            isLocked={isWidgetLockedForCurrentUser('poetry_card')}
+            isCollapsed={!!collapsedWidgets.poetry_card}
+            onToggleCollapse={() => handleToggleCollapseWidget('poetry_card')}
           >
             <div className="glass-panel rounded-2xl px-3.5 py-3 border border-rose-100 dark:border-rose-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-rose-300 dark:hover:border-rose-800/60 transition-colors">
                 <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-rose-400 to-indigo-500"></div>
@@ -1622,6 +1853,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={33}
             onSizeChange={(size) => handleUpdateWidgetSize('motivation_card', size)}
             onResetSize={() => handleResetWidgetSize('motivation_card')}
+            isLocked={isWidgetLockedForCurrentUser('motivation_card')}
+            isCollapsed={!!collapsedWidgets.motivation_card}
+            onToggleCollapse={() => handleToggleCollapseWidget('motivation_card')}
           >
             <div className="glass-panel rounded-2xl px-3.5 py-3 border border-amber-100 dark:border-amber-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-amber-300 dark:hover:border-amber-800/60 transition-colors">
                 <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 to-emerald-500"></div>
@@ -1709,6 +1943,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={100}
             onSizeChange={(size) => handleUpdateWidgetSize('google_widget', size)}
             onResetSize={() => handleResetWidgetSize('google_widget')}
+            isLocked={isWidgetLockedForCurrentUser('google_widget')}
+            isCollapsed={!!collapsedWidgets.google_widget}
+            onToggleCollapse={() => handleToggleCollapseWidget('google_widget')}
           >
             <GoogleWorkspaceWidget currentUser={currentUser} />
           </ResizableWidget>
@@ -1730,6 +1967,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={100}
             onSizeChange={(size) => handleUpdateWidgetSize('announcements', size)}
             onResetSize={() => handleResetWidgetSize('announcements')}
+            isLocked={isWidgetLockedForCurrentUser('announcements')}
+            isCollapsed={!!collapsedWidgets.announcements}
+            onToggleCollapse={() => handleToggleCollapseWidget('announcements')}
           >
                 <div className={`rounded-2xl border border-blue-100 shadow-sm relative transition-all h-full ${visibleAnnouncements.length === 0 ? 'bg-transparent p-2 border-dashed' : 'bg-blue-50/50 p-6'}`}>
                     
@@ -1815,6 +2055,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             defaultWidthPercent={100}
             onSizeChange={(size) => handleUpdateWidgetSize('task_groups', size)}
             onResetSize={() => handleResetWidgetSize('task_groups')}
+            isLocked={isWidgetLockedForCurrentUser('task_groups')}
+            isCollapsed={!!collapsedWidgets.task_groups}
+            onToggleCollapse={() => handleToggleCollapseWidget('task_groups')}
           >
                 {!showTasksInDashboard ? (
                     <div className="flex justify-end my-3">
@@ -1949,38 +2192,25 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
         {/* NOTES PREVIEW SECTION - Google Keep Style Preview */}
         {widgetsVisibility.notes && (
-            <div className="relative group w-full" style={{ order: widgetsOrder.indexOf('notes') }}>
-                {isCustomizingWidgets && (
-                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('notes') === 0}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('notes'), widgetsOrder.indexOf('notes') - 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به بالا"
-                        >
-                            <ChevronUp size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('notes') === widgetsOrder.length - 1}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('notes'), widgetsOrder.indexOf('notes') + 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به پایین"
-                        >
-                            <ChevronDown size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => toggleWidgetVisibility('notes')}
-                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
-                            title="حذف ابزارک"
-                        >
-                            <X size={12} />
-                        </button>
-                    </div>
-                )}
-                <div className="bg-yellow-50/50 rounded-2xl p-6 border border-yellow-100 shadow-sm">
+          <ResizableWidget
+            id="notes"
+            title="برنامه یادداشت و تسک"
+            orderIndex={widgetsOrder.indexOf('notes')}
+            isFirst={widgetsOrder.indexOf('notes') === 0}
+            isLast={widgetsOrder.indexOf('notes') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('notes'), widgetsOrder.indexOf('notes') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('notes'), widgetsOrder.indexOf('notes') + 1)}
+            onRemove={() => toggleWidgetVisibility('notes')}
+            size={widgetSizes.notes}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('notes', size)}
+            onResetSize={() => handleResetWidgetSize('notes')}
+            isLocked={isWidgetLockedForCurrentUser('notes')}
+            isCollapsed={!!collapsedWidgets.notes}
+            onToggleCollapse={() => handleToggleCollapseWidget('notes')}
+          >
+                <div className="bg-yellow-50/50 rounded-2xl p-6 border border-yellow-100 shadow-sm h-full">
                     <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
                             <Edit3 size={20} className="text-yellow-600" />
@@ -2028,43 +2258,30 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         )}
                     </div>
                 </div>
-            </div>
+          </ResizableWidget>
         )}
 
         {/* WINDOWS-STYLE QUICK ACCESS TILES & CUSTOMIZABLE WIDGETS */}
         {widgetsVisibility.quick_tiles && (
-            <div className="relative group w-full" style={{ order: widgetsOrder.indexOf('quick_tiles') }}>
-                {isCustomizingWidgets && (
-                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('quick_tiles') === 0}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('quick_tiles'), widgetsOrder.indexOf('quick_tiles') - 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به بالا"
-                        >
-                            <ChevronUp size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('quick_tiles') === widgetsOrder.length - 1}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('quick_tiles'), widgetsOrder.indexOf('quick_tiles') + 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به پایین"
-                        >
-                            <ChevronDown size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => toggleWidgetVisibility('quick_tiles')}
-                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
-                            title="حذف ابزارک"
-                        >
-                            <X size={12} />
-                        </button>
-                    </div>
-                )}
-                <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative">
+          <ResizableWidget
+            id="quick_tiles"
+            title="کاشی‌ها و دسترسی سریع برنامه‌ها"
+            orderIndex={widgetsOrder.indexOf('quick_tiles')}
+            isFirst={widgetsOrder.indexOf('quick_tiles') === 0}
+            isLast={widgetsOrder.indexOf('quick_tiles') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('quick_tiles'), widgetsOrder.indexOf('quick_tiles') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('quick_tiles'), widgetsOrder.indexOf('quick_tiles') + 1)}
+            onRemove={() => toggleWidgetVisibility('quick_tiles')}
+            size={widgetSizes.quick_tiles}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('quick_tiles', size)}
+            onResetSize={() => handleResetWidgetSize('quick_tiles')}
+            isLocked={isWidgetLockedForCurrentUser('quick_tiles')}
+            isCollapsed={!!collapsedWidgets.quick_tiles}
+            onToggleCollapse={() => handleToggleCollapseWidget('quick_tiles')}
+          >
+                <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative h-full">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-4">
                         <div className="flex items-center gap-3">
                             <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl border border-blue-500/20">
@@ -2260,40 +2477,28 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         })}
                     </div>
                 </div>
-            </div>
+          </ResizableWidget>
         )}
         {widgetsVisibility.cartable && showActionSection && (
-            <div className="mb-8 relative group w-full" style={{ order: widgetsOrder.indexOf('cartable') }}>
-                {isCustomizingWidgets && (
-                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('cartable') === 0}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('cartable'), widgetsOrder.indexOf('cartable') - 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به بالا"
-                        >
-                            <ChevronUp size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('cartable') === widgetsOrder.length - 1}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('cartable'), widgetsOrder.indexOf('cartable') + 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به پایین"
-                        >
-                            <ChevronDown size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => toggleWidgetVisibility('cartable')}
-                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
-                            title="حذف ابزارک"
-                        >
-                            <X size={12} />
-                        </button>
-                    </div>
-                )}
+          <ResizableWidget
+            id="cartable"
+            title="کارتابل و وظایف من"
+            orderIndex={widgetsOrder.indexOf('cartable')}
+            isFirst={widgetsOrder.indexOf('cartable') === 0}
+            isLast={widgetsOrder.indexOf('cartable') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('cartable'), widgetsOrder.indexOf('cartable') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('cartable'), widgetsOrder.indexOf('cartable') + 1)}
+            onRemove={() => toggleWidgetVisibility('cartable')}
+            size={widgetSizes.cartable}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('cartable', size)}
+            onResetSize={() => handleResetWidgetSize('cartable')}
+            isLocked={isWidgetLockedForCurrentUser('cartable')}
+            isCollapsed={!!collapsedWidgets.cartable}
+            onToggleCollapse={() => handleToggleCollapseWidget('cartable')}
+          >
+            <div className="h-full">
                 <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-200 mb-4 flex items-center gap-2">
                     <ListChecks className="text-[#4b90ff]" /> 
                     <span>کارتابل و وظایف من</span>
@@ -2435,42 +2640,30 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                     )}
                 </div>
             </div>
+          </ResizableWidget>
         )}
 
         {/* PAYMENT DASHBOARD - ONLY IF ACCESS IS GRANTED */}
         {hasPaymentAccess && widgetsVisibility.payment_stats && (
-            <div className="relative group w-full mb-6" style={{ order: widgetsOrder.indexOf('payment_stats') }}>
-                {isCustomizingWidgets && (
-                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('payment_stats') === 0}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_stats'), widgetsOrder.indexOf('payment_stats') - 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به بالا"
-                        >
-                            <ChevronUp size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('payment_stats') === widgetsOrder.length - 1}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_stats'), widgetsOrder.indexOf('payment_stats') + 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به پایین"
-                        >
-                            <ChevronDown size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => toggleWidgetVisibility('payment_stats')}
-                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
-                            title="حذف ابزارک"
-                        >
-                            <X size={12} />
-                        </button>
-                    </div>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <ResizableWidget
+            id="payment_stats"
+            title="آمار وضعیت پرداخت‌ها"
+            orderIndex={widgetsOrder.indexOf('payment_stats')}
+            isFirst={widgetsOrder.indexOf('payment_stats') === 0}
+            isLast={widgetsOrder.indexOf('payment_stats') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('payment_stats'), widgetsOrder.indexOf('payment_stats') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('payment_stats'), widgetsOrder.indexOf('payment_stats') + 1)}
+            onRemove={() => toggleWidgetVisibility('payment_stats')}
+            size={widgetSizes.payment_stats}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('payment_stats', size)}
+            onResetSize={() => handleResetWidgetSize('payment_stats')}
+            isLocked={isWidgetLockedForCurrentUser('payment_stats')}
+            isCollapsed={!!collapsedWidgets.payment_stats}
+            onToggleCollapse={() => handleToggleCollapseWidget('payment_stats')}
+          >
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 h-full">
                     {statusWidgets.map((widget) => (
                         <div key={widget.key} onClick={() => handleWidgetClick(widget.key === OrderStatus.APPROVED_CEO ? 'pending_all' : widget.key as any)} className={`glass-panel p-4 rounded-2xl border ${widget.border} shadow-sm transition-all relative overflow-hidden group cursor-pointer hover:shadow-md`}>
                             <div className={`absolute top-0 right-0 w-1.5 h-full ${widget.barColor}`}></div>
@@ -2484,43 +2677,30 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </div>
                     ))}
                 </div>
-            </div>
+          </ResizableWidget>
         )}
 
         {hasPaymentAccess && widgetsVisibility.payment_chart && (
-            <div className="relative group w-full mb-6" style={{ order: widgetsOrder.indexOf('payment_chart') }}>
-                {isCustomizingWidgets && (
-                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('payment_chart') === 0}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_chart'), widgetsOrder.indexOf('payment_chart') - 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به بالا"
-                        >
-                            <ChevronUp size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            disabled={widgetsOrder.indexOf('payment_chart') === widgetsOrder.length - 1}
-                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_chart'), widgetsOrder.indexOf('payment_chart') + 1)}
-                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                            title="انتقال به پایین"
-                        >
-                            <ChevronDown size={12} />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => toggleWidgetVisibility('payment_chart')}
-                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
-                            title="حذف ابزارک"
-                        >
-                            <X size={12} />
-                        </button>
-                    </div>
-                )}
-                <div className="grid grid-cols-1 gap-6">
-                    <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-sm flex flex-col">
+          <ResizableWidget
+            id="payment_chart"
+            title="توزیع روش‌های پرداخت"
+            orderIndex={widgetsOrder.indexOf('payment_chart')}
+            isFirst={widgetsOrder.indexOf('payment_chart') === 0}
+            isLast={widgetsOrder.indexOf('payment_chart') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('payment_chart'), widgetsOrder.indexOf('payment_chart') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('payment_chart'), widgetsOrder.indexOf('payment_chart') + 1)}
+            onRemove={() => toggleWidgetVisibility('payment_chart')}
+            size={widgetSizes.payment_chart}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('payment_chart', size)}
+            onResetSize={() => handleResetWidgetSize('payment_chart')}
+            isLocked={isWidgetLockedForCurrentUser('payment_chart')}
+            isCollapsed={!!collapsedWidgets.payment_chart}
+            onToggleCollapse={() => handleToggleCollapseWidget('payment_chart')}
+          >
+                <div className="grid grid-cols-1 gap-6 h-full">
+                    <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-sm flex flex-col h-full">
                         <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><PieChart size={20} className="text-blue-500"/> توزیع روش‌های پرداخت</h3>
                         <div className="h-64 w-full">
                             <ResponsiveContainer width="100%" height="100%">
@@ -2535,43 +2715,30 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </div>
                     </div>
                 </div>
-            </div>
+          </ResizableWidget>
         )}
 
                   {/* WAREHOUSE STATUS WIDGET */}
                 {permissions.canViewSayanWarehouseWidget && widgetsVisibility.warehouse_status && (
-                    <div className="relative group w-full mb-6" style={{ order: widgetsOrder.indexOf('warehouse_status') }}>
-                        {isCustomizingWidgets && (
-                            <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
-                                <button
-                                    type="button"
-                                    disabled={widgetsOrder.indexOf('warehouse_status') === 0}
-                                    onClick={() => moveWidget(widgetsOrder.indexOf('warehouse_status'), widgetsOrder.indexOf('warehouse_status') - 1)}
-                                    className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                                    title="انتقال به بالا"
-                                >
-                                    <ChevronUp size={12} />
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={widgetsOrder.indexOf('warehouse_status') === widgetsOrder.length - 1}
-                                    onClick={() => moveWidget(widgetsOrder.indexOf('warehouse_status'), widgetsOrder.indexOf('warehouse_status') + 1)}
-                                    className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
-                                    title="انتقال به پایین"
-                                >
-                                    <ChevronDown size={12} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => toggleWidgetVisibility('warehouse_status')}
-                                    className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
-                                    title="حذف ابزارک"
-                                >
-                                    <X size={12} />
-                                </button>
-                            </div>
-                        )}
-                        <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-md flex flex-col relative overflow-hidden">
+                  <ResizableWidget
+                    id="warehouse_status"
+                    title="داشبورد تراز وزنی کل زنجیره تامین و انبارها"
+                    orderIndex={widgetsOrder.indexOf('warehouse_status')}
+                    isFirst={widgetsOrder.indexOf('warehouse_status') === 0}
+                    isLast={widgetsOrder.indexOf('warehouse_status') === widgetsOrder.length - 1}
+                    isCustomizing={isCustomizingWidgets}
+                    onMoveUp={() => moveWidget(widgetsOrder.indexOf('warehouse_status'), widgetsOrder.indexOf('warehouse_status') - 1)}
+                    onMoveDown={() => moveWidget(widgetsOrder.indexOf('warehouse_status'), widgetsOrder.indexOf('warehouse_status') + 1)}
+                    onRemove={() => toggleWidgetVisibility('warehouse_status')}
+                    size={widgetSizes.warehouse_status}
+                    defaultWidthPercent={100}
+                    onSizeChange={(size) => handleUpdateWidgetSize('warehouse_status', size)}
+                    onResetSize={() => handleResetWidgetSize('warehouse_status')}
+                    isLocked={isWidgetLockedForCurrentUser('warehouse_status')}
+                    isCollapsed={!!collapsedWidgets.warehouse_status}
+                    onToggleCollapse={() => handleToggleCollapseWidget('warehouse_status')}
+                  >
+                        <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-md flex flex-col relative overflow-hidden h-full">
                         {/* Sub-background decoration to emphasize managerial feel */}
                         <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full blur-2xl pointer-events-none" />
 
@@ -2696,10 +2863,30 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                  </ResizableWidget>
+                )}
 
-                <div className="glass-panel rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* RECENT ACTIVITIES */}
+        {widgetsVisibility.recent_activities && (
+          <ResizableWidget
+            id="recent_activities"
+            title="آخرین فعالیت‌ها (پرداخت)"
+            orderIndex={widgetsOrder.indexOf('recent_activities')}
+            isFirst={widgetsOrder.indexOf('recent_activities') === 0}
+            isLast={widgetsOrder.indexOf('recent_activities') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('recent_activities'), widgetsOrder.indexOf('recent_activities') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('recent_activities'), widgetsOrder.indexOf('recent_activities') + 1)}
+            onRemove={() => toggleWidgetVisibility('recent_activities')}
+            size={widgetSizes.recent_activities}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('recent_activities', size)}
+            onResetSize={() => handleResetWidgetSize('recent_activities')}
+            isLocked={isWidgetLockedForCurrentUser('recent_activities')}
+            isCollapsed={!!collapsedWidgets.recent_activities}
+            onToggleCollapse={() => handleToggleCollapseWidget('recent_activities')}
+          >
+                <div className="glass-panel rounded-2xl border border-gray-200 shadow-sm overflow-hidden h-full">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200/50">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Activity size={20} className="text-orange-500"/> آخرین فعالیت‌ها (پرداخت)</h3>
                         {onViewArchive && <button onClick={onViewArchive} className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">مشاهده آرشیو <ArrowUpRight size={14}/></button>}
@@ -2738,6 +2925,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         )}
                     </div>
                 </div>
+          </ResizableWidget>
+        )}
 
         {/* QUICK ACCESS SQUARE TILES GRID */}
         <div className="glass-panel p-4 md:p-5 rounded-3xl border border-blue-100/80 shadow-sm bg-gradient-to-br from-white via-blue-50/20 to-indigo-50/20 dark:from-gray-800 dark:to-gray-900 transition-all duration-300">
@@ -3003,6 +3192,16 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 </div>
             </div>
         )}
+
+        {/* ADMIN ROLE-BASED WIDGET LOCKS & COMPANY DEFAULT MODAL */}
+        <DashboardAdminRoleLocksModal
+          isOpen={showAdminLocksModal}
+          onClose={() => setShowAdminLocksModal(false)}
+          widgetNames={DASHBOARD_WIDGET_NAMES}
+          roleLocks={roleLocks}
+          onSaveRoleLocks={handleSaveRoleLocks}
+          onPublishDefaultLayout={handlePublishCompanyDefaultLayout}
+        />
     </div>
   );
 };

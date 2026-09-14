@@ -149,14 +149,16 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
 
   if (isMinimized) {
     return (
-      <div 
+      <motion.div 
+        drag
+        dragMomentum={false}
         onClick={onMinimize}
-        className="fixed bottom-16 left-6 z-[9999] bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 border border-emerald-400/40"
-        title="ماشین‌حساب (کوچک شده)"
+        className="fixed top-20 left-6 z-[9999] bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-grab active:cursor-grabbing transition-all hover:scale-105 active:scale-95 border border-emerald-400/40"
+        title="ماشین‌حساب (کوچک شده - قابل جابجایی با کشیدن)"
       >
         <Calculator size={18} />
         <span className="text-xs font-bold font-mono dir-ltr">{formatCurrency(parseFloat(display.replace(/,/g, '')) || 0)}</span>
-      </div>
+      </motion.div>
     );
   }
 
@@ -168,22 +170,24 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
 
   return (
     <motion.div 
+      drag
+      dragMomentum={false}
       initial={{ opacity: 0, scale: 0.9, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: 20 }}
-      className="fixed bottom-20 left-4 sm:left-8 z-[9999] w-72 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden text-zinc-800 dark:text-zinc-100 flex flex-col"
+      className="fixed top-24 left-8 z-[9999] w-72 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-hidden text-zinc-800 dark:text-zinc-100 flex flex-col"
     >
-      {/* Header */}
-      <div className="bg-zinc-100/80 dark:bg-zinc-900/80 px-3.5 py-2.5 flex items-center justify-between border-b border-zinc-200/50 dark:border-zinc-800/50">
+      {/* Header (Draggable) */}
+      <div className="bg-zinc-100/80 dark:bg-zinc-900/80 px-3.5 py-2.5 flex items-center justify-between border-b border-zinc-200/50 dark:border-zinc-800/50 cursor-move select-none">
         <div className="flex items-center gap-2">
           <Calculator size={16} className="text-emerald-500" />
-          <span className="text-xs font-bold">ماشین‌حساب مالی</span>
+          <span className="text-xs font-bold">ماشین‌حساب مالی (قابل کشیدن)</span>
         </div>
         <div className="flex items-center gap-1">
           <button 
             type="button" 
             onClick={handleCopy} 
-            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" 
+            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors cursor-pointer" 
             title="کپی نتیجه"
           >
             {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
@@ -191,7 +195,7 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
           <button 
             type="button" 
             onClick={onMinimize} 
-            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors" 
+            className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors cursor-pointer" 
             title="کوچک کردن"
           >
             <Minus size={14} />
@@ -199,7 +203,7 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
           <button 
             type="button" 
             onClick={onClose} 
-            className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 rounded-md transition-colors" 
+            className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 rounded-md transition-colors cursor-pointer" 
             title="بستن"
           >
             <X size={14} />

@@ -20,6 +20,7 @@ import {
   NotesPreviewWidget, 
   QuickTilesWidget 
 } from './DashboardWidgets';
+import { ResizableWidget, WidgetSize } from './ResizableWidget';
 
 interface DashboardProps {
   orders: PaymentOrder[];
@@ -191,6 +192,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
           google_widget: parsed.google_widget ?? true,
           announcements: parsed.announcements ?? true,
           task_groups: parsed.task_groups ?? true,
+          notes: parsed.notes ?? true,
           cartable: parsed.cartable ?? true,
           payment_stats: parsed.payment_stats ?? true,
           payment_chart: parsed.payment_chart ?? true,
@@ -208,6 +210,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       google_widget: true,
       announcements: true,
       task_groups: true,
+      notes: true,
       cartable: true,
       payment_stats: true,
       payment_chart: true,
@@ -230,6 +233,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
           'google_widget',
           'announcements',
           'task_groups',
+          'notes',
           'cartable',
           'payment_stats',
           'payment_chart',
@@ -250,6 +254,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       'google_widget',
       'announcements',
       'task_groups',
+      'notes',
       'cartable',
       'payment_stats',
       'payment_chart',
@@ -258,6 +263,37 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       'quick_tiles',
     ];
   });
+
+  // Widget Resizing State (Width percentage and Height px per widget)
+  const [widgetSizes, setWidgetSizes] = useState<Record<string, WidgetSize>>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_widget_sizes');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleUpdateWidgetSize = (id: string, newSize: WidgetSize) => {
+    setWidgetSizes(prev => {
+      const updated = { ...prev, [id]: newSize };
+      try {
+        localStorage.setItem('dashboard_widget_sizes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const handleResetWidgetSize = (id: string) => {
+    setWidgetSizes(prev => {
+      const updated = { ...prev };
+      delete updated[id];
+      try {
+        localStorage.setItem('dashboard_widget_sizes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
 
   const [isClearDesktop, setIsClearDesktop] = useState<boolean>(() => {
     try {
@@ -363,6 +399,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       google_widget: true,
       announcements: true,
       task_groups: true,
+      notes: true,
       cartable: true,
       payment_stats: true,
       payment_chart: true,
@@ -378,6 +415,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       'google_widget',
       'announcements',
       'task_groups',
+      'notes',
       'cartable',
       'payment_stats',
       'payment_chart',
@@ -387,11 +425,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     ];
     setWidgetsVisibility(defaultVisibility);
     setWidgetsOrder(defaultOrder);
+    setWidgetSizes({});
     setIsClearDesktop(false);
     setIsCustomizingWidgets(false);
     try {
       localStorage.setItem('dashboard_widgets_visibility', JSON.stringify(defaultVisibility));
       localStorage.setItem('dashboard_widgets_order', JSON.stringify(defaultOrder));
+      localStorage.removeItem('dashboard_widget_sizes');
       localStorage.setItem('dashboard_clear_desktop', 'false');
     } catch {}
   };
@@ -404,6 +444,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     google_widget: 'ویجت گوگل (تقویم و تسک)',
     announcements: 'اعلانات مدیران کارخانه',
     task_groups: 'تسک‌های گروهی گفتگو',
+    notes: 'یادداشت‌ها و تسک‌های من',
     cartable: 'کارتابل و تاییدات من',
     payment_stats: 'آمار وضعیت پرداخت‌ها',
     payment_chart: 'نمودار روش‌های پرداخت',
@@ -1184,7 +1225,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     <div className="space-y-6 pb-20 md:pb-0 animate-fade-in">
       
       {/* ENTERPRISE DASHBOARD CUSTOMIZER TOOLBAR */}
-      <div className="glass-panel p-4 rounded-3xl border border-blue-100/70 dark:border-white/10 shadow-md flex flex-wrap items-center justify-between gap-4 bg-white/70 backdrop-blur-xl z-30">
+      <div className="glass-panel p-4 rounded-3xl border border-blue-100/70 dark:border-white/10 shadow-md flex flex-wrap items-center justify-between gap-4 bg-white/70 backdrop-blur-xl relative z-[85]">
         <div className="flex items-center gap-3">
           <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 p-2.5 rounded-2xl text-white shadow-md shadow-blue-500/15">
             <Settings2 size={20} />
@@ -1232,7 +1273,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
               <span>افزودن ابزارک</span>
             </button>
             {showAddWidgetsDropdown && (
-              <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-2 z-40 animate-fade-in text-right">
+              <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-2 z-[100] animate-fade-in text-right">
                 <div className="text-[10px] text-gray-400 font-bold px-3 py-1.5 border-b border-gray-50 mb-1">لیست ابزارک‌های سیستم</div>
                 {Object.entries(widgetNames).map(([id, label]) => {
                   const isVisible = widgetsVisibility[id];
@@ -1261,7 +1302,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
               <span>تصویر زمینه</span>
             </button>
             {showWallpaperDropdown && (
-              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-3.5 z-40 animate-fade-in text-right space-y-3">
+              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-3.5 z-[100] animate-fade-in text-right space-y-3">
                 <div className="text-[10px] text-gray-400 font-bold border-b border-gray-50 pb-1.5">تنظیمات تصویر زمینه</div>
                 
                 {/* Enable Wallpaper Toggle */}
@@ -1367,301 +1408,330 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       )}
 
       {!isClearDesktop && (
-        <>
+        <div className="flex flex-wrap gap-4 items-stretch w-full" id="dashboard-widgets-container">
         {/* WAREHOUSE ALERT WIDGET */}
         {widgetsVisibility.warehouse_alert && warehouseAlertData && (
-            <div className="relative group">
-                {isCustomizingWidgets && (
-                    <button
-                        onClick={() => toggleWidgetVisibility('warehouse_alert')}
-                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                        title="حذف ابزارک"
-                    >
-                        <X size={12} strokeWidth={3} />
-                    </button>
-                )}
-                <div 
-                    onClick={() => onNavigate && onNavigate('sayan')}
-                    className={`cursor-pointer border rounded-2xl p-4 flex items-center justify-between shadow-sm transition-colors group ${
-                        warehouseAlertData.diffAllWeight < 0 
-                            ? 'bg-red-50 hover:bg-red-100 border-red-200' 
-                            : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
-                    }`}
-                >
-                    <div className="flex items-center gap-4">
-                        <div className={`p-3 text-white rounded-xl shadow-inner group-hover:scale-105 transition-transform ${
-                            warehouseAlertData.diffAllWeight < 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'
-                        }`}>
-                            {warehouseAlertData.diffAllWeight < 0 ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
-                        </div>
-                        <div>
-                            <h4 className={`font-extrabold text-sm md:text-base mb-0.5 ${
-                                warehouseAlertData.diffAllWeight < 0 ? 'text-red-900' : 'text-emerald-900'
-                            }`}>
-                                {warehouseAlertData.diffAllWeight < 0 ? 'هشدار: افت تراز وزنی انبارها' : 'وضعیت مطلوب: رشد تراز وزنی انبارها'}
-                            </h4>
-                            <p className={`text-xs font-medium ${
-                                warehouseAlertData.diffAllWeight < 0 ? 'text-red-700' : 'text-emerald-700'
-                            }`}>
-                                موجودی انبار نسبت به سال گذشته <span className={`font-bold ${
-                                    warehouseAlertData.diffAllWeight < 0 ? 'text-red-800' : 'text-emerald-800'
-                                }`} dir="ltr">{Math.abs(warehouseAlertData.diffAllWeight).toLocaleString('fa-IR', { maximumFractionDigits: 0 })} kg</span> 
-                                {' '}({(Math.abs(warehouseAlertData.ratioAllWeight)).toFixed(1)}٪) {warehouseAlertData.diffAllWeight < 0 ? 'کاهش' : 'افزایش'} یافته است.
-                            </p>
-                        </div>
-                    </div>
-                    <div className={`transition-colors hidden sm:block ${
-                        warehouseAlertData.diffAllWeight < 0 ? 'text-red-400 group-hover:text-red-600' : 'text-emerald-400 group-hover:text-emerald-600'
+          <ResizableWidget
+            id="warehouse_alert"
+            title="هشدار تراز وزنی انبارها"
+            orderIndex={widgetsOrder.indexOf('warehouse_alert')}
+            isFirst={widgetsOrder.indexOf('warehouse_alert') === 0}
+            isLast={widgetsOrder.indexOf('warehouse_alert') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('warehouse_alert'), widgetsOrder.indexOf('warehouse_alert') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('warehouse_alert'), widgetsOrder.indexOf('warehouse_alert') + 1)}
+            onRemove={() => toggleWidgetVisibility('warehouse_alert')}
+            size={widgetSizes.warehouse_alert}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('warehouse_alert', size)}
+            onResetSize={() => handleResetWidgetSize('warehouse_alert')}
+          >
+            <div 
+                onClick={() => onNavigate && onNavigate('sayan')}
+                className={`cursor-pointer border rounded-2xl p-4 flex items-center justify-between shadow-sm transition-colors group h-full ${
+                    warehouseAlertData.diffAllWeight < 0 
+                        ? 'bg-red-50 hover:bg-red-100 border-red-200' 
+                        : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                }`}
+            >
+                <div className="flex items-center gap-4">
+                    <div className={`p-3 text-white rounded-xl shadow-inner group-hover:scale-105 transition-transform ${
+                        warehouseAlertData.diffAllWeight < 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'
                     }`}>
-                        <ChevronLeft size={24} />
+                        {warehouseAlertData.diffAllWeight < 0 ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
+                    </div>
+                    <div>
+                        <h4 className={`font-extrabold text-sm md:text-base mb-0.5 ${
+                            warehouseAlertData.diffAllWeight < 0 ? 'text-red-900' : 'text-emerald-900'
+                        }`}>
+                            {warehouseAlertData.diffAllWeight < 0 ? 'هشدار: افت تراز وزنی انبارها' : 'وضعیت مطلوب: رشد تراز وزنی انبارها'}
+                        </h4>
+                        <p className={`text-xs font-medium ${
+                            warehouseAlertData.diffAllWeight < 0 ? 'text-red-700' : 'text-emerald-700'
+                        }`}>
+                            موجودی انبار نسبت به سال گذشته <span className={`font-bold ${
+                                warehouseAlertData.diffAllWeight < 0 ? 'text-red-800' : 'text-emerald-800'
+                            }`} dir="ltr">{Math.abs(warehouseAlertData.diffAllWeight).toLocaleString('fa-IR', { maximumFractionDigits: 0 })} kg</span> 
+                            {' '}({(Math.abs(warehouseAlertData.ratioAllWeight)).toFixed(1)}٪) {warehouseAlertData.diffAllWeight < 0 ? 'کاهش' : 'افزایش'} یافته است.
+                        </p>
+                    </div>
+                </div>
+                <div className={`transition-colors hidden sm:block ${
+                    warehouseAlertData.diffAllWeight < 0 ? 'text-red-400 group-hover:text-red-600' : 'text-emerald-400 group-hover:text-emerald-600'
+                }`}>
+                    <ChevronLeft size={24} />
+                </div>
+            </div>
+          </ResizableWidget>
+        )}
+
+        {/* Minimal Date Card - Smaller & Sleek with Google Calendar/Tasks Quick Status */}
+        {widgetsVisibility.date_card && (
+          <ResizableWidget
+            id="date_card"
+            title="کارت تاریخ روز"
+            orderIndex={widgetsOrder.indexOf('date_card')}
+            isFirst={widgetsOrder.indexOf('date_card') === 0}
+            isLast={widgetsOrder.indexOf('date_card') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('date_card'), widgetsOrder.indexOf('date_card') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('date_card'), widgetsOrder.indexOf('date_card') + 1)}
+            onRemove={() => toggleWidgetVisibility('date_card')}
+            size={widgetSizes.date_card}
+            defaultWidthPercent={33}
+            onSizeChange={(size) => handleUpdateWidgetSize('date_card', size)}
+            onResetSize={() => handleResetWidgetSize('date_card')}
+          >
+            <div 
+                onClick={() => setShowGoogleWidget(prev => !prev)}
+                className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center justify-between gap-4 w-full h-full relative overflow-hidden cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all active:scale-[0.99]"
+                title="کلیک برای نمایش/پنهان‌سازی ویجت تقویم و کارهای گوگل"
+            >
+                <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-20 transition-opacity"><CalendarIcon size={40}/></div>
+                <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10 group-hover:scale-105 transition-transform">
+                    <CalendarIcon size={24} />
+                </div>
+                <div className="flex flex-col relative z-10 flex-1">
+                    <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center justify-between gap-1">
+                        <span>{shamsiDate.weekday}</span>
+                        <span className="flex items-center gap-1">
+                            <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${showGoogleWidget ? 'animate-pulse' : ''}`} title={currentUser?.googleLinkedEmail ? `متصل به: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
+                        </span>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-black text-gray-800 dark:text-gray-200">{shamsiDate.day}</span>
+                        <span className="text-sm font-bold text-gray-600 dark:text-gray-400">{shamsiDate.month}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1">
+                        <span>{shamsiDate.year} شمسی</span>
+                        <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                            {showGoogleWidget ? 'ویجت باز' : 'مشاهده رویدادها'}
+                        </span>
                     </div>
                 </div>
             </div>
+          </ResizableWidget>
         )}
 
-        {/* TOP SECTION: MINIMAL DATE + DUAL ONLINE PANELS (POETRY & MOTIVATIONAL) */}
-        {(widgetsVisibility.date_card || widgetsVisibility.poetry_card || widgetsVisibility.motivation_card) && (
-            <div className="flex flex-col xl:flex-row gap-4 items-stretch">
-                {/* Minimal Date Card - Smaller & Sleek with Google Calendar/Tasks Quick Status */}
-                {widgetsVisibility.date_card && (
-                    <div className="relative group flex-1 xl:flex-initial">
-                        {isCustomizingWidgets && (
+        {/* SECTION 1: PERSIAN POETRY (شعر و ادب کهن) */}
+        {widgetsVisibility.poetry_card && (
+          <ResizableWidget
+            id="poetry_card"
+            title="شعر و غزل روزانه"
+            orderIndex={widgetsOrder.indexOf('poetry_card')}
+            isFirst={widgetsOrder.indexOf('poetry_card') === 0}
+            isLast={widgetsOrder.indexOf('poetry_card') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('poetry_card'), widgetsOrder.indexOf('poetry_card') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('poetry_card'), widgetsOrder.indexOf('poetry_card') + 1)}
+            onRemove={() => toggleWidgetVisibility('poetry_card')}
+            size={widgetSizes.poetry_card}
+            defaultWidthPercent={33}
+            onSizeChange={(size) => handleUpdateWidgetSize('poetry_card', size)}
+            onResetSize={() => handleResetWidgetSize('poetry_card')}
+          >
+            <div className="glass-panel rounded-2xl px-3.5 py-3 border border-rose-100 dark:border-rose-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-rose-300 dark:hover:border-rose-800/60 transition-colors">
+                <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-rose-400 to-indigo-500"></div>
+                
+                {/* Previous Button */}
+                <button 
+                    onClick={handlePrevPoem}
+                    disabled={isLoadingPoem}
+                    className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                    title="شعر قبلی"
+                >
+                    <ChevronRight size={18} />
+                </button>
+
+                <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
+                    <div className="text-[10px] font-bold text-rose-500 dark:text-rose-400 mb-1 flex items-center justify-between w-full border-b border-rose-100/60 dark:border-rose-900/40 pb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <PenTool size={11} className="text-rose-500 shrink-0" /> 
+                            <span className="font-black whitespace-nowrap">زمزمه و شعر روز</span>
+                            <span className="text-[9px] text-rose-400 font-medium">({currentPoemIndex + 1}/{poemList.length})</span>
+                            {dailyPoem.source && (
+                                <span className="bg-rose-100/80 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-rose-200/50 truncate max-w-[100px] hidden sm:inline-block">
+                                    {dailyPoem.source}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
                             <button
-                                onClick={() => toggleWidgetVisibility('date_card')}
-                                className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                                title="حذف ابزارک"
+                                onClick={handleCopyPoem}
+                                className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                title="کپی متن شعر"
                             >
-                                <X size={12} strokeWidth={3} />
+                                {copiedPoem ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
+                                {copiedPoem && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
                             </button>
-                        )}
-                        <div 
-                            onClick={() => setShowGoogleWidget(prev => !prev)}
-                            className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center gap-4 min-w-[210px] xl:w-[230px] h-full shrink-0 relative group overflow-hidden cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all active:scale-[0.99]"
-                            title="کلیک برای نمایش/پنهان‌سازی ویجت تقویم و کارهای گوگل"
-                        >
-                            <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-20 transition-opacity"><CalendarIcon size={40}/></div>
-                            <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10 group-hover:scale-105 transition-transform">
-                                <CalendarIcon size={24} />
-                            </div>
-                            <div className="flex flex-col relative z-10 flex-1">
-                                <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center justify-between gap-1">
-                                    <span>{shamsiDate.weekday}</span>
-                                    <span className="flex items-center gap-1">
-                                        <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${showGoogleWidget ? 'animate-pulse' : ''}`} title={currentUser?.googleLinkedEmail ? `متصل به: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
-                                    </span>
-                                </div>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-black text-gray-800 dark:text-gray-200">{shamsiDate.day}</span>
-                                    <span className="text-sm font-bold text-gray-600 dark:text-gray-400">{shamsiDate.month}</span>
-                                </div>
-                                <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1">
-                                    <span>{shamsiDate.year} شمسی</span>
-                                    <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {showGoogleWidget ? 'ویجت باز' : 'مشاهده رویدادها'}
-                                    </span>
-                                </div>
-                            </div>
+                            <button
+                                onClick={handleFetchNewPoem}
+                                disabled={isLoadingPoem}
+                                className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                title="دریافت شعر آنلاین جدید"
+                            >
+                                <RotateCw size={11} className={`${isLoadingPoem ? 'animate-spin text-rose-600' : ''}`} />
+                                <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
+                            </button>
                         </div>
                     </div>
-                )}
 
-                {/* DUAL PANELS CONTAINER: POETRY + MOTIVATION */}
-                {(widgetsVisibility.poetry_card || widgetsVisibility.motivation_card) && (
-                    <div className={`flex-1 grid gap-4 ${
-                        widgetsVisibility.poetry_card && widgetsVisibility.motivation_card 
-                            ? 'grid-cols-1 md:grid-cols-2' 
-                            : 'grid-cols-1'
-                    }`}>
-                        {/* SECTION 1: PERSIAN POETRY (شعر و ادب کهن) */}
-                        {widgetsVisibility.poetry_card && (
-                            <div className="relative group">
-                                {isCustomizingWidgets && (
-                                    <button
-                                        onClick={() => toggleWidgetVisibility('poetry_card')}
-                                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                                        title="حذف ابزارک"
-                                    >
-                                        <X size={12} strokeWidth={3} />
-                                    </button>
-                                )}
-                                <div className="glass-panel rounded-2xl px-3.5 py-3 border border-rose-100 dark:border-rose-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-rose-300 dark:hover:border-rose-800/60 transition-colors">
-                                    <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-rose-400 to-indigo-500"></div>
-                                    
-                                    {/* Previous Button */}
-                                    <button 
-                                        onClick={handlePrevPoem}
-                                        disabled={isLoadingPoem}
-                                        className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                                        title="شعر قبلی"
-                                    >
-                                        <ChevronRight size={18} />
-                                    </button>
+                    {dailyPoem.title && (
+                        <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-bold mb-0.5 truncate max-w-full">
+                            {dailyPoem.title}
+                        </span>
+                    )}
 
-                                    <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
-                                        <div className="text-[10px] font-bold text-rose-500 dark:text-rose-400 mb-1 flex items-center justify-between w-full border-b border-rose-100/60 dark:border-rose-900/40 pb-1">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <PenTool size={11} className="text-rose-500 shrink-0" /> 
-                                                <span className="font-black whitespace-nowrap">زمزمه و شعر روز</span>
-                                                <span className="text-[9px] text-rose-400 font-medium">({currentPoemIndex + 1}/{poemList.length})</span>
-                                                {dailyPoem.source && (
-                                                    <span className="bg-rose-100/80 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-rose-200/50 truncate max-w-[100px] hidden sm:inline-block">
-                                                        {dailyPoem.source}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <button
-                                                    onClick={handleCopyPoem}
-                                                    className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                                    title="کپی متن شعر"
-                                                >
-                                                    {copiedPoem ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
-                                                    {copiedPoem && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
-                                                </button>
-                                                <button
-                                                    onClick={handleFetchNewPoem}
-                                                    disabled={isLoadingPoem}
-                                                    className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                                    title="دریافت شعر آنلاین جدید"
-                                                >
-                                                    <RotateCw size={11} className={`${isLoadingPoem ? 'animate-spin text-rose-600' : ''}`} />
-                                                    <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
-                                                </button>
-                                            </div>
-                                        </div>
+                    <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center italic leading-relaxed py-0.5 line-clamp-3" style={{ whiteSpace: 'pre-line' }}>
+                        {dailyPoem.text}
+                    </p>
 
-                                        {dailyPoem.title && (
-                                            <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-bold mb-0.5 truncate max-w-full">
-                                                {dailyPoem.title}
-                                            </span>
-                                        )}
+                    {dailyPoem.author && (
+                        <span className="text-[9.5px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+                            — {dailyPoem.author}
+                        </span>
+                    )}
+                </div>
 
-                                        <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center italic leading-relaxed py-0.5 line-clamp-3" style={{ whiteSpace: 'pre-line' }}>
-                                            {dailyPoem.text}
-                                        </p>
-
-                                        {dailyPoem.author && (
-                                            <span className="text-[9.5px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
-                                                — {dailyPoem.author}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Next Button */}
-                                    <button 
-                                        onClick={handleNextPoem}
-                                        disabled={isLoadingPoem}
-                                        className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                                        title="شعر بعدی (آنلاین)"
-                                    >
-                                        <ChevronLeft size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* SECTION 2: MOTIVATIONAL & UPLIFTING QUOTES (انگیزه و روحیه‌بخش) */}
-                        {widgetsVisibility.motivation_card && (
-                            <div className="relative group">
-                                {isCustomizingWidgets && (
-                                    <button
-                                        onClick={() => toggleWidgetVisibility('motivation_card')}
-                                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                                        title="حذف ابزارک"
-                                    >
-                                        <X size={12} strokeWidth={3} />
-                                    </button>
-                                )}
-                                <div className="glass-panel rounded-2xl px-3.5 py-3 border border-amber-100 dark:border-amber-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-amber-300 dark:hover:border-amber-800/60 transition-colors">
-                                    <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 to-emerald-500"></div>
-                                    
-                                    {/* Previous Button */}
-                                    <button 
-                                        onClick={handlePrevMotivational}
-                                        disabled={isLoadingMotivational}
-                                        className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                                        title="جمله قبلی"
-                                    >
-                                        <ChevronRight size={18} />
-                                    </button>
-
-                                    <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
-                                        <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-1 flex items-center justify-between w-full border-b border-amber-100/60 dark:border-amber-900/40 pb-1">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <Flame size={11} className="text-amber-500 shrink-0" /> 
-                                                <span className="font-black whitespace-nowrap">انگیزه و روحیه‌بخش</span>
-                                                <span className="text-[9px] text-amber-500 font-medium">({currentMotivationalIndex + 1}/{motivationalList.length})</span>
-                                                {dailyMotivational.title && (
-                                                    <span className="bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-amber-200/50 truncate max-w-[100px] hidden sm:inline-block">
-                                                        {dailyMotivational.title}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <button
-                                                    onClick={handleCopyMotivational}
-                                                    className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                                    title="کپی متن انگیزشی"
-                                                >
-                                                    {copiedMotivational ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
-                                                    {copiedMotivational && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
-                                                </button>
-                                                <button
-                                                    onClick={handleFetchNewMotivational}
-                                                    disabled={isLoadingMotivational}
-                                                    className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                                    title="دریافت جمله انگیزشی آنلاین جدید"
-                                                >
-                                                    <RotateCw size={11} className={`${isLoadingMotivational ? 'animate-spin text-amber-600' : ''}`} />
-                                                    <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center leading-relaxed py-0.5 line-clamp-3">
-                                            «{dailyMotivational.text}»
-                                        </p>
-
-                                        {dailyMotivational.author && (
-                                            <span className="text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-                                                — {dailyMotivational.author}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Next Button */}
-                                    <button 
-                                        onClick={handleNextMotivational}
-                                        disabled={isLoadingMotivational}
-                                        className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                                        title="جمله بعدی (آنلاین)"
-                                    >
-                                        <ChevronLeft size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+                {/* Next Button */}
+                <button 
+                    onClick={handleNextPoem}
+                    disabled={isLoadingPoem}
+                    className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                    title="شعر بعدی (آنلاین)"
+                >
+                    <ChevronLeft size={18} />
+                </button>
             </div>
+          </ResizableWidget>
+        )}
+
+        {/* SECTION 2: MOTIVATIONAL & UPLIFTING QUOTES (انگیزه و روحیه‌بخش) */}
+        {widgetsVisibility.motivation_card && (
+          <ResizableWidget
+            id="motivation_card"
+            title="انگیزه و کلام روز"
+            orderIndex={widgetsOrder.indexOf('motivation_card')}
+            isFirst={widgetsOrder.indexOf('motivation_card') === 0}
+            isLast={widgetsOrder.indexOf('motivation_card') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('motivation_card'), widgetsOrder.indexOf('motivation_card') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('motivation_card'), widgetsOrder.indexOf('motivation_card') + 1)}
+            onRemove={() => toggleWidgetVisibility('motivation_card')}
+            size={widgetSizes.motivation_card}
+            defaultWidthPercent={33}
+            onSizeChange={(size) => handleUpdateWidgetSize('motivation_card', size)}
+            onResetSize={() => handleResetWidgetSize('motivation_card')}
+          >
+            <div className="glass-panel rounded-2xl px-3.5 py-3 border border-amber-100 dark:border-amber-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-amber-300 dark:hover:border-amber-800/60 transition-colors">
+                <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 to-emerald-500"></div>
+                
+                {/* Previous Button */}
+                <button 
+                    onClick={handlePrevMotivational}
+                    disabled={isLoadingMotivational}
+                    className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                    title="جمله قبلی"
+                >
+                    <ChevronRight size={18} />
+                </button>
+
+                <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
+                    <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-1 flex items-center justify-between w-full border-b border-amber-100/60 dark:border-amber-900/40 pb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <Flame size={11} className="text-amber-500 shrink-0" /> 
+                            <span className="font-black whitespace-nowrap">انگیزه و روحیه‌بخش</span>
+                            <span className="text-[9px] text-amber-500 font-medium">({currentMotivationalIndex + 1}/{motivationalList.length})</span>
+                            {dailyMotivational.title && (
+                                <span className="bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-rose-200/50 truncate max-w-[100px] hidden sm:inline-block">
+                                    {dailyMotivational.title}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button
+                                onClick={handleCopyMotivational}
+                                className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                title="کپی متن انگیزشی"
+                            >
+                                {copiedMotivational ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
+                                {copiedMotivational && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
+                            </button>
+                            <button
+                                onClick={handleFetchNewMotivational}
+                                disabled={isLoadingMotivational}
+                                className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                title="دریافت جمله انگیزشی آنلاین جدید"
+                            >
+                                <RotateCw size={11} className={`${isLoadingMotivational ? 'animate-spin text-amber-600' : ''}`} />
+                                <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center leading-relaxed py-0.5 line-clamp-3">
+                        «{dailyMotivational.text}»
+                    </p>
+
+                    {dailyMotivational.author && (
+                        <span className="text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
+                            — {dailyMotivational.author}
+                        </span>
+                    )}
+                </div>
+
+                {/* Next Button */}
+                <button 
+                    onClick={handleNextMotivational}
+                    disabled={isLoadingMotivational}
+                    className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                    title="جمله بعدی (آنلاین)"
+                >
+                    <ChevronLeft size={18} />
+                </button>
+            </div>
+          </ResizableWidget>
         )}
 
         {/* GOOGLE WORKSPACE WIDGET (CALENDAR & TASKS) */}
-        {showGoogleWidget && <GoogleWorkspaceWidget currentUser={currentUser} />}
+        {widgetsVisibility.google_widget && showGoogleWidget && (
+          <ResizableWidget
+            id="google_widget"
+            title="تقویم و وظایف گوگل"
+            orderIndex={widgetsOrder.indexOf('google_widget')}
+            isFirst={widgetsOrder.indexOf('google_widget') === 0}
+            isLast={widgetsOrder.indexOf('google_widget') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('google_widget'), widgetsOrder.indexOf('google_widget') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('google_widget'), widgetsOrder.indexOf('google_widget') + 1)}
+            onRemove={() => toggleWidgetVisibility('google_widget')}
+            size={widgetSizes.google_widget}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('google_widget', size)}
+            onResetSize={() => handleResetWidgetSize('google_widget')}
+          >
+            <GoogleWorkspaceWidget currentUser={currentUser} />
+          </ResizableWidget>
+        )}
 
         {/* ANNOUNCEMENTS SECTION */}
         {widgetsVisibility.announcements && (visibleAnnouncements.length > 0 || permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
-            <div className="relative group">
-                {isCustomizingWidgets && (
-                    <button
-                        onClick={() => toggleWidgetVisibility('announcements')}
-                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                        title="حذف ابزارک"
-                    >
-                        <X size={12} strokeWidth={3} />
-                    </button>
-                )}
-                <div className={`rounded-2xl border border-blue-100 shadow-sm relative transition-all ${visibleAnnouncements.length === 0 ? 'bg-transparent p-2 border-dashed' : 'bg-blue-50/50 p-6'}`}>
+          <ResizableWidget
+            id="announcements"
+            title="اعلانات مدیران"
+            orderIndex={widgetsOrder.indexOf('announcements')}
+            isFirst={widgetsOrder.indexOf('announcements') === 0}
+            isLast={widgetsOrder.indexOf('announcements') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('announcements'), widgetsOrder.indexOf('announcements') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('announcements'), widgetsOrder.indexOf('announcements') + 1)}
+            onRemove={() => toggleWidgetVisibility('announcements')}
+            size={widgetSizes.announcements}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('announcements', size)}
+            onResetSize={() => handleResetWidgetSize('announcements')}
+          >
+                <div className={`rounded-2xl border border-blue-100 shadow-sm relative transition-all h-full ${visibleAnnouncements.length === 0 ? 'bg-transparent p-2 border-dashed' : 'bg-blue-50/50 p-6'}`}>
                     
                     {visibleAnnouncements.length === 0 ? (
                         <div className="flex justify-center items-center">
@@ -1726,21 +1796,26 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </>
                     )}
                 </div>
-            </div>
+          </ResizableWidget>
         )}
 
         {/* TASK GROUPS WIDGET */}
         {widgetsVisibility.task_groups && (
-            <div className="relative group">
-                {isCustomizingWidgets && (
-                    <button
-                        onClick={() => toggleWidgetVisibility('task_groups')}
-                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                        title="حذف ابزارک"
-                    >
-                        <X size={12} strokeWidth={3} />
-                    </button>
-                )}
+          <ResizableWidget
+            id="task_groups"
+            title="وظایف و پروژه‌ها"
+            orderIndex={widgetsOrder.indexOf('task_groups')}
+            isFirst={widgetsOrder.indexOf('task_groups') === 0}
+            isLast={widgetsOrder.indexOf('task_groups') === widgetsOrder.length - 1}
+            isCustomizing={isCustomizingWidgets}
+            onMoveUp={() => moveWidget(widgetsOrder.indexOf('task_groups'), widgetsOrder.indexOf('task_groups') - 1)}
+            onMoveDown={() => moveWidget(widgetsOrder.indexOf('task_groups'), widgetsOrder.indexOf('task_groups') + 1)}
+            onRemove={() => toggleWidgetVisibility('task_groups')}
+            size={widgetSizes.task_groups}
+            defaultWidthPercent={100}
+            onSizeChange={(size) => handleUpdateWidgetSize('task_groups', size)}
+            onResetSize={() => handleResetWidgetSize('task_groups')}
+          >
                 {!showTasksInDashboard ? (
                     <div className="flex justify-end my-3">
                         <button 
@@ -1869,20 +1944,41 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         )}
                     </div>
                 )}
-            </div>
+          </ResizableWidget>
         )}
 
         {/* NOTES PREVIEW SECTION - Google Keep Style Preview */}
         {widgetsVisibility.notes && (
-            <div className="relative group">
+            <div className="relative group w-full" style={{ order: widgetsOrder.indexOf('notes') }}>
                 {isCustomizingWidgets && (
-                    <button
-                        onClick={() => toggleWidgetVisibility('notes')}
-                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                        title="حذف ابزارک"
-                    >
-                        <X size={12} strokeWidth={3} />
-                    </button>
+                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('notes') === 0}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('notes'), widgetsOrder.indexOf('notes') - 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به بالا"
+                        >
+                            <ChevronUp size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('notes') === widgetsOrder.length - 1}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('notes'), widgetsOrder.indexOf('notes') + 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به پایین"
+                        >
+                            <ChevronDown size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => toggleWidgetVisibility('notes')}
+                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
+                            title="حذف ابزارک"
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
                 )}
                 <div className="bg-yellow-50/50 rounded-2xl p-6 border border-yellow-100 shadow-sm">
                     <div className="flex justify-between items-center mb-4">
@@ -1937,15 +2033,36 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
         {/* WINDOWS-STYLE QUICK ACCESS TILES & CUSTOMIZABLE WIDGETS */}
         {widgetsVisibility.quick_tiles && (
-            <div className="relative group">
+            <div className="relative group w-full" style={{ order: widgetsOrder.indexOf('quick_tiles') }}>
                 {isCustomizingWidgets && (
-                    <button
-                        onClick={() => toggleWidgetVisibility('quick_tiles')}
-                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                        title="حذف ابزارک"
-                    >
-                        <X size={12} strokeWidth={3} />
-                    </button>
+                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('quick_tiles') === 0}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('quick_tiles'), widgetsOrder.indexOf('quick_tiles') - 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به بالا"
+                        >
+                            <ChevronUp size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('quick_tiles') === widgetsOrder.length - 1}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('quick_tiles'), widgetsOrder.indexOf('quick_tiles') + 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به پایین"
+                        >
+                            <ChevronDown size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => toggleWidgetVisibility('quick_tiles')}
+                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
+                            title="حذف ابزارک"
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
                 )}
                 <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-4">
@@ -2146,15 +2263,36 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             </div>
         )}
         {widgetsVisibility.cartable && showActionSection && (
-            <div className="mb-8 relative group">
+            <div className="mb-8 relative group w-full" style={{ order: widgetsOrder.indexOf('cartable') }}>
                 {isCustomizingWidgets && (
-                    <button
-                        onClick={() => toggleWidgetVisibility('cartable')}
-                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
-                        title="حذف ابزارک"
-                    >
-                        <X size={12} strokeWidth={3} />
-                    </button>
+                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('cartable') === 0}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('cartable'), widgetsOrder.indexOf('cartable') - 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به بالا"
+                        >
+                            <ChevronUp size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('cartable') === widgetsOrder.length - 1}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('cartable'), widgetsOrder.indexOf('cartable') + 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به پایین"
+                        >
+                            <ChevronDown size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => toggleWidgetVisibility('cartable')}
+                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
+                            title="حذف ابزارک"
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
                 )}
                 <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-200 mb-4 flex items-center gap-2">
                     <ListChecks className="text-[#4b90ff]" /> 
@@ -2298,12 +2436,40 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 </div>
             </div>
         )}
-        </>
-      )}
 
         {/* PAYMENT DASHBOARD - ONLY IF ACCESS IS GRANTED */}
-        {hasPaymentAccess && (
-            <>
+        {hasPaymentAccess && widgetsVisibility.payment_stats && (
+            <div className="relative group w-full mb-6" style={{ order: widgetsOrder.indexOf('payment_stats') }}>
+                {isCustomizingWidgets && (
+                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('payment_stats') === 0}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_stats'), widgetsOrder.indexOf('payment_stats') - 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به بالا"
+                        >
+                            <ChevronUp size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('payment_stats') === widgetsOrder.length - 1}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_stats'), widgetsOrder.indexOf('payment_stats') + 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به پایین"
+                        >
+                            <ChevronDown size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => toggleWidgetVisibility('payment_stats')}
+                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
+                            title="حذف ابزارک"
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     {statusWidgets.map((widget) => (
                         <div key={widget.key} onClick={() => handleWidgetClick(widget.key === OrderStatus.APPROVED_CEO ? 'pending_all' : widget.key as any)} className={`glass-panel p-4 rounded-2xl border ${widget.border} shadow-sm transition-all relative overflow-hidden group cursor-pointer hover:shadow-md`}>
@@ -2318,8 +2484,42 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </div>
                     ))}
                 </div>
+            </div>
+        )}
 
-                <div className="grid grid-cols-1 gap-6 mb-6">
+        {hasPaymentAccess && widgetsVisibility.payment_chart && (
+            <div className="relative group w-full mb-6" style={{ order: widgetsOrder.indexOf('payment_chart') }}>
+                {isCustomizingWidgets && (
+                    <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('payment_chart') === 0}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_chart'), widgetsOrder.indexOf('payment_chart') - 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به بالا"
+                        >
+                            <ChevronUp size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={widgetsOrder.indexOf('payment_chart') === widgetsOrder.length - 1}
+                            onClick={() => moveWidget(widgetsOrder.indexOf('payment_chart'), widgetsOrder.indexOf('payment_chart') + 1)}
+                            className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                            title="انتقال به پایین"
+                        >
+                            <ChevronDown size={12} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => toggleWidgetVisibility('payment_chart')}
+                            className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
+                            title="حذف ابزارک"
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
+                )}
+                <div className="grid grid-cols-1 gap-6">
                     <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-sm flex flex-col">
                         <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><PieChart size={20} className="text-blue-500"/> توزیع روش‌های پرداخت</h3>
                         <div className="h-64 w-full">
@@ -2335,10 +2535,43 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </div>
                     </div>
                 </div>
+            </div>
+        )}
 
                   {/* WAREHOUSE STATUS WIDGET */}
-                {permissions.canViewSayanWarehouseWidget && (
-                    <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-md flex flex-col mb-6 relative overflow-hidden">
+                {permissions.canViewSayanWarehouseWidget && widgetsVisibility.warehouse_status && (
+                    <div className="relative group w-full mb-6" style={{ order: widgetsOrder.indexOf('warehouse_status') }}>
+                        {isCustomizingWidgets && (
+                            <div className="absolute top-2.5 right-2.5 z-40 flex items-center gap-1 bg-amber-500 text-white rounded-xl p-1 shadow-md border border-white animate-fade-in">
+                                <button
+                                    type="button"
+                                    disabled={widgetsOrder.indexOf('warehouse_status') === 0}
+                                    onClick={() => moveWidget(widgetsOrder.indexOf('warehouse_status'), widgetsOrder.indexOf('warehouse_status') - 1)}
+                                    className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                                    title="انتقال به بالا"
+                                >
+                                    <ChevronUp size={12} />
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={widgetsOrder.indexOf('warehouse_status') === widgetsOrder.length - 1}
+                                    onClick={() => moveWidget(widgetsOrder.indexOf('warehouse_status'), widgetsOrder.indexOf('warehouse_status') + 1)}
+                                    className="p-1 hover:bg-amber-600 rounded disabled:opacity-40 transition-all flex items-center justify-center cursor-pointer"
+                                    title="انتقال به پایین"
+                                >
+                                    <ChevronDown size={12} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => toggleWidgetVisibility('warehouse_status')}
+                                    className="p-1 hover:bg-red-600 rounded transition-all flex items-center justify-center cursor-pointer bg-red-500"
+                                    title="حذف ابزارک"
+                                >
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        )}
+                        <div className="glass-panel p-6 rounded-2xl border border-gray-200/50 dark:border-white/10 shadow-md flex flex-col relative overflow-hidden">
                         {/* Sub-background decoration to emphasize managerial feel */}
                         <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full blur-2xl pointer-events-none" />
 
@@ -2463,7 +2696,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
 
                 <div className="glass-panel rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200/50">
@@ -2504,8 +2738,6 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         )}
                     </div>
                 </div>
-            </>
-        )}
 
         {/* QUICK ACCESS SQUARE TILES GRID */}
         <div className="glass-panel p-4 md:p-5 rounded-3xl border border-blue-100/80 shadow-sm bg-gradient-to-br from-white via-blue-50/20 to-indigo-50/20 dark:from-gray-800 dark:to-gray-900 transition-all duration-300">
@@ -2673,6 +2905,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 </div>
             )}
         </div>
+      </div>
+    )}
 
         {/* Bank Report Modal */}
         {showBankReport && hasPaymentAccess && (

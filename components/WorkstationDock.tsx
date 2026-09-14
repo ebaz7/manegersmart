@@ -70,25 +70,31 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
     ...openTabs
   ])).filter(tabId => Boolean(tabId) && allowedSet.has(tabId));
 
-  if (isCollapsed) {
+  const isInChat = activeTab === 'chat';
+
+  if (isCollapsed || isInChat) {
     return (
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[9980] hidden md:block">
+      <div className={`fixed z-[9980] hidden md:block ${
+        isInChat ? 'bottom-3 left-4 rtl:left-4 rtl:right-auto' : 'bottom-2 left-1/2 -translate-x-1/2'
+      }`}>
         <button
           type="button"
-          onClick={() => setIsCollapsed(false)}
-          className="bg-zinc-900/85 hover:bg-zinc-900 text-white px-3 py-1.5 rounded-full shadow-lg border border-zinc-700/60 backdrop-blur-xl flex items-center gap-1.5 text-[11px] font-bold transition-all hover:scale-105 active:scale-95"
+          onClick={() => setIsCollapsed(prev => !prev)}
+          className="bg-zinc-900/90 hover:bg-zinc-900 text-white px-3 py-1.5 rounded-full shadow-lg border border-zinc-700/60 backdrop-blur-xl flex items-center gap-1.5 text-[11px] font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer"
           title="نمایش نوار وظیفه چندپنجره‌ای (Taskbar)"
         >
           <Monitor size={13} className="text-blue-400" />
           <span>میز کار ({displayTabs.length})</span>
-          <ChevronUp size={12} />
+          {isCollapsed || isInChat ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
       </div>
     );
   }
 
   return (
-    <div className="fixed bottom-2 left-1/2 right-auto -translate-x-1/2 transform rtl:left-1/2 rtl:right-auto rtl:-translate-x-1/2 z-[9980] hidden md:flex items-center gap-1.5 bg-white/85 dark:bg-zinc-950/85 border border-zinc-200/80 dark:border-zinc-800/80 p-1.5 rounded-2xl shadow-[0_12px_30px_rgba(0,0,0,0.15)] backdrop-blur-xl max-w-[94vw] animate-slide-up select-none">
+    <div className={`fixed z-[9980] hidden md:flex items-center gap-1.5 bg-white/90 dark:bg-zinc-950/90 border border-zinc-200/80 dark:border-zinc-800/80 p-1.5 rounded-2xl shadow-[0_12px_30px_rgba(0,0,0,0.15)] backdrop-blur-xl max-w-[94vw] animate-slide-up select-none ${
+      isInChat ? 'bottom-14 left-4 rtl:left-4 rtl:right-auto' : 'bottom-2 left-1/2 right-auto -translate-x-1/2 transform rtl:left-1/2 rtl:right-auto rtl:-translate-x-1/2'
+    }`}>
       {/* Workspace Indicator & Collapse toggle */}
       <div className="flex items-center gap-1 pl-1.5 border-l border-zinc-200 dark:border-zinc-800">
         <button

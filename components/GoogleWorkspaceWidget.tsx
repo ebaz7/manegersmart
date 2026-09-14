@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { 
   signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken,
-  fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem 
+  fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem,
+  isRunningInIframe, openInStandaloneTab 
 } from '../services/googleWorkspaceService';
 import { updateUser } from '../services/authService';
 import { User } from '../types';
@@ -381,9 +382,32 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ cu
           )}
 
           {error && (
-            <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 flex items-center gap-1.5">
-              <AlertCircle size={14} className="shrink-0" />
-              <span>{error}</span>
+            <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0 text-rose-500" />
+                <span>{error}</span>
+              </div>
+              <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                {isRunningInIframe() && (
+                  <button
+                    type="button"
+                    onClick={openInStandaloneTab}
+                    className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-zinc-600 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    title="باز کردن در پنجره مستقل مرورگر"
+                  >
+                    <ExternalLink size={12} />
+                    <span>باز کردن در تب مستقل</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleConnect}
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw size={11} />
+                  <span>تلاش مجدد</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

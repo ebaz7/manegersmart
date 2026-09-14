@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserRole, AppNotification, SystemSettings } from '../types';
 import { logout, hasPermission, getRolePermissions, updateUser } from '../services/authService';
-import { signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken } from '../services/googleWorkspaceService';
+import { signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken, isRunningInIframe, openInStandaloneTab } from '../services/googleWorkspaceService';
 import { requestNotificationPermission, setNotificationPreference, isNotificationEnabledInApp, sendNotification } from '../services/notificationService';
 import { getSettings, saveSettings, uploadFile } from '../services/storageService';
 import { apiCall, resolveImageUrl } from '../services/apiService';
@@ -899,9 +899,30 @@ const Layout: React.FC<LayoutProps> = ({
                             )}
 
                             {googleError && (
-                                <div className="text-[10px] text-rose-500 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 flex items-center gap-1.5">
-                                    <AlertCircle size={12} className="shrink-0" />
-                                    <span>{googleError}</span>
+                                <div className="text-[10px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                                        <span>{googleError}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                                        {isRunningInIframe() && (
+                                            <button
+                                                type="button"
+                                                onClick={openInStandaloneTab}
+                                                className="px-2 py-1 bg-white dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-zinc-600 rounded-lg text-[9px] font-bold transition-all cursor-pointer"
+                                                title="باز کردن در پنجره مستقل مرورگر"
+                                            >
+                                                باز کردن در تب مستقل
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleLinkGoogleAccount}
+                                            className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[9px] font-bold transition-all cursor-pointer"
+                                        >
+                                            تلاش مجدد
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1425,7 +1446,11 @@ const Layout: React.FC<LayoutProps> = ({
         )}
       </AnimatePresence>
 
-      <main className="flex flex-1 flex-col overflow-hidden relative min-w-0 min-h-0 w-full m-0 md:my-4 md:ml-4 md:mr-2 bg-white/95 dark:bg-slate-900/95 rounded-none md:rounded-[24px] border-0 md:border border-slate-200/70 dark:border-slate-800/70 shadow-sm">
+      <main className={`flex flex-1 flex-col overflow-hidden relative min-w-0 min-h-0 w-full m-0 ${
+          activeTab === 'dashboard'
+            ? 'bg-transparent border-0 md:border-0 shadow-none md:my-0 md:ml-0 md:mr-0 rounded-none'
+            : 'md:my-4 md:ml-4 md:mr-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl md:rounded-[24px] border-0 md:border border-slate-200/50 dark:border-slate-800/50 shadow-sm'
+      }`}>
           {/* Mobile Header - Sleek flat design matching shadcn/ui (Hidden in chat to avoid duplicate headers) */}
           <header className={`px-3 py-2.5 md:hidden no-print items-center justify-between shrink-0 relative z-[60] safe-pt sticky top-0 bg-white/60 dark:bg-zinc-950/40 border-b border-zinc-200/30 dark:border-zinc-800/30 backdrop-blur-xl ${activeTab === 'chat' ? 'hidden' : 'flex'}`}>
               <div className="flex items-center gap-3">
@@ -1524,7 +1549,11 @@ const Layout: React.FC<LayoutProps> = ({
                 </div>
               )}
 
-              <div className={`${activeTab === 'chat' ? 'hidden' : 'hidden md:flex'} justify-end p-4 bg-white/20 dark:bg-zinc-950/15 border-b border-zinc-200/40 dark:border-zinc-800/40 z-40 shadow-sm no-print items-center backdrop-blur-md gap-2`}>
+              <div className={`${activeTab === 'chat' ? 'hidden' : 'hidden md:flex'} justify-end p-4 ${
+                  activeTab === 'dashboard' 
+                    ? 'bg-transparent border-b-0' 
+                    : 'bg-white/20 dark:bg-zinc-950/15 border-b border-zinc-200/40 dark:border-zinc-800/40 backdrop-blur-md'
+              } z-40 shadow-sm no-print items-center gap-2`}>
                   <button 
                     onClick={() => setIsSearchOpen(true)}
                     className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-all mr-auto ml-2 group"

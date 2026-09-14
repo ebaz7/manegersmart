@@ -6488,6 +6488,7 @@ app.post('/api/meetings/:id/send-minutes', async (req, res) => {
 // --- FULL-STACK DATA SYNCHRONIZATION ENDPOINTS ---
 const CRUD_COLLECTIONS = [
     { route: 'security/logs', dbKey: 'securityLogs' },
+    { route: 'security/driver-payments', dbKey: 'driverPayments' },
     { route: 'security/delays', dbKey: 'personnelDelays' },
     { route: 'security/overtimes', dbKey: 'personnelOvertimes' },
     { route: 'security/incidents', dbKey: 'securityIncidents' },

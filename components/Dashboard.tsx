@@ -3,13 +3,23 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PaymentOrder, OrderStatus, SystemSettings, User, ExitPermit, ExitPermitStatus, WarehouseTransaction, UserRole, SystemAnnouncement } from '../types';
 import { formatCurrency, getShamsiDateFromIso } from '../constants';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase, Settings2, GripVertical, Eye, EyeOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, CheckCircle, Check, Activity, XCircle, Banknote, Calendar as CalendarIcon, ShieldCheck, ArrowUpRight, CheckSquare, Truck, Package, ListChecks, PieChart, BarChart, BookOpen, PenTool, Edit3, Plus, Trash2, Send, X, FileText, Users, ChevronLeft, ChevronRight, RotateCw, Copy, Flame, Sparkles, Zap, ChevronDown, ChevronUp, BellRing, CreditCard, Crown, Briefcase, Settings2, GripVertical, Eye, EyeOff, Monitor, Image } from 'lucide-react';
 import { getRolePermissions } from '../services/authService';
 import { getExitPermits, getWarehouseTransactions, getNotes, getPurchaseRequests, getTaskGroups, getTasks, updateTask } from '../services/storageService';
 import { isInFinancialYear } from '../utils/dateUtils';
 import { getRandomPoem, getRandomMotivationalQuote, persianPoems, persianMotivationalQuotes } from '../utils/quotes';
 import { Note, PurchaseRequest, PurchaseRequestStatus, GroupTask, TaskGroup } from '../types';
 import { GoogleWorkspaceWidget } from './GoogleWorkspaceWidget';
+import { 
+  WarehouseAlertWidget, 
+  DateCardWidget, 
+  PoetryCardWidget, 
+  MotivationCardWidget, 
+  AnnouncementsWidget, 
+  TaskGroupsQuickAccessWidget, 
+  NotesPreviewWidget, 
+  QuickTilesWidget 
+} from './DashboardWidgets';
 
 interface DashboardProps {
   orders: PaymentOrder[];
@@ -166,6 +176,241 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   };
 
   const [isCustomizingTiles, setIsCustomizingTiles] = useState(false);
+
+  // Full-dashboard interactive widgets management (customizable grid/list)
+  const [widgetsVisibility, setWidgetsVisibility] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_widgets_visibility');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          warehouse_alert: parsed.warehouse_alert ?? true,
+          date_card: parsed.date_card ?? true,
+          poetry_card: parsed.poetry_card ?? true,
+          motivation_card: parsed.motivation_card ?? true,
+          google_widget: parsed.google_widget ?? true,
+          announcements: parsed.announcements ?? true,
+          task_groups: parsed.task_groups ?? true,
+          cartable: parsed.cartable ?? true,
+          payment_stats: parsed.payment_stats ?? true,
+          payment_chart: parsed.payment_chart ?? true,
+          warehouse_status: parsed.warehouse_status ?? true,
+          recent_activities: parsed.recent_activities ?? true,
+          quick_tiles: parsed.quick_tiles ?? true,
+        };
+      }
+    } catch {}
+    return {
+      warehouse_alert: true,
+      date_card: true,
+      poetry_card: true,
+      motivation_card: true,
+      google_widget: true,
+      announcements: true,
+      task_groups: true,
+      cartable: true,
+      payment_stats: true,
+      payment_chart: true,
+      warehouse_status: true,
+      recent_activities: true,
+      quick_tiles: true,
+    };
+  });
+
+  const [widgetsOrder, setWidgetsOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_widgets_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const defaultWidgets = [
+          'warehouse_alert',
+          'date_card',
+          'poetry_card',
+          'motivation_card',
+          'google_widget',
+          'announcements',
+          'task_groups',
+          'cartable',
+          'payment_stats',
+          'payment_chart',
+          'warehouse_status',
+          'recent_activities',
+          'quick_tiles',
+        ];
+        const filtered = parsed.filter((id: string) => defaultWidgets.includes(id));
+        const missing = defaultWidgets.filter(id => !filtered.includes(id));
+        return [...filtered, ...missing];
+      }
+    } catch {}
+    return [
+      'warehouse_alert',
+      'date_card',
+      'poetry_card',
+      'motivation_card',
+      'google_widget',
+      'announcements',
+      'task_groups',
+      'cartable',
+      'payment_stats',
+      'payment_chart',
+      'warehouse_status',
+      'recent_activities',
+      'quick_tiles',
+    ];
+  });
+
+  const [isClearDesktop, setIsClearDesktop] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dashboard_clear_desktop') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [bgEnabled, setBgEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('app_enable_bg_image') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [bgMode, setBgMode] = useState<string>(() => {
+    try {
+      return localStorage.getItem('app_bg_mode') || 'preset';
+    } catch {
+      return 'preset';
+    }
+  });
+  const [bgPreset, setBgPreset] = useState<string>(() => {
+    try {
+      return localStorage.getItem('app_preset_bg') || 'aurora-light';
+    } catch {
+      return 'aurora-light';
+    }
+  });
+  const [customBgUrl, setCustomBgUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem('app_custom_bg_image') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [bgBlur, setBgBlur] = useState<number>(() => {
+    try {
+      const b = localStorage.getItem('app_custom_bg_blur');
+      return b ? parseInt(b, 10) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  const updateBgSetting = (key: string, value: string | number) => {
+    try {
+      localStorage.setItem(key, String(value));
+      if (key === 'app_enable_bg_image') setBgEnabled(value === 'true');
+      if (key === 'app_bg_mode') setBgMode(String(value));
+      if (key === 'app_preset_bg') setBgPreset(String(value));
+      if (key === 'app_custom_bg_image') setCustomBgUrl(String(value));
+      if (key === 'app_custom_bg_blur') setBgBlur(Number(value));
+      
+      window.dispatchEvent(new Event('APP_THEME_BG_CHANGED'));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const [isCustomizingWidgets, setIsCustomizingWidgets] = useState(false);
+  const [showAddWidgetsDropdown, setShowAddWidgetsDropdown] = useState(false);
+  const [showWallpaperDropdown, setShowWallpaperDropdown] = useState(false);
+
+  const toggleWidgetVisibility = (id: string) => {
+    setWidgetsVisibility(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem('dashboard_widgets_visibility', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const moveWidget = (fromIdx: number, toIdx: number) => {
+    const list = [...widgetsOrder];
+    if (fromIdx < 0 || toIdx < 0 || fromIdx >= list.length || toIdx >= list.length) return;
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+    setWidgetsOrder(list);
+    try {
+      localStorage.setItem('dashboard_widgets_order', JSON.stringify(list));
+    } catch {}
+  };
+
+  const handleToggleClearDesktop = () => {
+    setIsClearDesktop(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('dashboard_clear_desktop', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleResetWidgets = () => {
+    const defaultVisibility = {
+      warehouse_alert: true,
+      date_card: true,
+      poetry_card: true,
+      motivation_card: true,
+      google_widget: true,
+      announcements: true,
+      task_groups: true,
+      cartable: true,
+      payment_stats: true,
+      payment_chart: true,
+      warehouse_status: true,
+      recent_activities: true,
+      quick_tiles: true,
+    };
+    const defaultOrder = [
+      'warehouse_alert',
+      'date_card',
+      'poetry_card',
+      'motivation_card',
+      'google_widget',
+      'announcements',
+      'task_groups',
+      'cartable',
+      'payment_stats',
+      'payment_chart',
+      'warehouse_status',
+      'recent_activities',
+      'quick_tiles',
+    ];
+    setWidgetsVisibility(defaultVisibility);
+    setWidgetsOrder(defaultOrder);
+    setIsClearDesktop(false);
+    setIsCustomizingWidgets(false);
+    try {
+      localStorage.setItem('dashboard_widgets_visibility', JSON.stringify(defaultVisibility));
+      localStorage.setItem('dashboard_widgets_order', JSON.stringify(defaultOrder));
+      localStorage.setItem('dashboard_clear_desktop', 'false');
+    } catch {}
+  };
+
+  const widgetNames: Record<string, string> = {
+    warehouse_alert: 'هشدار تراز وزنی انبارها',
+    date_card: 'کارت تاریخ روز',
+    poetry_card: 'شعر و غزل روزانه',
+    motivation_card: 'جملات انگیزشی',
+    google_widget: 'ویجت گوگل (تقویم و تسک)',
+    announcements: 'اعلانات مدیران کارخانه',
+    task_groups: 'تسک‌های گروهی گفتگو',
+    cartable: 'کارتابل و تاییدات من',
+    payment_stats: 'آمار وضعیت پرداخت‌ها',
+    payment_chart: 'نمودار روش‌های پرداخت',
+    warehouse_status: 'داشبورد تراز وزنی کل زنجیره تامین',
+    recent_activities: 'آخرین فعالیت‌های پرداخت',
+    quick_tiles: 'کاشی‌های دسترسی سریع (ویندوزی)',
+  };
 
   const saveTileOrder = (newOrder: string[]) => {
     setCustomTileOrder(newOrder);
@@ -937,678 +1182,980 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   return (
     <div className="space-y-6 pb-20 md:pb-0 animate-fade-in">
-        
-        {/* WAREHOUSE ALERT WIDGET */}
-        {warehouseAlertData && (
-            <div 
-                onClick={() => onNavigate && onNavigate('sayan')}
-                className={`cursor-pointer border rounded-2xl p-4 flex items-center justify-between shadow-sm transition-colors group ${
-                    warehouseAlertData.diffAllWeight < 0 
-                        ? 'bg-red-50 hover:bg-red-100 border-red-200' 
-                        : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
-                }`}
+      
+      {/* ENTERPRISE DASHBOARD CUSTOMIZER TOOLBAR */}
+      <div className="glass-panel p-4 rounded-3xl border border-blue-100/70 dark:border-white/10 shadow-md flex flex-wrap items-center justify-between gap-4 bg-white/70 backdrop-blur-xl z-30">
+        <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 p-2.5 rounded-2xl text-white shadow-md shadow-blue-500/15">
+            <Settings2 size={20} />
+          </div>
+          <div>
+            <h2 className="font-extrabold text-sm text-gray-800 dark:text-white">داشبورد شخصی‌سازی شده</h2>
+            <p className="text-[10px] text-gray-500 font-medium">امکان چیدمان، حذف، اضافه، و تغییر تصویر زمینه ویندوزی</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Customization Toggle */}
+          <button
+            onClick={() => setIsCustomizingWidgets(!isCustomizingWidgets)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+              isCustomizingWidgets
+                ? 'bg-amber-500 text-white shadow-md'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+          >
+            <Monitor size={14} />
+            <span>{isCustomizingWidgets ? 'اتمام چیدمان' : 'تغییر چیدمان / حذف'}</span>
+          </button>
+
+          {/* Clear Desktop Toggle */}
+          <button
+            onClick={handleToggleClearDesktop}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+              isClearDesktop
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+          >
+            {isClearDesktop ? <Eye size={14} /> : <EyeOff size={14} />}
+            <span>{isClearDesktop ? 'نمایش ابزارک‌ها' : 'پاکسازی صفحه (ویندوز)'}</span>
+          </button>
+
+          {/* Add Widget Dropdown Button */}
+          <div className="relative">
+            <button
+              onClick={() => setShowAddWidgetsDropdown(!showAddWidgetsDropdown)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm"
             >
-                <div className="flex items-center gap-4">
-                    <div className={`p-3 text-white rounded-xl shadow-inner group-hover:scale-105 transition-transform ${
-                        warehouseAlertData.diffAllWeight < 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'
-                    }`}>
-                        {warehouseAlertData.diffAllWeight < 0 ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
-                    </div>
-                    <div>
-                        <h4 className={`font-extrabold text-sm md:text-base mb-0.5 ${
-                            warehouseAlertData.diffAllWeight < 0 ? 'text-red-900' : 'text-emerald-900'
-                        }`}>
-                            {warehouseAlertData.diffAllWeight < 0 ? 'هشدار: افت تراز وزنی انبارها' : 'وضعیت مطلوب: رشد تراز وزنی انبارها'}
-                        </h4>
-                        <p className={`text-xs font-medium ${
-                            warehouseAlertData.diffAllWeight < 0 ? 'text-red-700' : 'text-emerald-700'
-                        }`}>
-                            موجودی انبار نسبت به سال گذشته <span className={`font-bold ${
-                                warehouseAlertData.diffAllWeight < 0 ? 'text-red-800' : 'text-emerald-800'
-                            }`} dir="ltr">{Math.abs(warehouseAlertData.diffAllWeight).toLocaleString('fa-IR', { maximumFractionDigits: 0 })} kg</span> 
-                            {' '}({(Math.abs(warehouseAlertData.ratioAllWeight)).toFixed(1)}٪) {warehouseAlertData.diffAllWeight < 0 ? 'کاهش' : 'افزایش'} یافته است.
-                        </p>
-                    </div>
+              <Plus size={14} />
+              <span>افزودن ابزارک</span>
+            </button>
+            {showAddWidgetsDropdown && (
+              <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-2 z-40 animate-fade-in text-right">
+                <div className="text-[10px] text-gray-400 font-bold px-3 py-1.5 border-b border-gray-50 mb-1">لیست ابزارک‌های سیستم</div>
+                {Object.entries(widgetNames).map(([id, label]) => {
+                  const isVisible = widgetsVisibility[id];
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => toggleWidgetVisibility(id)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl hover:bg-blue-50/50 hover:text-blue-600 dark:hover:bg-white/5 transition-all text-gray-700 dark:text-gray-200"
+                    >
+                      <span>{label}</span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${isVisible ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Wallpaper Selection Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowWallpaperDropdown(!showWallpaperDropdown)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black bg-gray-100 hover:bg-gray-200 text-gray-700 transition-all border border-gray-200/50"
+            >
+              <Image size={14} />
+              <span>تصویر زمینه</span>
+            </button>
+            {showWallpaperDropdown && (
+              <div className="absolute left-0 mt-2 w-64 rounded-2xl bg-white dark:bg-gray-950 border border-gray-100 dark:border-white/10 shadow-xl p-3.5 z-40 animate-fade-in text-right space-y-3">
+                <div className="text-[10px] text-gray-400 font-bold border-b border-gray-50 pb-1.5">تنظیمات تصویر زمینه</div>
+                
+                {/* Enable Wallpaper Toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-200">پس‌زمینه فعال باشد</span>
+                  <input
+                    type="checkbox"
+                    checked={bgEnabled}
+                    onChange={(e) => updateBgSetting('app_enable_bg_image', e.target.checked ? 'true' : 'false')}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
                 </div>
-                <div className={`transition-colors hidden sm:block ${
-                    warehouseAlertData.diffAllWeight < 0 ? 'text-red-400 group-hover:text-red-600' : 'text-emerald-400 group-hover:text-emerald-600'
-                }`}>
-                    <ChevronLeft size={24} />
+
+                {/* Preset Wallpapers Grid */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] text-gray-400 font-bold block">انتخاب پوسته آماده</span>
+                  <div className="grid grid-cols-2 gap-1">
+                    {[
+                      { id: 'aurora-light', label: 'شفق روشن' },
+                      { id: 'cosmic-dark', label: 'کیهانی تیره' },
+                      { id: 'cyan-cosmic', label: 'آبی اقیانوس' },
+                      { id: 'dark-midnight', label: 'نیمه‌شب تاریک' },
+                      { id: 'light-modern', label: 'مدرن مینیمال' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.id}
+                        onClick={() => {
+                          updateBgSetting('app_bg_mode', 'preset');
+                          updateBgSetting('app_preset_bg', preset.id);
+                        }}
+                        className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all truncate text-center ${
+                          bgMode === 'preset' && bgPreset === preset.id
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom URL Input */}
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-400 font-bold block">آدرس تصویر سفارشی (URL)</span>
+                  <input
+                    type="text"
+                    value={customBgUrl}
+                    placeholder="https://example.com/image.jpg"
+                    onChange={(e) => {
+                      updateBgSetting('app_bg_mode', 'custom');
+                      updateBgSetting('app_custom_bg_image', e.target.value);
+                    }}
+                    className="w-full text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-blue-500 dark:bg-gray-900"
+                  />
+                </div>
+
+                {/* Blur Slider */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] text-gray-400 font-bold">
+                    <span>مات‌سازی (Blur)</span>
+                    <span>{bgBlur}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="40"
+                    value={bgBlur}
+                    onChange={(e) => updateBgSetting('app_custom_bg_blur', parseInt(e.target.value))}
+                    className="w-full accent-blue-600"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Reset Settings Button */}
+          <button
+            onClick={handleResetWidgets}
+            className="p-2 text-gray-500 hover:text-red-500 hover:bg-gray-50 rounded-xl transition-all"
+            title="بازنشانی به چیدمان اولیه"
+          >
+            <RotateCw size={14} />
+          </button>
+        </div>
+      </div>
+
+      {isClearDesktop && (
+        <div className="flex flex-col items-center justify-center py-28 select-none animate-fade-in text-center relative">
+          <div className="bg-white/30 backdrop-blur-xl border border-white/20 shadow-2xl p-8 rounded-3xl max-w-sm space-y-4">
+            <Sparkles size={40} className="text-white/80 mx-auto animate-pulse" />
+            <h3 className="text-lg font-black text-white">نمای تصویر پس‌زمینه ویندوز فعال است</h3>
+            <p className="text-xs text-white/70 font-medium">تمامی ابزارک‌ها و کاشی‌های دسترسی سریع برای مشاهده زیباتر عکس پس‌زمینه موقتاً پاکسازی شده‌اند.</p>
+            <button
+              onClick={handleToggleClearDesktop}
+              className="w-full bg-white text-indigo-600 hover:bg-gray-50 px-4 py-2.5 rounded-xl font-black text-xs transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <Eye size={14} />
+              <span>بازگرداندن ابزارک‌های داشبورد</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isClearDesktop && (
+        <>
+        {/* WAREHOUSE ALERT WIDGET */}
+        {widgetsVisibility.warehouse_alert && warehouseAlertData && (
+            <div className="relative group">
+                {isCustomizingWidgets && (
+                    <button
+                        onClick={() => toggleWidgetVisibility('warehouse_alert')}
+                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                        title="حذف ابزارک"
+                    >
+                        <X size={12} strokeWidth={3} />
+                    </button>
+                )}
+                <div 
+                    onClick={() => onNavigate && onNavigate('sayan')}
+                    className={`cursor-pointer border rounded-2xl p-4 flex items-center justify-between shadow-sm transition-colors group ${
+                        warehouseAlertData.diffAllWeight < 0 
+                            ? 'bg-red-50 hover:bg-red-100 border-red-200' 
+                            : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                    }`}
+                >
+                    <div className="flex items-center gap-4">
+                        <div className={`p-3 text-white rounded-xl shadow-inner group-hover:scale-105 transition-transform ${
+                            warehouseAlertData.diffAllWeight < 0 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'
+                        }`}>
+                            {warehouseAlertData.diffAllWeight < 0 ? <TrendingDown size={24} /> : <TrendingUp size={24} />}
+                        </div>
+                        <div>
+                            <h4 className={`font-extrabold text-sm md:text-base mb-0.5 ${
+                                warehouseAlertData.diffAllWeight < 0 ? 'text-red-900' : 'text-emerald-900'
+                            }`}>
+                                {warehouseAlertData.diffAllWeight < 0 ? 'هشدار: افت تراز وزنی انبارها' : 'وضعیت مطلوب: رشد تراز وزنی انبارها'}
+                            </h4>
+                            <p className={`text-xs font-medium ${
+                                warehouseAlertData.diffAllWeight < 0 ? 'text-red-700' : 'text-emerald-700'
+                            }`}>
+                                موجودی انبار نسبت به سال گذشته <span className={`font-bold ${
+                                    warehouseAlertData.diffAllWeight < 0 ? 'text-red-800' : 'text-emerald-800'
+                                }`} dir="ltr">{Math.abs(warehouseAlertData.diffAllWeight).toLocaleString('fa-IR', { maximumFractionDigits: 0 })} kg</span> 
+                                {' '}({(Math.abs(warehouseAlertData.ratioAllWeight)).toFixed(1)}٪) {warehouseAlertData.diffAllWeight < 0 ? 'کاهش' : 'افزایش'} یافته است.
+                            </p>
+                        </div>
+                    </div>
+                    <div className={`transition-colors hidden sm:block ${
+                        warehouseAlertData.diffAllWeight < 0 ? 'text-red-400 group-hover:text-red-600' : 'text-emerald-400 group-hover:text-emerald-600'
+                    }`}>
+                        <ChevronLeft size={24} />
+                    </div>
                 </div>
             </div>
         )}
 
         {/* TOP SECTION: MINIMAL DATE + DUAL ONLINE PANELS (POETRY & MOTIVATIONAL) */}
-        <div className="flex flex-col xl:flex-row gap-4 items-stretch">
-            {/* Minimal Date Card - Smaller & Sleek with Google Calendar/Tasks Quick Status */}
-            <div 
-                onClick={() => setShowGoogleWidget(prev => !prev)}
-                className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center gap-4 min-w-[210px] xl:w-[230px] shrink-0 relative group overflow-hidden cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all active:scale-[0.99]"
-                title="کلیک برای نمایش/پنهان‌سازی ویجت تقویم و کارهای گوگل"
-            >
-                <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-20 transition-opacity"><CalendarIcon size={40}/></div>
-                <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10 group-hover:scale-105 transition-transform">
-                    <CalendarIcon size={24} />
-                </div>
-                <div className="flex flex-col relative z-10 flex-1">
-                    <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center justify-between gap-1">
-                        <span>{shamsiDate.weekday}</span>
-                        <span className="flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${showGoogleWidget ? 'animate-pulse' : ''}`} title={currentUser?.googleLinkedEmail ? `متصل به: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
-                        </span>
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-black text-gray-800 dark:text-gray-200">{shamsiDate.day}</span>
-                        <span className="text-sm font-bold text-gray-600 dark:text-gray-400">{shamsiDate.month}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1">
-                        <span>{shamsiDate.year} شمسی</span>
-                        <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                            {showGoogleWidget ? 'ویجت باز' : 'مشاهده رویدادها'}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* DUAL PANELS CONTAINER: POETRY + MOTIVATION */}
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* SECTION 1: PERSIAN POETRY (شعر و ادب کهن) */}
-                <div className="glass-panel rounded-2xl px-3.5 py-3 border border-rose-100 dark:border-rose-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] hover:border-rose-300 dark:hover:border-rose-800/60 transition-colors">
-                    <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-rose-400 to-indigo-500"></div>
-                    
-                    {/* Previous Button */}
-                    <button 
-                        onClick={handlePrevPoem}
-                        disabled={isLoadingPoem}
-                        className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                        title="شعر قبلی"
-                    >
-                        <ChevronRight size={18} />
-                    </button>
-
-                    <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
-                        <div className="text-[10px] font-bold text-rose-500 dark:text-rose-400 mb-1 flex items-center justify-between w-full border-b border-rose-100/60 dark:border-rose-900/40 pb-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                                <PenTool size={11} className="text-rose-500 shrink-0" /> 
-                                <span className="font-black whitespace-nowrap">زمزمه و شعر روز</span>
-                                <span className="text-[9px] text-rose-400 font-medium">({currentPoemIndex + 1}/{poemList.length})</span>
-                                {dailyPoem.source && (
-                                    <span className="bg-rose-100/80 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-rose-200/50 truncate max-w-[100px] hidden sm:inline-block">
-                                        {dailyPoem.source}
-                                    </span>
-                                )}
+        {(widgetsVisibility.date_card || widgetsVisibility.poetry_card || widgetsVisibility.motivation_card) && (
+            <div className="flex flex-col xl:flex-row gap-4 items-stretch">
+                {/* Minimal Date Card - Smaller & Sleek with Google Calendar/Tasks Quick Status */}
+                {widgetsVisibility.date_card && (
+                    <div className="relative group flex-1 xl:flex-initial">
+                        {isCustomizingWidgets && (
+                            <button
+                                onClick={() => toggleWidgetVisibility('date_card')}
+                                className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                                title="حذف ابزارک"
+                            >
+                                <X size={12} strokeWidth={3} />
+                            </button>
+                        )}
+                        <div 
+                            onClick={() => setShowGoogleWidget(prev => !prev)}
+                            className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center gap-4 min-w-[210px] xl:w-[230px] h-full shrink-0 relative group overflow-hidden cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all active:scale-[0.99]"
+                            title="کلیک برای نمایش/پنهان‌سازی ویجت تقویم و کارهای گوگل"
+                        >
+                            <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-20 transition-opacity"><CalendarIcon size={40}/></div>
+                            <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10 group-hover:scale-105 transition-transform">
+                                <CalendarIcon size={24} />
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                    onClick={handleCopyPoem}
-                                    className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                    title="کپی متن شعر"
-                                >
-                                    {copiedPoem ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
-                                    {copiedPoem && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
-                                </button>
-                                <button
-                                    onClick={handleFetchNewPoem}
-                                    disabled={isLoadingPoem}
-                                    className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                    title="دریافت شعر آنلاین جدید"
-                                >
-                                    <RotateCw size={11} className={`${isLoadingPoem ? 'animate-spin text-rose-600' : ''}`} />
-                                    <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
-                                </button>
+                            <div className="flex flex-col relative z-10 flex-1">
+                                <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center justify-between gap-1">
+                                    <span>{shamsiDate.weekday}</span>
+                                    <span className="flex items-center gap-1">
+                                        <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${showGoogleWidget ? 'animate-pulse' : ''}`} title={currentUser?.googleLinkedEmail ? `متصل به: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
+                                    </span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl font-black text-gray-800 dark:text-gray-200">{shamsiDate.day}</span>
+                                    <span className="text-sm font-bold text-gray-600 dark:text-gray-400">{shamsiDate.month}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1">
+                                    <span>{shamsiDate.year} شمسی</span>
+                                    <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {showGoogleWidget ? 'ویجت باز' : 'مشاهده رویدادها'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-
-                        {dailyPoem.title && (
-                            <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-bold mb-0.5 truncate max-w-full">
-                                {dailyPoem.title}
-                            </span>
-                        )}
-
-                        <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center italic leading-relaxed py-0.5 line-clamp-3" style={{ whiteSpace: 'pre-line' }}>
-                            {dailyPoem.text}
-                        </p>
-
-                        {dailyPoem.author && (
-                            <span className="text-[9.5px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
-                                — {dailyPoem.author}
-                            </span>
-                        )}
                     </div>
+                )}
 
-                    {/* Next Button */}
-                    <button 
-                        onClick={handleNextPoem}
-                        disabled={isLoadingPoem}
-                        className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                        title="شعر بعدی (آنلاین)"
-                    >
-                        <ChevronLeft size={18} />
-                    </button>
-                </div>
-
-                {/* SECTION 2: MOTIVATIONAL & UPLIFTING QUOTES (انگیزه و روحیه‌بخش) */}
-                <div className="glass-panel rounded-2xl px-3.5 py-3 border border-amber-100 dark:border-amber-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] hover:border-amber-300 dark:hover:border-amber-800/60 transition-colors">
-                    <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 to-emerald-500"></div>
-                    
-                    {/* Previous Button */}
-                    <button 
-                        onClick={handlePrevMotivational}
-                        disabled={isLoadingMotivational}
-                        className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                        title="جمله قبلی"
-                    >
-                        <ChevronRight size={18} />
-                    </button>
-
-                    <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
-                        <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-1 flex items-center justify-between w-full border-b border-amber-100/60 dark:border-amber-900/40 pb-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                                <Flame size={11} className="text-amber-500 shrink-0" /> 
-                                <span className="font-black whitespace-nowrap">انگیزه و روحیه‌بخش</span>
-                                <span className="text-[9px] text-amber-500 font-medium">({currentMotivationalIndex + 1}/{motivationalList.length})</span>
-                                {dailyMotivational.title && (
-                                    <span className="bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-amber-200/50 truncate max-w-[100px] hidden sm:inline-block">
-                                        {dailyMotivational.title}
-                                    </span>
+                {/* DUAL PANELS CONTAINER: POETRY + MOTIVATION */}
+                {(widgetsVisibility.poetry_card || widgetsVisibility.motivation_card) && (
+                    <div className={`flex-1 grid gap-4 ${
+                        widgetsVisibility.poetry_card && widgetsVisibility.motivation_card 
+                            ? 'grid-cols-1 md:grid-cols-2' 
+                            : 'grid-cols-1'
+                    }`}>
+                        {/* SECTION 1: PERSIAN POETRY (شعر و ادب کهن) */}
+                        {widgetsVisibility.poetry_card && (
+                            <div className="relative group">
+                                {isCustomizingWidgets && (
+                                    <button
+                                        onClick={() => toggleWidgetVisibility('poetry_card')}
+                                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                                        title="حذف ابزارک"
+                                    >
+                                        <X size={12} strokeWidth={3} />
+                                    </button>
                                 )}
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                    onClick={handleCopyMotivational}
-                                    className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                    title="کپی متن انگیزشی"
-                                >
-                                    {copiedMotivational ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
-                                    {copiedMotivational && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
-                                </button>
-                                <button
-                                    onClick={handleFetchNewMotivational}
-                                    disabled={isLoadingMotivational}
-                                    className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                    title="دریافت جمله انگیزشی آنلاین جدید"
-                                >
-                                    <RotateCw size={11} className={`${isLoadingMotivational ? 'animate-spin text-amber-600' : ''}`} />
-                                    <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
-                                </button>
-                            </div>
-                        </div>
+                                <div className="glass-panel rounded-2xl px-3.5 py-3 border border-rose-100 dark:border-rose-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-rose-300 dark:hover:border-rose-800/60 transition-colors">
+                                    <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-rose-400 to-indigo-500"></div>
+                                    
+                                    {/* Previous Button */}
+                                    <button 
+                                        onClick={handlePrevPoem}
+                                        disabled={isLoadingPoem}
+                                        className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                                        title="شعر قبلی"
+                                    >
+                                        <ChevronRight size={18} />
+                                    </button>
 
-                        <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center leading-relaxed py-0.5 line-clamp-3">
-                            «{dailyMotivational.text}»
-                        </p>
+                                    <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
+                                        <div className="text-[10px] font-bold text-rose-500 dark:text-rose-400 mb-1 flex items-center justify-between w-full border-b border-rose-100/60 dark:border-rose-900/40 pb-1">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <PenTool size={11} className="text-rose-500 shrink-0" /> 
+                                                <span className="font-black whitespace-nowrap">زمزمه و شعر روز</span>
+                                                <span className="text-[9px] text-rose-400 font-medium">({currentPoemIndex + 1}/{poemList.length})</span>
+                                                {dailyPoem.source && (
+                                                    <span className="bg-rose-100/80 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-rose-200/50 truncate max-w-[100px] hidden sm:inline-block">
+                                                        {dailyPoem.source}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    onClick={handleCopyPoem}
+                                                    className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                                    title="کپی متن شعر"
+                                                >
+                                                    {copiedPoem ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
+                                                    {copiedPoem && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
+                                                </button>
+                                                <button
+                                                    onClick={handleFetchNewPoem}
+                                                    disabled={isLoadingPoem}
+                                                    className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-400 hover:text-rose-600 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                                    title="دریافت شعر آنلاین جدید"
+                                                >
+                                                    <RotateCw size={11} className={`${isLoadingPoem ? 'animate-spin text-rose-600' : ''}`} />
+                                                    <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
+                                                </button>
+                                            </div>
+                                        </div>
 
-                        {dailyMotivational.author && (
-                            <span className="text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
-                                — {dailyMotivational.author}
-                            </span>
+                                        {dailyPoem.title && (
+                                            <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-bold mb-0.5 truncate max-w-full">
+                                                {dailyPoem.title}
+                                            </span>
+                                        )}
+
+                                        <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center italic leading-relaxed py-0.5 line-clamp-3" style={{ whiteSpace: 'pre-line' }}>
+                                            {dailyPoem.text}
+                                        </p>
+
+                                        {dailyPoem.author && (
+                                            <span className="text-[9.5px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+                                                — {dailyPoem.author}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Next Button */}
+                                    <button 
+                                        onClick={handleNextPoem}
+                                        disabled={isLoadingPoem}
+                                        className="p-1.5 rounded-full hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-400 hover:text-rose-600 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                                        title="شعر بعدی (آنلاین)"
+                                    >
+                                        <ChevronLeft size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SECTION 2: MOTIVATIONAL & UPLIFTING QUOTES (انگیزه و روحیه‌بخش) */}
+                        {widgetsVisibility.motivation_card && (
+                            <div className="relative group">
+                                {isCustomizingWidgets && (
+                                    <button
+                                        onClick={() => toggleWidgetVisibility('motivation_card')}
+                                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                                        title="حذف ابزارک"
+                                    >
+                                        <X size={12} strokeWidth={3} />
+                                    </button>
+                                )}
+                                <div className="glass-panel rounded-2xl px-3.5 py-3 border border-amber-100 dark:border-amber-900/30 shadow-sm flex items-center justify-between relative overflow-hidden group min-h-[110px] h-full hover:border-amber-300 dark:hover:border-amber-800/60 transition-colors">
+                                    <div className="absolute right-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 to-emerald-500"></div>
+                                    
+                                    {/* Previous Button */}
+                                    <button 
+                                        onClick={handlePrevMotivational}
+                                        disabled={isLoadingMotivational}
+                                        className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                                        title="جمله قبلی"
+                                    >
+                                        <ChevronRight size={18} />
+                                    </button>
+
+                                    <div className="relative z-10 flex flex-col items-center flex-1 px-2.5 select-none min-w-0">
+                                        <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-1 flex items-center justify-between w-full border-b border-amber-100/60 dark:border-amber-900/40 pb-1">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <Flame size={11} className="text-amber-500 shrink-0" /> 
+                                                <span className="font-black whitespace-nowrap">انگیزه و روحیه‌بخش</span>
+                                                <span className="text-[9px] text-amber-500 font-medium">({currentMotivationalIndex + 1}/{motivationalList.length})</span>
+                                                {dailyMotivational.title && (
+                                                    <span className="bg-amber-100/80 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded text-[8.5px] font-medium border border-amber-200/50 truncate max-w-[100px] hidden sm:inline-block">
+                                                        {dailyMotivational.title}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    onClick={handleCopyMotivational}
+                                                    className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                                    title="کپی متن انگیزشی"
+                                                >
+                                                    {copiedMotivational ? <Check size={11} className="text-green-600 dark:text-green-400" /> : <Copy size={11} />}
+                                                    {copiedMotivational && <span className="text-[8.5px] font-bold text-green-600">کپی شد</span>}
+                                                </button>
+                                                <button
+                                                    onClick={handleFetchNewMotivational}
+                                                    disabled={isLoadingMotivational}
+                                                    className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-950/60 text-amber-500 hover:text-amber-700 transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                                    title="دریافت جمله انگیزشی آنلاین جدید"
+                                                >
+                                                    <RotateCw size={11} className={`${isLoadingMotivational ? 'animate-spin text-amber-600' : ''}`} />
+                                                    <span className="text-[8.5px] font-medium hidden sm:inline">آنلاین</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <p className="text-gray-800 dark:text-gray-200 font-bold text-xs sm:text-[13px] text-center leading-relaxed py-0.5 line-clamp-3">
+                                            «{dailyMotivational.text}»
+                                        </p>
+
+                                        {dailyMotivational.author && (
+                                            <span className="text-[9.5px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
+                                                — {dailyMotivational.author}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Next Button */}
+                                    <button 
+                                        onClick={handleNextMotivational}
+                                        disabled={isLoadingMotivational}
+                                        className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
+                                        title="جمله بعدی (آنلاین)"
+                                    >
+                                        <ChevronLeft size={18} />
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </div>
-
-                    {/* Next Button */}
-                    <button 
-                        onClick={handleNextMotivational}
-                        disabled={isLoadingMotivational}
-                        className="p-1.5 rounded-full hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-500 hover:text-amber-700 active:scale-90 transition-all cursor-pointer shrink-0 disabled:opacity-40"
-                        title="جمله بعدی (آنلاین)"
-                    >
-                        <ChevronLeft size={18} />
-                    </button>
-                </div>
+                )}
             </div>
-        </div>
+        )}
 
         {/* GOOGLE WORKSPACE WIDGET (CALENDAR & TASKS) */}
         {showGoogleWidget && <GoogleWorkspaceWidget currentUser={currentUser} />}
 
         {/* ANNOUNCEMENTS SECTION */}
-        {(visibleAnnouncements.length > 0 || permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
-            <div className={`rounded-2xl border border-blue-100 shadow-sm relative transition-all ${visibleAnnouncements.length === 0 ? 'bg-transparent p-2 border-dashed' : 'bg-blue-50/50 p-6'}`}>
-                
-                {visibleAnnouncements.length === 0 ? (
-                    <div className="flex justify-center items-center">
-                        <button onClick={() => setShowAnnounceModal(true)} className="text-xs text-blue-500 hover:text-blue-600 font-bold transition-colors flex items-center gap-1 py-2">
-                            <Plus size={14}/> ارسال اولین پیام / اعلامیه برای پرسنل
-                        </button>
-                    </div>
-                ) : (
-                    <>
-                        <div className="flex justify-between items-center mb-4">
-                            <div className="flex items-center gap-2">
-                                <div className="bg-blue-100 p-1.5 rounded-lg text-blue-600 animate-pulse">
-                                    <Activity size={20} />
-                                </div>
-                                <h3 className="font-black text-gray-800">اعلانات مدیران</h3>
-                            </div>
-                            {(permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
-                                <button onClick={() => setShowAnnounceModal(true)} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1">
-                                    <Plus size={14}/> اعلامیه جدید
-                                </button>
-                            )}
+        {widgetsVisibility.announcements && (visibleAnnouncements.length > 0 || permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
+            <div className="relative group">
+                {isCustomizingWidgets && (
+                    <button
+                        onClick={() => toggleWidgetVisibility('announcements')}
+                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                        title="حذف ابزارک"
+                    >
+                        <X size={12} strokeWidth={3} />
+                    </button>
+                )}
+                <div className={`rounded-2xl border border-blue-100 shadow-sm relative transition-all ${visibleAnnouncements.length === 0 ? 'bg-transparent p-2 border-dashed' : 'bg-blue-50/50 p-6'}`}>
+                    
+                    {visibleAnnouncements.length === 0 ? (
+                        <div className="flex justify-center items-center">
+                            <button onClick={() => setShowAnnounceModal(true)} className="text-xs text-blue-500 hover:text-blue-600 font-bold transition-colors flex items-center gap-1 py-2">
+                                <Plus size={14}/> ارسال اولین پیام / اعلامیه برای پرسنل
+                            </button>
                         </div>
-                        <div className="space-y-3">
-                            {visibleAnnouncements.map((ann, i) => (
-                                <div key={ann.id || i} className="glass-panel p-4 rounded-xl shadow-sm border border-blue-50 flex items-start gap-3 relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 h-full w-1 bg-gradient-to-b from-blue-400 to-blue-600"></div>
-                                    <div className="bg-blue-100/50 p-2 rounded-full text-blue-600 mt-1 cursor-pointer hover:bg-blue-200 transition-colors shadow-sm" onClick={() => handleToggleAnnouncementCompletion(ann)}>
-                                        {ann.type === 'task' ? (
-                                            ann.isCompleted ? <CheckCircle size={16} className="text-green-600" /> : <div className="w-4 h-4 rounded-full border-2 border-orange-500 bg-orange-100/50"></div>
-                                        ) : (
-                                            <BookOpen size={16} className="text-blue-600" />
-                                        )}
+                    ) : (
+                        <>
+                            <div className="flex justify-between items-center mb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="bg-blue-100 p-1.5 rounded-lg text-blue-600 animate-pulse">
+                                        <Activity size={20} />
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-xs font-black text-blue-800">{ann.createdBy}</span>
-                                            <div className="flex items-center gap-2">
-                                                {ann.isCompleted && <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded font-bold">تکمیل شده</span>}
-                                                {ann.targetUsers && ann.targetUsers.length > 0 && <span className="bg-blue-100 px-2 py-0.5 rounded text-[10px] text-blue-700 font-bold border border-blue-200">پیام اختصاصی</span>}
-                                                {(permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
-                                                    <button onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        const mod = await import('../services/storageService');
-                                                        await mod.deleteSystemAnnouncement(ann.id);
-                                                        setAnnouncements(prev => prev.filter(a => a.id !== ann.id));
-                                                    }} className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 p-1 rounded transition-all"><Trash2 size={12}/></button>
-                                                )}
+                                    <h3 className="font-black text-gray-800">اعلانات مدیران</h3>
+                                </div>
+                                {(permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
+                                    <button onClick={() => setShowAnnounceModal(true)} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1">
+                                        <Plus size={14}/> اعلامیه جدید
+                                    </button>
+                                )}
+                            </div>
+                            <div className="space-y-3">
+                                {visibleAnnouncements.map((ann, i) => (
+                                    <div key={ann.id || i} className="glass-panel p-4 rounded-xl shadow-sm border border-blue-50 flex items-start gap-3 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 h-full w-1 bg-gradient-to-b from-blue-400 to-blue-600"></div>
+                                        <div className="bg-blue-100/50 p-2 rounded-full text-blue-600 mt-1 cursor-pointer hover:bg-blue-200 transition-colors shadow-sm" onClick={() => handleToggleAnnouncementCompletion(ann)}>
+                                            {ann.type === 'task' ? (
+                                                ann.isCompleted ? <CheckCircle size={16} className="text-green-600" /> : <div className="w-4 h-4 rounded-full border-2 border-orange-500 bg-orange-100/50"></div>
+                                            ) : (
+                                                <BookOpen size={16} className="text-blue-600" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-xs font-black text-blue-800">{ann.createdBy}</span>
+                                                <div className="flex items-center gap-2">
+                                                    {ann.isCompleted && <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded font-bold">تکمیل شده</span>}
+                                                    {ann.targetUsers && ann.targetUsers.length > 0 && <span className="bg-blue-100 px-2 py-0.5 rounded text-[10px] text-blue-700 font-bold border border-blue-200">پیام اختصاصی</span>}
+                                                    {(permissions.canCreateAnnouncements || currentUser.role === UserRole.ADMIN) && (
+                                                        <button onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            const mod = await import('../services/storageService');
+                                                            await mod.deleteSystemAnnouncement(ann.id);
+                                                            setAnnouncements(prev => prev.filter(a => a.id !== ann.id));
+                                                        }} className="opacity-0 group-hover:opacity-100 text-red-500 hover:bg-red-50 p-1 rounded transition-all"><Trash2 size={12}/></button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <p className={`text-sm font-bold transition-all ${ann.isCompleted ? 'text-gray-400 line-through' : 'text-gray-700'}`} style={{ whiteSpace: 'pre-wrap' }}>{ann.message}</p>
+                                            <div className="text-[10px] text-gray-400 mt-2 text-left">
+                                                {(() => { 
+                                                    const d = getShamsiDateFromIso(new Date(ann.createdAt).toISOString()); 
+                                                    const greg = new Date(ann.createdAt).toLocaleDateString('en-CA'); // YYYY-MM-DD
+                                                    return `${d.year}/${d.month}/${d.day} | ${greg}`; 
+                                                })()} - {new Date(ann.createdAt).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
                                             </div>
                                         </div>
-                                        <p className={`text-sm font-bold transition-all ${ann.isCompleted ? 'text-gray-400 line-through' : 'text-gray-700'}`} style={{ whiteSpace: 'pre-wrap' }}>{ann.message}</p>
-                                        <div className="text-[10px] text-gray-400 mt-2 text-left">
-                                            {(() => { 
-                                                const d = getShamsiDateFromIso(new Date(ann.createdAt).toISOString()); 
-                                                const greg = new Date(ann.createdAt).toLocaleDateString('en-CA'); // YYYY-MM-DD
-                                                return `${d.year}/${d.month}/${d.day} | ${greg}`; 
-                                            })()} - {new Date(ann.createdAt).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
-                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                )}
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         )}
 
         {/* TASK GROUPS WIDGET */}
-        {!showTasksInDashboard ? (
-            <div className="flex justify-end my-3">
-                <button 
-                    onClick={() => {
-                        setShowTasksInDashboard(true);
-                        localStorage.setItem('dashboard_show_chat_tasks', 'true');
-                    }}
-                    className="text-xs text-gray-400 hover:text-blue-600 font-bold transition flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-gray-100"
-                >
-                    <ListChecks size={14}/> نمایش مجدد تسک‌های گفتگو در داشبورد
-                </button>
-            </div>
-        ) : (
-            <div className="rounded-2xl border border-blue-100 bg-white/50 p-6 shadow-sm relative transition-all my-5">
-                <div className="flex justify-between items-center mb-5">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-orange-100 p-1.5 rounded-lg text-orange-600">
-                            <ListChecks size={20} />
-                        </div>
-                        <h3 className="font-black text-gray-800">📌 دسترسی سریع به تسک‌های گفتگو</h3>
-                    </div>
-                    <button 
-                        onClick={() => {
-                            if (confirm('آیا مایل به لغو نمایش تسک‌های گفتگو در داشبورد هستید؟ (همواره می‌توانید از انتهای این بخش مجدداً آن را فعال کنید)')) {
-                                setShowTasksInDashboard(false);
-                                localStorage.setItem('dashboard_show_chat_tasks', 'false');
-                            }
-                        }}
-                        className="text-xs text-gray-400 hover:text-red-500 font-bold transition flex items-center gap-1 hover:bg-red-50 px-2.5 py-1.5 rounded-lg"
-                        title="لغو نمایش تسک‌ها در داشبورد"
+        {widgetsVisibility.task_groups && (
+            <div className="relative group">
+                {isCustomizingWidgets && (
+                    <button
+                        onClick={() => toggleWidgetVisibility('task_groups')}
+                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                        title="حذف ابزارک"
                     >
-                        <X size={14}/> عدم نمایش در داشبورد
+                        <X size={12} strokeWidth={3} />
                     </button>
-                </div>
-
-                {taskGroups.length === 0 ? (
-                    <div className="text-center text-gray-400 py-10 bg-white/30 rounded-xl border border-dashed">
-                        <ListChecks size={36} className="mx-auto mb-2 opacity-20"/>
-                        <p className="text-xs font-bold">شما در هیچ گروه تسک فعالی عضو نیستید.</p>
-                        <p className="text-[10px] text-gray-400 mt-1">تسک‌ها پس از عضویت شما در گروه‌های تسک گفتگو در این بخش نمایش داده می‌شوند.</p>
+                )}
+                {!showTasksInDashboard ? (
+                    <div className="flex justify-end my-3">
+                        <button 
+                            onClick={() => {
+                                setShowTasksInDashboard(true);
+                                localStorage.setItem('dashboard_show_chat_tasks', 'true');
+                            }}
+                            className="text-xs text-gray-400 hover:text-blue-600 font-bold transition flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-gray-100"
+                        >
+                            <ListChecks size={14}/> نمایش مجدد تسک‌های گفتگو در داشبورد
+                        </button>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {taskGroups.map(group => {
-                            const groupTasks = tasks.filter(t => t.groupId === group.id);
-                            const pendingTasks = groupTasks.filter(t => t.status !== 'completed');
-                            const completedTasks = groupTasks.filter(t => t.status === 'completed');
-
-                            return (
-                                <div key={group.id} className="glass-panel p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col justify-between min-h-[220px]">
-                                    <div>
-                                        <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800 mb-3">
-                                            <h4 className="font-black text-sm text-gray-800 dark:text-gray-200">{group.name}</h4>
-                                            <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-2 py-0.5 rounded-full">
-                                                {pendingTasks.length} تسک فعال
-                                            </span>
-                                        </div>
-
-                                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pl-1">
-                                            {pendingTasks.length === 0 ? (
-                                                <div className="text-center py-6 text-gray-400">
-                                                    <p className="text-xs">تسک فعال و معلقی در این گروه وجود ندارد ✨</p>
-                                                </div>
-                                            ) : (
-                                                pendingTasks.map(task => (
-                                                    <div 
-                                                        key={task.id} 
-                                                        onClick={() => onGoToTaskGroup && onGoToTaskGroup(group.id, task.id)}
-                                                        className="flex items-start gap-2.5 p-2 bg-white/60 dark:bg-gray-900/40 rounded-lg hover:bg-blue-50/50 dark:hover:bg-blue-950/20 hover:border-blue-200 border border-transparent transition cursor-pointer select-none"
-                                                        title="کلیک برای انتقال به گفتگو و تسک‌های این گروه"
-                                                    >
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const updatedTask = { 
-                                                                    ...task, 
-                                                                    status: 'completed' as const,
-                                                                    completedBy: currentUser.username,
-                                                                    completedAt: Date.now()
-                                                                };
-                                                                updateTask(updatedTask).then(() => {
-                                                                    setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
-                                                                });
-                                                            }}
-                                                            className="mt-0.5 rounded-full border-2 border-gray-300 dark:border-gray-700 w-5 h-5 flex items-center justify-center hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-950/20 text-slate-400 hover:text-green-600 transition shrink-0 cursor-pointer"
-                                                            title="علامت‌گذاری به عنوان انجام شده"
-                                                        >
-                                                            <Check size={11} className="stroke-[3]" />
-                                                        </button>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <p className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate" title={task.title}>{task.title}</p>
-                                                                {task.recurringReminder && (
-                                                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800" title={`یادآور صوتی هر ${task.reminderIntervalMinutes || 10} دقیقه فعال است`}>
-                                                                        <BellRing size={9} className="animate-bounce" />
-                                                                        <span>{task.reminderIntervalMinutes || 10}دقیقه</span>
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            {task.assignedTo && task.assignedTo.length > 0 && (
-                                                                <span className="text-[9px] text-blue-600 bg-blue-50 dark:bg-blue-950/20 px-1 py-0.5 rounded mt-1 inline-block font-semibold">ارجاع: @{task.assignedTo.join(', @')}</span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                                        <span className="text-[10px] text-gray-400 font-medium">{completedTasks.length} تسک انجام‌شده</span>
-                                        {onGoToTaskGroup && (
-                                            <button 
-                                                onClick={() => onGoToTaskGroup(group.id)}
-                                                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline transition-all"
-                                            >
-                                                <span>ورود به گفتگو و تسک‌ها</span>
-                                                <ArrowUpRight size={14}/>
-                                            </button>
-                                        )}
-                                    </div>
+                    <div className="rounded-2xl border border-blue-100 bg-white/50 p-6 shadow-sm relative transition-all my-5">
+                        <div className="flex justify-between items-center mb-5">
+                            <div className="flex items-center gap-2">
+                                <div className="bg-orange-100 p-1.5 rounded-lg text-orange-600">
+                                    <ListChecks size={20} />
                                 </div>
-                            );
-                        })}
+                                <h3 className="font-black text-gray-800">📌 دسترسی سریع به تسک‌های گفتگو</h3>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    if (confirm('آیا مایل به لغو نمایش تسک‌های گفتگو در داشبورد هستید؟ (همواره می‌توانید از انتهای این بخش مجدداً آن را فعال کنید)')) {
+                                        setShowTasksInDashboard(false);
+                                        localStorage.setItem('dashboard_show_chat_tasks', 'false');
+                                    }
+                                }}
+                                className="text-xs text-gray-400 hover:text-red-500 font-bold transition flex items-center gap-1 hover:bg-red-50 px-2.5 py-1.5 rounded-lg"
+                                title="لغو نمایش تسک‌ها در داشبورد"
+                            >
+                                <X size={14}/> عدم نمایش در داشبورد
+                            </button>
+                        </div>
+
+                        {taskGroups.length === 0 ? (
+                            <div className="text-center text-gray-400 py-10 bg-white/30 rounded-xl border border-dashed">
+                                <ListChecks size={36} className="mx-auto mb-2 opacity-20"/>
+                                <p className="text-xs font-bold">شما در هیچ گروه تسک فعالی عضو نیستید.</p>
+                                <p className="text-[10px] text-gray-400 mt-1">تسک‌ها پس از عضویت شما در گروه‌های تسک گفتگو در این بخش نمایش داده می‌شوند.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {taskGroups.map(group => {
+                                    const groupTasks = tasks.filter(t => t.groupId === group.id);
+                                    const pendingTasks = groupTasks.filter(t => t.status !== 'completed');
+                                    const completedTasks = groupTasks.filter(t => t.status === 'completed');
+
+                                    return (
+                                        <div key={group.id} className="glass-panel p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col justify-between min-h-[220px]">
+                                            <div>
+                                                <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800 mb-3">
+                                                    <h4 className="font-black text-sm text-gray-800 dark:text-gray-200">{group.name}</h4>
+                                                    <span className="bg-orange-50 text-orange-600 text-[10px] font-black px-2 py-0.5 rounded-full">
+                                                        {pendingTasks.length} تسک فعال
+                                                    </span>
+                                                </div>
+
+                                                <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pl-1">
+                                                    {pendingTasks.length === 0 ? (
+                                                        <div className="text-center py-6 text-gray-400">
+                                                            <p className="text-xs">تسک فعال و معلقی در این گروه وجود ندارد ✨</p>
+                                                        </div>
+                                                    ) : (
+                                                        pendingTasks.map(task => (
+                                                            <div 
+                                                                key={task.id} 
+                                                                onClick={() => onGoToTaskGroup && onGoToTaskGroup(group.id, task.id)}
+                                                                className="flex items-start gap-2.5 p-2 bg-white/60 dark:bg-gray-900/40 rounded-lg hover:bg-blue-50/50 dark:hover:bg-blue-950/20 hover:border-blue-200 border border-transparent transition cursor-pointer select-none"
+                                                                title="کلیک برای انتقال به گفتگو و تسک‌های این گروه"
+                                                            >
+                                                                <button 
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const updatedTask = { 
+                                                                            ...task, 
+                                                                            status: 'completed' as const,
+                                                                            completedBy: currentUser.username,
+                                                                            completedAt: Date.now()
+                                                                        };
+                                                                        updateTask(updatedTask).then(() => {
+                                                                            setTasks(prev => prev.map(t => t.id === task.id ? updatedTask : t));
+                                                                        });
+                                                                    }}
+                                                                    className="mt-0.5 rounded-full border-2 border-gray-300 dark:border-gray-700 w-5 h-5 flex items-center justify-center hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-950/20 text-slate-400 hover:text-green-600 transition shrink-0 cursor-pointer"
+                                                                    title="علامت‌گذاری به عنوان انجام شده"
+                                                                >
+                                                                    <Check size={11} className="stroke-[3]" />
+                                                                </button>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                        <p className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate" title={task.title}>{task.title}</p>
+                                                                        {task.recurringReminder && (
+                                                                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800" title={`یادآور صوتی هر ${task.reminderIntervalMinutes || 10} دقیقه فعال است`}>
+                                                                                <BellRing size={9} className="animate-bounce" />
+                                                                                <span>{task.reminderIntervalMinutes || 10}دقیقه</span>
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {task.assignedTo && task.assignedTo.length > 0 && (
+                                                                        <span className="text-[9px] text-blue-600 bg-blue-50 dark:bg-blue-950/20 px-1 py-0.5 rounded mt-1 inline-block font-semibold">ارجاع: @{task.assignedTo.join(', @')}</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                                                <span className="text-[10px] text-gray-400 font-medium">{completedTasks.length} تسک انجام‌شده</span>
+                                                {onGoToTaskGroup && (
+                                                    <button 
+                                                        onClick={() => onGoToTaskGroup(group.id)}
+                                                        className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline transition-all"
+                                                    >
+                                                        <span>ورود به گفتگو و تسک‌ها</span>
+                                                        <ArrowUpRight size={14}/>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
         )}
 
         {/* NOTES PREVIEW SECTION - Google Keep Style Preview */}
-        <div className="bg-yellow-50/50 rounded-2xl p-6 border border-yellow-100 shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                    <Edit3 size={20} className="text-yellow-600" />
-                    <h3 className="font-black text-gray-800">برنامه یادداشت و تسک</h3>
-                </div>
-                <button 
-                    onClick={() => {
-                        window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'knowledge' }));
-                    }}
-                    className="text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-lg font-black hover:bg-yellow-200 transition-colors shadow-sm border border-yellow-200"
-                >
-                    بازکردن برنامه اصلی
-                </button>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {notes.length === 0 ? (
-                    <div className="col-span-full py-8 text-center text-gray-400 text-sm border-2 border-dashed border-yellow-200 rounded-xl">
-                        یادداشتی برای نمایش در پیشخوان وجود ندارد.
-                    </div>
-                ) : (
-                    notes.slice(0, 4).map(note => (
-                        <div 
-                            key={note.id} 
-                            onClick={() => window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'knowledge' }))}
-                            className={`${note.color || 'glass-panel'} p-4 rounded-xl border border-yellow-200 shadow-sm hover:shadow-md transition-all cursor-pointer relative group`}
-                        >
-                            <h4 className="font-bold text-gray-800 text-sm mb-2 truncate">{note.title || 'بدون عنوان'}</h4>
-                            <div className="space-y-2">
-                                {note.content && <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">{note.content}</p>}
-                                {note.tasks && note.tasks.length > 0 && (
-                                    <div className="space-y-1 my-1">
-                                        {note.tasks.slice(0, 3).map(task => (
-                                            <div key={task.id} className="flex items-center gap-1.5 text-[10px] text-gray-500">
-                                                {task.isCompleted ? <ListChecks size={10} className="text-blue-500"/> : <Clock size={10} className="text-gray-300"/>}
-                                                <span className={task.isCompleted ? 'line-through opacity-50' : ''}>{task.text}</span>
-                                            </div>
-                                        ))}
-                                        {note.tasks.length > 3 && <div className="text-[9px] text-gray-400">...</div>}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))
+        {widgetsVisibility.notes && (
+            <div className="relative group">
+                {isCustomizingWidgets && (
+                    <button
+                        onClick={() => toggleWidgetVisibility('notes')}
+                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                        title="حذف ابزارک"
+                    >
+                        <X size={12} strokeWidth={3} />
+                    </button>
                 )}
+                <div className="bg-yellow-50/50 rounded-2xl p-6 border border-yellow-100 shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                            <Edit3 size={20} className="text-yellow-600" />
+                            <h3 className="font-black text-gray-800">برنامه یادداشت و تسک</h3>
+                        </div>
+                        <button 
+                            onClick={() => {
+                                window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'knowledge' }));
+                            }}
+                            className="text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-lg font-black hover:bg-yellow-200 transition-colors shadow-sm border border-yellow-200"
+                        >
+                            بازکردن برنامه اصلی
+                        </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {notes.length === 0 ? (
+                            <div className="col-span-full py-8 text-center text-gray-400 text-sm border-2 border-dashed border-yellow-200 rounded-xl">
+                                یادداشتی برای نمایش در پیشخوان وجود ندارد.
+                            </div>
+                        ) : (
+                            notes.slice(0, 4).map(note => (
+                                <div 
+                                    key={note.id} 
+                                    onClick={() => window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'knowledge' }))}
+                                    className={`${note.color || 'glass-panel'} p-4 rounded-xl border border-yellow-200 shadow-sm hover:shadow-md transition-all cursor-pointer relative group`}
+                                >
+                                    <h4 className="font-bold text-gray-800 text-sm mb-2 truncate">{note.title || 'بدون عنوان'}</h4>
+                                    <div className="space-y-2">
+                                        {note.content && <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 leading-relaxed">{note.content}</p>}
+                                        {note.tasks && note.tasks.length > 0 && (
+                                            <div className="space-y-1 my-1">
+                                                {note.tasks.slice(0, 3).map(task => (
+                                                    <div key={task.id} className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                                                        {task.isCompleted ? <ListChecks size={10} className="text-blue-500"/> : <Clock size={10} className="text-gray-300"/>}
+                                                        <span className={task.isCompleted ? 'line-through opacity-50' : ''}>{task.text}</span>
+                                                    </div>
+                                                ))}
+                                                {note.tasks.length > 3 && <div className="text-[9px] text-gray-400">...</div>}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
             </div>
-        </div>
+        )}
 
         {/* WINDOWS-STYLE QUICK ACCESS TILES & CUSTOMIZABLE WIDGETS */}
-        <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl border border-blue-500/20">
-                        <Sparkles size={20} />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h3 className="font-black text-sm sm:text-base text-zinc-900 dark:text-white">
-                                کاشی‌ها و دسترسی سریع برنامه‌ها
-                            </h3>
-                            <span className="text-[10px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
-                                {visibleTiles.length} کاشی فعال
-                            </span>
-                        </div>
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                            کاشی‌ها را بکشید و رها کنید (Drag & Drop)، جابجا کنید یا کاشی‌های غیرضروری را مخفی نمایید
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                    {hiddenTileIds.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setHiddenTileIds([]);
-                                try {
-                                    localStorage.removeItem('dashboard_hidden_tile_ids');
-                                } catch {}
-                            }}
-                            className="text-[11px] px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 font-bold transition-all"
-                            title="نمایش مجدد همه کاشی‌های مخفی‌شده"
-                        >
-                            بازیابی همه ({hiddenTileIds.length} مخفی)
-                        </button>
-                    )}
+        {widgetsVisibility.quick_tiles && (
+            <div className="relative group">
+                {isCustomizingWidgets && (
                     <button
-                        type="button"
-                        onClick={() => setIsCustomizingTiles(prev => !prev)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-sm ${
-                            isCustomizingTiles
-                                ? 'bg-amber-600 text-white shadow-amber-500/20 ring-2 ring-amber-400/40'
-                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
-                        }`}
-                        title="شخصی‌سازی، حذف، نمایش و جابجایی کاشی‌ها"
+                        onClick={() => toggleWidgetVisibility('quick_tiles')}
+                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                        title="حذف ابزارک"
                     >
-                        <Settings2 size={14} />
-                        <span>{isCustomizingTiles ? 'اتمام چینش کاشی‌ها' : 'شخصی‌سازی کاشی‌ها'}</span>
+                        <X size={12} strokeWidth={3} />
                     </button>
-                </div>
-            </div>
-
-            {/* Tile Customizer Bar / Guide */}
-            {isCustomizingTiles && (
-                <div className="mb-5 p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200 animate-fade-in">
-                    <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                        <span>
-                            <b>حالت ویرایش فعال است:</b> می‌توانید با دکمه‌های فلش یا کشیدن، ترتیب را عوض کنید و با آیکون چشم کاشی‌ها را مخفی یا آشکار کنید.
-                        </span>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setCustomTileOrder([]);
-                            setHiddenTileIds([]);
-                            try {
-                                localStorage.removeItem('dashboard_custom_tile_order');
-                                localStorage.removeItem('dashboard_hidden_tile_ids');
-                            } catch {}
-                        }}
-                        className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline shrink-0"
-                    >
-                        بازنشانی به چیدمان پیش‌فرض
-                    </button>
-                </div>
-            )}
-
-            {/* Tiles Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
-                {(isCustomizingTiles ? displayTiles : visibleTiles).map((tile, idx) => {
-                    const Icon = tile.icon || FileText;
-                    const isHidden = hiddenTileIds.includes(tile.id);
-
-                    return (
-                        <div
-                            key={tile.id}
-                            draggable
-                            onDragStart={(e) => {
-                                e.dataTransfer.setData('text/plain', tile.id);
-                                e.dataTransfer.setData('source-index', String(idx));
-                                e.dataTransfer.effectAllowed = 'move';
-                            }}
-                            onDragOver={(e) => {
-                                e.preventDefault();
-                                e.dataTransfer.dropEffect = 'move';
-                            }}
-                            onDrop={(e) => {
-                                e.preventDefault();
-                                const sourceIdxStr = e.dataTransfer.getData('source-index');
-                                if (sourceIdxStr !== '') {
-                                    const sourceIdx = parseInt(sourceIdxStr, 10);
-                                    if (!isNaN(sourceIdx) && sourceIdx !== idx) {
-                                        moveTile(sourceIdx, idx);
-                                    }
-                                }
-                            }}
-                            onClick={() => {
-                                if (!isCustomizingTiles) {
-                                    if (tile.onClick) {
-                                        tile.onClick();
-                                    } else if (onNavigate) {
-                                        onNavigate(tile.id);
-                                    }
-                                }
-                            }}
-                            className={`p-3.5 rounded-2xl border transition-all duration-200 flex flex-col justify-between relative group ${
-                                isHidden
-                                    ? 'opacity-40 bg-zinc-100 dark:bg-zinc-900 border-dashed border-zinc-300 dark:border-zinc-700'
-                                    : 'bg-white/95 dark:bg-zinc-900/90 hover:bg-white dark:hover:bg-zinc-900 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-400/80 dark:hover:border-blue-600/80 hover:shadow-lg shadow-sm active:scale-[0.98]'
-                            } ${isCustomizingTiles ? 'cursor-move ring-1 ring-zinc-300/60 dark:ring-zinc-700/60' : 'cursor-pointer'}`}
-                            title={`${tile.title} - ${isCustomizingTiles ? 'کشیدن جهت تغییر جایگاه' : 'کلیک برای باز کردن'}`}
-                        >
-                            {/* Drag Grip & Actions in edit mode */}
-                            {isCustomizingTiles ? (
-                                <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-100 dark:border-zinc-800">
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            type="button"
-                                            disabled={idx === 0}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                moveTile(idx, idx - 1);
-                                            }}
-                                            className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 rounded text-zinc-500"
-                                            title="حرکت به جلو"
-                                        >
-                                            <ChevronRight size={13} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={idx === displayTiles.length - 1}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                moveTile(idx, idx + 1);
-                                            }}
-                                            className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 rounded text-zinc-500"
-                                            title="حرکت به عقب"
-                                        >
-                                            <ChevronLeft size={13} />
-                                        </button>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleTileVisibility(tile.id);
-                                        }}
-                                        className={`p-1 rounded-lg transition-colors ${
-                                            isHidden
-                                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
-                                                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-rose-600'
-                                        }`}
-                                        title={isHidden ? 'آشکار کردن کاشی' : 'مخفی کردن کاشی از پیشخوان'}
-                                    >
-                                        {isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className={`p-2.5 rounded-xl bg-gradient-to-br ${tile.gradient} text-white shadow-md shadow-blue-500/10 transition-transform group-hover:scale-105`}>
-                                        <Icon size={18} />
-                                    </div>
-                                    {tile.count !== undefined && tile.count > 0 && (
-                                        <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-                                            {tile.count}
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-
+                )}
+                <div className="bg-gradient-to-br from-white/80 to-zinc-50/80 dark:from-zinc-950/80 dark:to-zinc-900/80 rounded-3xl p-6 border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm backdrop-blur-xl relative">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5 border-b border-zinc-200/60 dark:border-zinc-800/60 pb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl border border-blue-500/20">
+                                <Sparkles size={20} />
+                            </div>
                             <div>
-                                <h4 className="font-bold text-xs text-zinc-800 dark:text-zinc-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                    {tile.title}
-                                </h4>
-                                <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-400 font-medium">
-                                    <span>{tile.badge}</span>
-                                    {isHidden && <span className="text-rose-500 font-bold">مخفی</span>}
+                                <div className="flex items-center gap-2">
+                                    <h3 className="font-black text-sm sm:text-base text-zinc-900 dark:text-white">
+                                        کاشی‌ها و دسترسی سریع برنامه‌ها
+                                    </h3>
+                                    <span className="text-[10px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
+                                        {visibleTiles.length} کاشی فعال
+                                    </span>
                                 </div>
+                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                                    کاشی‌ها را بکشید و رها کنید (Drag & Drop)، جابجا کنید یا کاشی‌های غیرضروری را مخفی نمایید
+                                </p>
                             </div>
                         </div>
-                    );
-                })}
+
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                            {hiddenTileIds.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setHiddenTileIds([]);
+                                        try {
+                                            localStorage.removeItem('dashboard_hidden_tile_ids');
+                                        } catch {}
+                                    }}
+                                    className="text-[11px] px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-700 dark:text-zinc-300 font-bold transition-all"
+                                    title="نمایش مجدد همه کاشی‌های مخفی‌شده"
+                                >
+                                    بازیابی همه ({hiddenTileIds.length} مخفی)
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setIsCustomizingTiles(prev => !prev)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-sm ${
+                                    isCustomizingTiles
+                                        ? 'bg-amber-600 text-white shadow-amber-500/20 ring-2 ring-amber-400/40'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                                }`}
+                                title="شخصی‌سازی، حذف، نمایش و جابجایی کاشی‌ها"
+                            >
+                                <Settings2 size={14} />
+                                <span>{isCustomizingTiles ? 'اتمام چینش کاشی‌ها' : 'شخصی‌سازی کاشی‌ها'}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Tile Customizer Bar / Guide */}
+                    {isCustomizingTiles && (
+                        <div className="mb-5 p-3.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200 animate-fade-in">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                <span>
+                                    <b>حالت ویرایش فعال است:</b> می‌توانید با دکمه‌های فلش یا کشیدن، ترتیب را عوض کنید و با آیکون چشم کاشی‌ها را مخفی یا آشکار کنید.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setCustomTileOrder([]);
+                                    setHiddenTileIds([]);
+                                    try {
+                                        localStorage.removeItem('dashboard_custom_tile_order');
+                                        localStorage.removeItem('dashboard_hidden_tile_ids');
+                                    } catch {}
+                                }}
+                                className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline shrink-0"
+                            >
+                                بازنشانی به چیدمان پیش‌فرض
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Tiles Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+                        {(isCustomizingTiles ? displayTiles : visibleTiles).map((tile, idx) => {
+                            const Icon = tile.icon || FileText;
+                            const isHidden = hiddenTileIds.includes(tile.id);
+
+                            return (
+                                <div
+                                    key={tile.id}
+                                    draggable
+                                    onDragStart={(e) => {
+                                        e.dataTransfer.setData('text/plain', tile.id);
+                                        e.dataTransfer.setData('source-index', String(idx));
+                                        e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = 'move';
+                                    }}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        const sourceIdxStr = e.dataTransfer.getData('source-index');
+                                        if (sourceIdxStr !== '') {
+                                            const sourceIdx = parseInt(sourceIdxStr, 10);
+                                            if (!isNaN(sourceIdx) && sourceIdx !== idx) {
+                                                moveTile(sourceIdx, idx);
+                                            }
+                                        }
+                                    }}
+                                    onClick={() => {
+                                        if (!isCustomizingTiles) {
+                                            if (tile.onClick) {
+                                                tile.onClick();
+                                            } else if (onNavigate) {
+                                                onNavigate(tile.id);
+                                            }
+                                        }
+                                    }}
+                                    className={`p-3.5 rounded-2xl border transition-all duration-200 flex flex-col justify-between relative group ${
+                                        isHidden
+                                            ? 'opacity-40 bg-zinc-100 dark:bg-zinc-900 border-dashed border-zinc-300 dark:border-zinc-700'
+                                            : 'bg-white/95 dark:bg-zinc-900/90 hover:bg-white dark:hover:bg-zinc-900 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-400/80 dark:hover:border-blue-600/80 hover:shadow-lg shadow-sm active:scale-[0.98]'
+                                    } ${isCustomizingTiles ? 'cursor-move ring-1 ring-zinc-300/60 dark:ring-zinc-700/60' : 'cursor-pointer'}`}
+                                    title={`${tile.title} - ${isCustomizingTiles ? 'کشیدن جهت تغییر جایگاه' : 'کلیک برای باز کردن'}`}
+                                >
+                                    {/* Drag Grip & Actions in edit mode */}
+                                    {isCustomizingTiles ? (
+                                        <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-zinc-100 dark:border-zinc-800">
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    disabled={idx === 0}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        moveTile(idx, idx - 1);
+                                                    }}
+                                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 rounded text-zinc-500"
+                                                    title="حرکت به جلو"
+                                                >
+                                                    <ChevronRight size={13} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={idx === displayTiles.length - 1}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        moveTile(idx, idx + 1);
+                                                    }}
+                                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 rounded text-zinc-500"
+                                                    title="حرکت به عقب"
+                                                >
+                                                    <ChevronLeft size={13} />
+                                                </button>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleTileVisibility(tile.id);
+                                                }}
+                                                className={`p-1 rounded-lg transition-colors ${
+                                                    isHidden
+                                                        ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                                                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-rose-600'
+                                                }`}
+                                                title={isHidden ? 'آشکار کردن کاشی' : 'مخفی کردن کاشی از پیشخوان'}
+                                            >
+                                                {isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className={`p-2.5 rounded-xl bg-gradient-to-br ${tile.gradient} text-white shadow-md shadow-blue-500/10 transition-transform group-hover:scale-105`}>
+                                                <Icon size={18} />
+                                            </div>
+                                            {tile.count !== undefined && tile.count > 0 && (
+                                                <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                                                    {tile.count}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <h4 className="font-bold text-xs text-zinc-800 dark:text-zinc-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                            {tile.title}
+                                        </h4>
+                                        <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-400 font-medium">
+                                            <span>{tile.badge}</span>
+                                            {isHidden && <span className="text-rose-500 font-bold">مخفی</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
-        </div>
-        {showActionSection && (
-            <div className="mb-8">
+        )}
+        {widgetsVisibility.cartable && showActionSection && (
+            <div className="mb-8 relative group">
+                {isCustomizingWidgets && (
+                    <button
+                        onClick={() => toggleWidgetVisibility('cartable')}
+                        className="absolute -top-2.5 -left-2.5 z-40 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg active:scale-90 transition-all border border-white"
+                        title="حذف ابزارک"
+                    >
+                        <X size={12} strokeWidth={3} />
+                    </button>
+                )}
                 <h2 className="text-xl font-black text-zinc-800 dark:text-zinc-200 mb-4 flex items-center gap-2">
                     <ListChecks className="text-[#4b90ff]" /> 
                     <span>کارتابل و وظایف من</span>
@@ -1751,6 +2298,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                 </div>
             </div>
         )}
+        </>
+      )}
 
         {/* PAYMENT DASHBOARD - ONLY IF ACCESS IS GRANTED */}
         {hasPaymentAccess && (

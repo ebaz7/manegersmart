@@ -782,6 +782,27 @@ export interface SecurityLog {
     approverCeo?: string;
     attachment?: string;
     rejectionReason?: string;
+    hasDriverPayment?: boolean;
+}
+
+export interface DriverPayment {
+    id: string;
+    date: string;
+    driverName: string;
+    driverPhone?: string;
+    plateNumber: string;
+    amount?: string;
+    paymentType?: string;
+    origin?: string;
+    destination?: string;
+    goodsName?: string;
+    quantity?: string;
+    permitProvider?: string;
+    registrant: string;
+    createdAt: number;
+    description?: string;
+    attachments?: { fileName: string; url: string }[];
+    status?: string;
 }
 
 export interface PersonnelDelay {

@@ -1513,7 +1513,7 @@ const Layout: React.FC<LayoutProps> = ({
               </div>
           </header>
           
-          <div className={`flex-1 ${activeTab === 'chat' ? 'flex flex-col overflow-hidden pb-0 min-h-0' : isBottomBarVisible ? 'overflow-y-auto pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-8' : 'overflow-y-auto pb-8'} bg-transparent min-w-0 custom-scrollbar`} id="main-scroll-container">
+          <div className={`flex-1 ${activeTab === 'chat' ? 'flex flex-col overflow-hidden pb-0 min-h-0' : isBottomBarVisible ? 'overflow-y-auto pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-24' : 'overflow-y-auto pb-24'} bg-transparent min-w-0 custom-scrollbar`} id="main-scroll-container">
               {/* Bale-Style Top Update Banner for Web, Mobile, and PWA */}
               {isUpdateAvailable && !isUpdateDismissed && updateInfo && (
                 <div className="p-2 sm:p-3 sm:pb-1 no-print animate-slide-down">

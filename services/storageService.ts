@@ -1,5 +1,5 @@
 
-import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, PersonnelDelay, PersonnelOvertime, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem } from '../types';
+import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, DriverPayment, PersonnelDelay, PersonnelOvertime, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem } from '../types';
 import { apiCall, getLocalData, LS_KEYS } from './apiService';
 
 // Safely return array
@@ -889,6 +889,24 @@ export const getNextChequeReceiptNumber = async (company?: string): Promise<stri
 
 export const parseChequesFromDocument = async (fileData: string, fileName: string): Promise<{ cheques: ChequeItem[] }> => {
     return await apiCall<{ cheques: ChequeItem[] }>('/cheque-receipts/parse-cheques', 'POST', { fileData, fileName });
+};
+
+// --- DRIVER PAYMENTS ---
+export const getDriverPayments = async (): Promise<DriverPayment[]> => {
+    const res = await apiCall<DriverPayment[]>('/security/driver-payments');
+    return safeArray(res);
+};
+
+export const saveDriverPayment = async (payment: DriverPayment): Promise<DriverPayment[]> => {
+    return await apiCall<DriverPayment[]>('/security/driver-payments', 'POST', payment);
+};
+
+export const updateDriverPayment = async (payment: DriverPayment): Promise<DriverPayment[]> => {
+    return await apiCall<DriverPayment[]>(`/security/driver-payments/${payment.id}`, 'PUT', payment);
+};
+
+export const deleteDriverPayment = async (id: string): Promise<DriverPayment[]> => {
+    return await apiCall<DriverPayment[]>(`/security/driver-payments/${id}`, 'DELETE');
 };
 
 

@@ -1,16 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, SecurityLog, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings, PersonnelOvertime, SecurityGoodsItem } from '../types';
+import { User, SecurityLog, DriverPayment, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings, PersonnelOvertime, SecurityGoodsItem } from '../types';
 import { 
     getSecurityLogs, saveSecurityLog, updateSecurityLog, deleteSecurityLog, 
     getPersonnelDelays, savePersonnelDelay, updatePersonnelDelay, deletePersonnelDelay, 
     getPersonnelOvertimes, savePersonnelOvertime, updatePersonnelOvertime, deletePersonnelOvertime,
     getSecurityIncidents, saveSecurityIncident, updateSecurityIncident, deleteSecurityIncident, 
-    getSettings, saveSettings 
+    getSettings, saveSettings,
+    getDriverPayments, saveDriverPayment, updateDriverPayment, deleteDriverPayment,
+    getGroups, sendMessage
 } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, getYesterdayShamsiDate, jalaliToGregorian, formatDate, getShamsiDateFromIso, formatLocalDateToIso, getIsoFromJalali } from '../constants';
-import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck } from 'lucide-react';
+import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck, DollarSign, CreditCard, Paperclip, ExternalLink, Send, FileImage, Download } from 'lucide-react';
 import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport, PrintPersonnelOvertime } from './security/SecurityPrints';
 import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
 import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, findDriverByName, findDriverByPlate, syncDriversFromRecords, SavedDriver } from '../services/driverMemoryService';
@@ -268,10 +270,18 @@ const ScaledContainer: React.FC<{ children: React.ReactNode, isLandscape?: boole
 };
 
 const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
-    const [activeTab, setActiveTab] = useState<'logs' | 'delays' | 'overtimes' | 'incidents' | 'cartable' | 'archive' | 'in_progress'>('logs');
+    const [activeTab, setActiveTab] = useState<'logs' | 'delays' | 'overtimes' | 'incidents' | 'cartable' | 'archive' | 'in_progress' | 'driver_payments'>('logs');
     const [subTab, setSubTab] = useState<'current' | 'archived'>('current');
     const [deletingItemKey, setDeletingItemKey] = useState<string | null>(null);
     const currentShamsi = getCurrentShamsiDate();
+    
+    // --- DRIVER PAYMENTS STATES ---
+    const [driverPayments, setDriverPayments] = useState<DriverPayment[]>([]);
+    const [driverPaymentForm, setDriverPaymentForm] = useState<Partial<DriverPayment>>({});
+    const [driverPaymentEditingId, setDriverPaymentEditingId] = useState<string | null>(null);
+    const [showDriverPaymentForm, setShowDriverPaymentForm] = useState(false);
+    const [isUploadingPaymentFile, setIsUploadingPaymentFile] = useState(false);
+    const [driverPaymentSearchQuery, setDriverPaymentSearchQuery] = useState('');
     const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
 
     const [overtimes, setOvertimes] = useState<PersonnelOvertime[]>([]);
@@ -713,24 +723,27 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
     const loadData = async () => {
         try {
-            const [l, d, o, i, s] = await Promise.all([
+            const [l, d, o, i, s, dp] = await Promise.all([
                 getSecurityLogs(), 
                 getPersonnelDelays(), 
                 getPersonnelOvertimes(),
                 getSecurityIncidents(), 
-                getSettings()
+                getSettings(),
+                getDriverPayments()
             ]);
             
             let safeL = Array.isArray(l) ? l : [];
             let safeD = Array.isArray(d) ? d : [];
             let safeO = Array.isArray(o) ? o : [];
             let safeI = Array.isArray(i) ? i : [];
+            let safeDP = Array.isArray(dp) ? dp : [];
             
             if (financialYear && financialYear !== 'all') {
                 safeL = safeL.filter(x => isInFinancialYear(x.date, financialYear));
                 safeD = safeD.filter(x => isInFinancialYear(x.date, financialYear));
                 safeO = safeO.filter(x => isInFinancialYear(x.date, financialYear));
                 safeI = safeI.filter(x => isInFinancialYear(x.date || new Date(x.createdAt).toISOString().split('T')[0], financialYear));
+                safeDP = safeDP.filter(x => isInFinancialYear(x.date, financialYear));
             }
             
             setLogs(safeL);
@@ -738,6 +751,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             setDelays(safeD);
             setOvertimes(safeO);
             setIncidents(safeI);
+            setDriverPayments(safeDP);
             setSettings(s);
         } catch(e) { console.error(e); }
     };
@@ -1159,8 +1173,42 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 });
             }
         }
+        
+        const shouldTriggerPayment = !!logForm.hasDriverPayment;
+        const driverNameForPayment = logForm.driverName || '';
+        const driverPhoneForPayment = logForm.driverPhone || '';
+        const plateNumberForPayment = logForm.plateNumber || '';
+        const originForPayment = logForm.origin || '';
+        const destinationForPayment = logForm.destination || '';
+        const goodsNameForPayment = logForm.goodsName || '';
+        const quantityForPayment = logForm.quantity || '';
+        const permitProviderForPayment = logForm.permitProvider || '';
+
         resetForms();
         loadData();
+
+        if (shouldTriggerPayment) {
+            setDriverPaymentForm({
+                id: generateUUID(),
+                date: isoDate,
+                driverName: driverNameForPayment,
+                driverPhone: driverPhoneForPayment,
+                plateNumber: plateNumberForPayment,
+                origin: originForPayment,
+                destination: destinationForPayment,
+                goodsName: goodsNameForPayment,
+                quantity: quantityForPayment,
+                permitProvider: permitProviderForPayment,
+                registrant: currentUser.fullName,
+                amount: '',
+                paymentType: 'کارت به کارت',
+                description: `بابت حمل کالا: ${goodsNameForPayment} از مبدا ${originForPayment} به مقصد ${destinationForPayment}`,
+                attachments: []
+            });
+            setDriverPaymentEditingId(null);
+            setShowDriverPaymentForm(true);
+            setActiveTab('driver_payments');
+        }
     };
 
     const handleSaveDelay = async () => {
@@ -1235,6 +1283,160 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         }
         resetForms();
         loadData();
+    };
+
+    // --- DRIVER PAYMENTS ACTION HANDLERS ---
+    const uploadFileChunked = async (file: File): Promise<{ fileName: string; url: string }> => {
+        const uploadId = generateUUID();
+        const chunkSize = 256 * 1024; // 256KB chunks
+        const totalChunks = Math.ceil(file.size / chunkSize);
+
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(file.size, start + chunkSize);
+            const blobChunk = file.slice(start, end);
+
+            const chunkData = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blobChunk);
+            });
+
+            const res = await fetch('/api/upload-chunk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uploadId, chunkIndex: i, chunkData })
+            });
+            if (!res.ok) {
+                throw new Error(`Failed to upload chunk ${i + 1}`);
+            }
+        }
+
+        const finishRes = await fetch('/api/upload-finish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadId, fileName: file.name, totalChunks })
+        });
+
+        if (!finishRes.ok) {
+            throw new Error('Failed to finish upload');
+        }
+
+        return await finishRes.json();
+    };
+
+    const handleSharePaymentToGroup = async (dp: DriverPayment) => {
+        try {
+            const groupsList = await getGroups();
+            let targetGroupId = undefined;
+            if (groupsList && groupsList.length > 0) {
+                const match = groupsList.find(g => g.name.includes('انتظامات') || g.name.includes('نگهبانی') || g.name.includes('مالی')) || groupsList[0];
+                if (match) {
+                    targetGroupId = match.id;
+                }
+            }
+
+            const formattedAmount = dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'مشخص نشده';
+            const fileCaption = `📊 **فرم حواله/واریزی رانندگان - واحد انتظامات**\n\n` +
+                                `👤 **نام راننده**: ${dp.driverName}\n` +
+                                `📱 **تلفن**: ${dp.driverPhone || 'ثبت نشده'}\n` +
+                                `🚗 **شماره پلاک**: ${dp.plateNumber || 'ثبت نشده'}\n` +
+                                `💰 **مبلغ واریزی**: ${formattedAmount}\n` +
+                                `💳 **نوع پرداخت**: ${dp.paymentType || 'کارت به کارت'}\n` +
+                                `📦 **کالا**: ${dp.goodsName || 'ثبت نشده'}\n` +
+                                `🔢 **مقدار/تعداد**: ${dp.quantity || 'ثبت نشده'}\n` +
+                                `📍 **مسیر حمل**: از *${dp.origin || 'نامشخص'}* به *${dp.destination || 'نامشخص'}*\n` +
+                                `👤 **ثبت کننده**: ${dp.registrant || 'واحد نگهبانی'}\n` +
+                                `📅 **تاریخ ثبت**: ${formatDate(dp.date)}\n` +
+                                (dp.description ? `📝 **توضیحات**: ${dp.description}\n` : '');
+
+            const baseMsg = {
+                id: generateUUID(),
+                sender: currentUser.fullName,
+                senderUsername: currentUser.username,
+                role: currentUser.role,
+                message: fileCaption,
+                timestamp: Date.now(),
+                groupId: targetGroupId
+            };
+            await sendMessage(baseMsg);
+
+            if (dp.attachments && dp.attachments.length > 0) {
+                for (const att of dp.attachments) {
+                    const attMsg = {
+                        id: generateUUID(),
+                        sender: currentUser.fullName,
+                        senderUsername: currentUser.username,
+                        role: currentUser.role,
+                        message: `پیوست سند واریزی راننده (${dp.driverName}) : ${att.fileName}`,
+                        timestamp: Date.now(),
+                        groupId: targetGroupId,
+                        attachment: {
+                            fileName: att.fileName,
+                            url: att.url
+                        }
+                    };
+                    await sendMessage(attMsg);
+                }
+            }
+
+            alert('اطلاعات فرم واریزی و پیوست‌ها با موفقیت به گروه گفتگو ارسال شد.');
+        } catch (err) {
+            console.error('Error sharing driver payment to group:', err);
+            alert('خطا در ارسال اطلاعات به گروه گفتگو.');
+        }
+    };
+
+    const handleSaveDriverPayment = async (shouldShare: boolean = false) => {
+        if (!driverPaymentForm.driverName) {
+            alert('نام راننده الزامی است.');
+            return;
+        }
+        
+        const isoDate = getIsoSelectedDate();
+        
+        let finalRecord: DriverPayment;
+        if (driverPaymentEditingId) {
+            const existing = driverPayments.find(dp => dp.id === driverPaymentEditingId);
+            finalRecord = {
+                ...existing,
+                ...driverPaymentForm,
+                date: driverPaymentForm.date || isoDate
+            } as DriverPayment;
+            await updateDriverPayment(finalRecord);
+        } else {
+            finalRecord = {
+                id: generateUUID(),
+                date: driverPaymentForm.date || isoDate,
+                driverName: driverPaymentForm.driverName || '',
+                driverPhone: driverPaymentForm.driverPhone || '',
+                plateNumber: driverPaymentForm.plateNumber || '',
+                amount: driverPaymentForm.amount || '',
+                paymentType: driverPaymentForm.paymentType || 'کارت به کارت',
+                origin: driverPaymentForm.origin || '',
+                destination: driverPaymentForm.destination || '',
+                goodsName: driverPaymentForm.goodsName || '',
+                quantity: driverPaymentForm.quantity || '',
+                permitProvider: driverPaymentForm.permitProvider || '',
+                registrant: currentUser.fullName,
+                description: driverPaymentForm.description || '',
+                attachments: driverPaymentForm.attachments || [],
+                createdAt: Date.now()
+            } as DriverPayment;
+            await saveDriverPayment(finalRecord);
+        }
+        
+        setShowDriverPaymentForm(false);
+        setDriverPaymentForm({});
+        setDriverPaymentEditingId(null);
+        loadData();
+        
+        if (shouldShare) {
+            await handleSharePaymentToGroup(finalRecord);
+        } else {
+            alert('سند واریزی با موفقیت ذخیره شد.');
+        }
     };
 
     const handleOpenNewItemModal = () => {
@@ -1778,6 +1980,299 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 document.body
             )}
 
+            {/* Driver Payment Form Modal */}
+            {showDriverPaymentForm && typeof document !== 'undefined' && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/75 backdrop-blur-xs z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 pt-12 sm:pt-4 animate-fade-in touch-manipulation"
+                    onClick={() => {
+                        setShowDriverPaymentForm(false);
+                        setDriverPaymentForm({});
+                        setDriverPaymentEditingId(null);
+                    }}
+                >
+                    <div 
+                        className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[calc(100dvh-3rem)] sm:max-h-[90dvh] overflow-hidden border border-gray-200/80 dark:border-gray-800 modal-container"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex justify-between items-center px-4 py-3.5 sm:px-6 sm:py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-zinc-900 shrink-0 z-20">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
+                                    <DollarSign size={18}/>
+                                </div>
+                                <h3 className="font-bold text-base sm:text-lg text-gray-900 dark:text-gray-100">
+                                    {driverPaymentEditingId ? 'ویرایش فرم واریزی راننده' : 'ثبت فرم واریزی جدید راننده'}
+                                </h3>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    setShowDriverPaymentForm(false);
+                                    setDriverPaymentForm({});
+                                    setDriverPaymentEditingId(null);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                            >
+                                <X size={20}/>
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-right">
+                            {/* Driver Core Details Section */}
+                            <div className="bg-purple-50/50 dark:bg-purple-950/10 p-3.5 rounded-xl border border-purple-100 dark:border-purple-900/30 space-y-3">
+                                <h4 className="text-xs font-black text-purple-700 dark:text-purple-400 mb-1">👤 اطلاعات راننده و خودرو</h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">نام و نام خانوادگی راننده <span className="text-red-500">*</span></label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: عباس کریمی"
+                                            value={driverPaymentForm.driverName || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, driverName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">تلفن همراه راننده</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm font-mono text-center bg-white dark:bg-gray-800"
+                                            placeholder="مثال: 09123456789"
+                                            value={driverPaymentForm.driverPhone || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, driverPhone: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">پلاک خودرو</label>
+                                    <div className="flex justify-center bg-white dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <IranianPlateInput 
+                                            value={driverPaymentForm.plateNumber || ''} 
+                                            onChange={val => setDriverPaymentForm({ ...driverPaymentForm, plateNumber: val })} 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Cargo Details Section */}
+                            <div className="bg-gray-50/80 dark:bg-gray-800/20 p-3.5 rounded-xl border border-gray-100 dark:border-gray-800/40 space-y-3">
+                                <h4 className="text-xs font-black text-blue-700 dark:text-blue-400 mb-1">📦 مشخصات کالا و مسیر</h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">نام کالا / بار</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: میلگرد 14"
+                                            value={driverPaymentForm.goodsName || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, goodsName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">تعداد / مقدار</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: 24 تن"
+                                            value={driverPaymentForm.quantity || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, quantity: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">مبدا بارگیری</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: انبار تهران"
+                                            value={driverPaymentForm.origin || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, origin: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">مقصد تخلیه</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: کارخانه تبریز"
+                                            value={driverPaymentForm.destination || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, destination: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <label className="text-xs font-bold block mb-1">مجوز دهنده / هماهنگ‌کننده</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: جناب محمدی"
+                                            value={driverPaymentForm.permitProvider || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, permitProvider: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Payment Section */}
+                            <div className="bg-emerald-50/30 dark:bg-emerald-950/5 p-3.5 rounded-xl border border-emerald-100/60 dark:border-emerald-900/20 space-y-3">
+                                <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-400 mb-1">💰 اطلاعات پرداخت و حساب</h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">مبلغ واریزی (ریال)</label>
+                                        <input 
+                                            type="number"
+                                            className="w-full border rounded p-2 text-sm font-mono text-center bg-white dark:bg-gray-800"
+                                            placeholder="مثال: 55000000"
+                                            value={driverPaymentForm.amount || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, amount: e.target.value })}
+                                        />
+                                        {driverPaymentForm.amount && (
+                                            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-bold text-left">
+                                                {Number(driverPaymentForm.amount).toLocaleString('fa-IR')} ریال
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">نوع پرداخت</label>
+                                        <select
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800 outline-none"
+                                            value={driverPaymentForm.paymentType || 'کارت به کارت'}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, paymentType: e.target.value })}
+                                        >
+                                            <option value="کارت به کارت">کارت به کارت</option>
+                                            <option value="حواله بانکی">حواله بانکی</option>
+                                            <option value="نقدی">نقدی</option>
+                                            <option value="چک صیادی">چک صیادی</option>
+                                            <option value="سایر">سایر</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold block mb-1">توضیحات و بابت پرداخت</label>
+                                    <textarea 
+                                        className="w-full border rounded p-2 text-sm h-16 bg-white dark:bg-gray-800"
+                                        placeholder="توضیحات تکمیلی پیرامون این پرداخت..."
+                                        value={driverPaymentForm.description || ''}
+                                        onChange={e => setDriverPaymentForm({ ...driverPaymentForm, description: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* File Uploads / Attachment Section */}
+                            <div className="space-y-3">
+                                <label className="text-xs font-black text-gray-700 dark:text-gray-300 block">📎 اسناد، فاکتورها و تصاویر پیوست (پیش‌نمایش آنلاین)</label>
+                                <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-purple-500 rounded-xl p-4 transition-all flex flex-col items-center justify-center bg-gray-50/50 dark:bg-gray-800/10 cursor-pointer relative">
+                                    <input 
+                                        type="file" 
+                                        multiple
+                                        className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                        onChange={async e => {
+                                            const files = e.target.files;
+                                            if (!files || files.length === 0) return;
+                                            setIsUploadingPaymentFile(true);
+                                            try {
+                                                const currentAttachments = [...(driverPaymentForm.attachments || [])];
+                                                for (let i = 0; i < files.length; i++) {
+                                                    const result = await uploadFileChunked(files[i]);
+                                                    currentAttachments.push({
+                                                        fileName: result.fileName,
+                                                        url: result.url
+                                                    });
+                                                }
+                                                setDriverPaymentForm({ ...driverPaymentForm, attachments: currentAttachments });
+                                            } catch (err) {
+                                                alert('خطا در بارگذاری فایل');
+                                            } finally {
+                                                setIsUploadingPaymentFile(false);
+                                            }
+                                        }}
+                                    />
+                                    {isUploadingPaymentFile ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Loader2 className="animate-spin text-purple-600" size={24}/>
+                                            <span className="text-xs text-purple-600 font-bold">در حال بارگذاری فایل(ها) به سرور...</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-1">
+                                            <Paperclip className="text-gray-400" size={24}/>
+                                            <span className="text-xs text-gray-500 font-bold">برای انتخاب فایل(ها)، کلیک کنید یا فایل را به اینجا بکشید</span>
+                                            <span className="text-[10px] text-gray-400">عکس فیش واریزی، بارنامه، فاکتورها، غیره</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Uploaded Attachments Previews */}
+                                {driverPaymentForm.attachments && driverPaymentForm.attachments.length > 0 && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
+                                        {driverPaymentForm.attachments.map((att, index) => {
+                                            const isImg = /\.(jpg|jpeg|png|webp)$/i.test(att.url);
+                                            return (
+                                                <div key={index} className="relative group rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 flex items-center gap-2 overflow-hidden shadow-xs hover:shadow transition-all">
+                                                    {isImg ? (
+                                                        <img 
+                                                            src={att.url} 
+                                                            alt={att.fileName}
+                                                            className="w-10 h-10 object-cover rounded-lg border border-gray-100 dark:border-gray-800 cursor-pointer"
+                                                            onClick={() => setViewAttachmentUrl(att.url)}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-blue-500">
+                                                            <FileText size={20}/>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0 text-right">
+                                                        <div className="text-[11px] font-black text-gray-700 dark:text-gray-300 truncate" title={att.fileName}>{att.fileName}</div>
+                                                        <div className="text-[9px] text-gray-400 mt-0.5">بارگذاری شده</div>
+                                                    </div>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const filtered = (driverPaymentForm.attachments || []).filter((_, i) => i !== index);
+                                                            setDriverPaymentForm({ ...driverPaymentForm, attachments: filtered });
+                                                        }}
+                                                        className="p-1 rounded-full bg-red-50 hover:bg-red-100 text-red-500 transition-all active:scale-90"
+                                                        title="حذف پیوست"
+                                                    >
+                                                        <X size={12}/>
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-4 py-3.5 sm:px-6 sm:py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-zinc-900/50 flex flex-wrap-reverse sm:flex-nowrap justify-end gap-2 shrink-0">
+                            <button 
+                                onClick={() => {
+                                    setShowDriverPaymentForm(false);
+                                    setDriverPaymentForm({});
+                                    setDriverPaymentEditingId(null);
+                                }}
+                                className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition-all"
+                            >
+                                انصراف
+                            </button>
+                            <button 
+                                onClick={() => handleSaveDriverPayment(false)}
+                                className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1 shadow-sm active:scale-95"
+                            >
+                                <Save size={15}/>
+                                <span>ذخیره و ثبت حواله</span>
+                            </button>
+                            <button 
+                                onClick={() => handleSaveDriverPayment(true)}
+                                className="w-full sm:w-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                            >
+                                <Send size={14}/>
+                                <span>ثبت و ارسال به گروه گفتگو</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
             {/* Input Modal */}
             {showModal && typeof document !== 'undefined' && createPortal(
                 <div 
@@ -2267,6 +2762,18 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 </div>
                                 <div><label className="text-xs font-bold block mb-1">تحویل گیرنده</label><input className="w-full border rounded p-2" value={logForm.receiver} onChange={e=>setLogForm({...logForm, receiver:e.target.value})}/></div>
                                 <div><label className="text-xs font-bold block mb-1">توضیحات</label><textarea className="w-full border rounded p-2 h-16" value={logForm.workDescription} onChange={e=>setLogForm({...logForm, workDescription:e.target.value})}/></div>
+                                <div className="flex items-center gap-2.5 mt-3 p-3.5 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 rounded-xl transition-all hover:bg-purple-100/50">
+                                    <input 
+                                        type="checkbox" 
+                                        id="hasDriverPayment" 
+                                        className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
+                                        checked={!!logForm.hasDriverPayment} 
+                                        onChange={e => setLogForm({ ...logForm, hasDriverPayment: e.target.checked })}
+                                    />
+                                    <label htmlFor="hasDriverPayment" className="text-xs font-black text-purple-800 dark:text-purple-300 cursor-pointer select-none">
+                                        این ورودی دارای پرداخت/واریزی راننده است (ثبت خودکار فرم واریزی پس از ثبت نگهبانی)
+                                    </label>
+                                </div>
                             </div>
                         )}
                         {activeTab === 'delays' && (
@@ -2475,6 +2982,9 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                         </button>
                         <button onClick={() => setActiveTab('archive')} className={`px-3.5 py-2 rounded-xl transition-all ${activeTab === 'archive' ? 'bg-green-600 text-white font-black shadow-md' : 'text-gray-700 dark:text-gray-300 hover:bg-black/5'}`}>
                             بایگانی
+                        </button>
+                        <button onClick={() => setActiveTab('driver_payments')} className={`px-3.5 py-2 rounded-xl transition-all ${activeTab === 'driver_payments' ? 'bg-purple-600 text-white font-black shadow-md' : 'text-gray-700 dark:text-gray-300 hover:bg-black/5'}`}>
+                            <DollarSign size={14} className="inline ml-1" /> واریزی رانندگان
                         </button>
                     </div>
                 </div>
@@ -2901,6 +3411,182 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 </div>
                             ))}
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'driver_payments' && (
+                    <div className="p-4 sm:p-6 space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-gray-50 dark:bg-gray-800/40 p-4 rounded-2xl border border-gray-200 dark:border-gray-800">
+                            <div>
+                                <h3 className="font-black text-gray-800 dark:text-gray-100 text-base flex items-center gap-2">
+                                    <DollarSign className="text-purple-600" size={20}/>
+                                    <span>فرم‌های واریزی و پرداختی رانندگان</span>
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-1">مدیریت، تایید و ارسال اسناد واریزی رانندگان حمل کالا به گروه‌های گفتگو</p>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    setDriverPaymentForm({
+                                        id: generateUUID(),
+                                        date: getIsoSelectedDate(),
+                                        driverName: '',
+                                        driverPhone: '',
+                                        plateNumber: '',
+                                        amount: '',
+                                        paymentType: 'کارت به کارت',
+                                        origin: '',
+                                        destination: '',
+                                        goodsName: '',
+                                        quantity: '',
+                                        permitProvider: '',
+                                        registrant: currentUser.fullName,
+                                        description: '',
+                                        attachments: []
+                                    });
+                                    setDriverPaymentEditingId(null);
+                                    setShowDriverPaymentForm(true);
+                                }}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow transition-all active:scale-95"
+                            >
+                                <Plus size={16}/>
+                                <span>ثبت فرم واریزی جدید</span>
+                            </button>
+                        </div>
+
+                        {/* Search and Filter */}
+                        <div className="flex gap-2 w-full max-w-md">
+                            <input 
+                                type="text" 
+                                placeholder="جستجو بر اساس نام راننده، پلاک یا کالا..." 
+                                className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 outline-none focus:border-purple-500 dark:focus:border-purple-500 transition-all"
+                                value={driverPaymentSearchQuery}
+                                onChange={e => setDriverPaymentSearchQuery(e.target.value)}
+                            />
+                        </div>
+
+                        {/* List / Table */}
+                        {driverPayments.length === 0 ? (
+                            <div className="text-center text-gray-400 py-16 text-xs sm:text-sm bg-gray-50/50 dark:bg-gray-800/20 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
+                                هیچ فرم واریزی ثبت نشده است. می‌توانید با زدن دکمه بالا یک فرم واریزی جدید ثبت کنید.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
+                                <table className="w-full text-right border-collapse text-xs sm:text-sm">
+                                    <thead>
+                                        <tr className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                                            <th className="p-3 font-bold text-center w-12">ردیف</th>
+                                            <th className="p-3 font-bold">تاریخ</th>
+                                            <th className="p-3 font-bold">راننده</th>
+                                            <th className="p-3 font-bold">پلاک خودرو</th>
+                                            <th className="p-3 font-bold">مبلغ (ریال)</th>
+                                            <th className="p-3 font-bold">نوع پرداخت</th>
+                                            <th className="p-3 font-bold">کالا و مسیر</th>
+                                            <th className="p-3 font-bold text-center">پیوست‌ها</th>
+                                            <th className="p-3 font-bold text-center">عملیات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                        {driverPayments
+                                            .filter(dp => {
+                                                const q = driverPaymentSearchQuery.trim().toLowerCase();
+                                                if (!q) return true;
+                                                return (
+                                                    (dp.driverName || '').toLowerCase().includes(q) ||
+                                                    (dp.plateNumber || '').toLowerCase().includes(q) ||
+                                                    (dp.goodsName || '').toLowerCase().includes(q) ||
+                                                    (dp.origin || '').toLowerCase().includes(q) ||
+                                                    (dp.destination || '').toLowerCase().includes(q)
+                                                );
+                                            })
+                                            .map((dp, idx) => (
+                                                <tr key={dp.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-all">
+                                                    <td className="p-3 text-center text-gray-400 font-mono">{idx + 1}</td>
+                                                    <td className="p-3 font-medium whitespace-nowrap">{formatDate(dp.date)}</td>
+                                                    <td className="p-3">
+                                                        <div className="font-bold text-gray-800 dark:text-gray-200">{dp.driverName}</div>
+                                                        {dp.driverPhone && <div className="text-[10px] text-gray-400 font-mono mt-0.5">{dp.driverPhone}</div>}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <IranianPlateDisplay value={dp.plateNumber} />
+                                                    </td>
+                                                    <td className="p-3 font-mono font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                                                        {dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'ثبت نشده'}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                                            {dp.paymentType || 'کارت به کارت'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="font-bold text-xs">{dp.goodsName || 'نامشخص'}</div>
+                                                        <div className="text-[10px] text-gray-400 mt-0.5">{dp.origin || 'مبدا'} ➔ {dp.destination || 'مقصد'}</div>
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        {dp.attachments && dp.attachments.length > 0 ? (
+                                                            <div className="flex justify-center gap-1.5">
+                                                                {dp.attachments.map((att, attIdx) => (
+                                                                    <button 
+                                                                        key={attIdx}
+                                                                        onClick={() => {
+                                                                            setViewAttachmentUrl(att.url);
+                                                                        }}
+                                                                        className="p-1 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-all"
+                                                                        title={att.fileName}
+                                                                    >
+                                                                        {/\.(jpg|jpeg|png|webp)$/i.test(att.url) ? <FileImage size={14} className="text-purple-600" /> : <FileText size={14} className="text-blue-500" />}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-gray-400 font-medium">بدون پیوست</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3 text-center whitespace-nowrap">
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await handleSharePaymentToGroup(dp);
+                                                                    } catch (err) {
+                                                                        alert('خطا در ارسال پیام به گروه گفتگو');
+                                                                    }
+                                                                }}
+                                                                className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all"
+                                                                title="ارسال به گروه گفتگو"
+                                                            >
+                                                                <Send size={14}/>
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setDriverPaymentForm({ ...dp });
+                                                                    setDriverPaymentEditingId(dp.id);
+                                                                    setShowDriverPaymentForm(true);
+                                                                }}
+                                                                className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-all"
+                                                                title="ویرایش"
+                                                            >
+                                                                <Pencil size={14}/>
+                                                            </button>
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    if (confirm('آیا از حذف این سند واریزی اطمینان دارید؟')) {
+                                                                        await deleteDriverPayment(dp.id);
+                                                                        loadData();
+                                                                    }
+                                                                }}
+                                                                className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 transition-all"
+                                                                title="حذف"
+                                                            >
+                                                                <Trash2 size={14}/>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

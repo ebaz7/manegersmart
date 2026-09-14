@@ -55,17 +55,42 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ cu
         fetchGoogleTasks(tok)
       ]);
 
+      let isExpired = false;
+      let hasError = false;
+
       if (calEvents.status === 'fulfilled') {
         setEvents(calEvents.value);
         if (onEventCountChange) onEventCountChange(calEvents.value.length);
       } else {
-        console.warn('Calendar fetch error:', calEvents.reason);
+        const reason = calEvents.reason?.message || String(calEvents.reason);
+        console.warn('Calendar fetch error:', reason);
+        if (reason.includes('401') || reason.includes('403') || reason.includes('Unauthorized') || reason.includes('invalid_grant')) {
+          isExpired = true;
+        } else {
+          hasError = true;
+        }
       }
 
       if (taskItems.status === 'fulfilled') {
         setTasks(taskItems.value);
       } else {
-        console.warn('Tasks fetch error:', taskItems.reason);
+        const reason = taskItems.reason?.message || String(taskItems.reason);
+        console.warn('Tasks fetch error:', reason);
+        if (reason.includes('401') || reason.includes('403') || reason.includes('Unauthorized') || reason.includes('invalid_grant')) {
+          isExpired = true;
+        } else {
+          hasError = true;
+        }
+      }
+
+      if (isExpired) {
+        setToken(null);
+        removeGoogleTokenForUser(currentUser?.id);
+        setEvents([]);
+        setTasks([]);
+        setError('نشست حساب گوگل شما منقضی شده است. لطفا جهت تمدید مجدداً متصل شوید.');
+      } else if (hasError) {
+        setError('خطا در همگام‌سازی بخشی از داده‌های گوگل. لطفاً اتصال را مجدداً برقرار کنید.');
       }
     } catch (err: any) {
       setError(err?.message || 'خطا در ارتباط با سرویس گوگل');

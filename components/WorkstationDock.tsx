@@ -88,7 +88,7 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
   }
 
   return (
-    <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[9980] hidden md:flex items-center gap-1.5 bg-white/85 dark:bg-zinc-950/85 border border-zinc-200/80 dark:border-zinc-800/80 p-1.5 rounded-2xl shadow-[0_12px_30px_rgba(0,0,0,0.15)] backdrop-blur-xl max-w-[94vw] animate-slide-up select-none">
+    <div className="fixed bottom-2 left-1/2 right-auto -translate-x-1/2 transform rtl:left-1/2 rtl:right-auto rtl:-translate-x-1/2 z-[9980] hidden md:flex items-center gap-1.5 bg-white/85 dark:bg-zinc-950/85 border border-zinc-200/80 dark:border-zinc-800/80 p-1.5 rounded-2xl shadow-[0_12px_30px_rgba(0,0,0,0.15)] backdrop-blur-xl max-w-[94vw] animate-slide-up select-none">
       {/* Workspace Indicator & Collapse toggle */}
       <div className="flex items-center gap-1 pl-1.5 border-l border-zinc-200 dark:border-zinc-800">
         <button

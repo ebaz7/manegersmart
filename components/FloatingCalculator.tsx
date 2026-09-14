@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calculator, X, Minus, Copy, Check, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { formatCurrency } from '../constants';
@@ -20,21 +20,6 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
   const [equation, setEquation] = useState('');
   const [copied, setCopied] = useState(false);
   const [isCalculated, setIsCalculated] = useState(false);
-
-  if (!isOpen) return null;
-
-  if (isMinimized) {
-    return (
-      <div 
-        onClick={onMinimize}
-        className="fixed bottom-16 left-6 z-[9999] bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 border border-emerald-400/40"
-        title="ماشین‌حساب (کوچک شده)"
-      >
-        <Calculator size={18} />
-        <span className="text-xs font-bold font-mono dir-ltr">{formatCurrency(parseFloat(display.replace(/,/g, '')) || 0)}</span>
-      </div>
-    );
-  }
 
   const handleDigit = (d: string) => {
     if (isCalculated || display === '0') {
@@ -91,7 +76,6 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
       } else if (op === '%') {
         res = (num1 * num2) / 100;
       }
-      // round to 4 decimals if needed
       const finalVal = Math.round(res * 10000) / 10000;
       setDisplay(String(finalVal));
       setEquation(equation + display + ' =');
@@ -100,6 +84,81 @@ export const FloatingCalculator: React.FC<FloatingCalculatorProps> = ({
       setDisplay('خطا');
     }
   };
+
+  const handleBackspace = () => {
+    if (isCalculated) {
+      setDisplay('0');
+      setIsCalculated(false);
+      return;
+    }
+    setDisplay(prev => {
+      if (prev === '0' || prev === 'خطا' || prev === 'خطای تقسیم بر صفر' || prev.length <= 1) return '0';
+      return prev.slice(0, -1);
+    });
+  };
+
+  useEffect(() => {
+    if (!isOpen || isMinimized) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      const key = e.key;
+      if (key >= '0' && key <= '9') {
+        e.preventDefault();
+        handleDigit(key);
+      } else if (key === '.') {
+        e.preventDefault();
+        handleDot();
+      } else if (key === '+') {
+        e.preventDefault();
+        handleOperator('+');
+      } else if (key === '-') {
+        e.preventDefault();
+        handleOperator('-');
+      } else if (key === '*' || key.toLowerCase() === 'x') {
+        e.preventDefault();
+        handleOperator('×');
+      } else if (key === '/') {
+        e.preventDefault();
+        handleOperator('÷');
+      } else if (key === '%') {
+        e.preventDefault();
+        handleOperator('%');
+      } else if (key === 'Enter' || key === '=') {
+        e.preventDefault();
+        handleCalculate();
+      } else if (key === 'Backspace') {
+        e.preventDefault();
+        handleBackspace();
+      } else if (key === 'Escape' || key.toLowerCase() === 'c') {
+        e.preventDefault();
+        handleClear();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, isMinimized, display, equation, isCalculated]);
+
+  if (!isOpen) return null;
+
+  if (isMinimized) {
+    return (
+      <div 
+        onClick={onMinimize}
+        className="fixed bottom-16 left-6 z-[9999] bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 border border-emerald-400/40"
+        title="ماشین‌حساب (کوچک شده)"
+      >
+        <Calculator size={18} />
+        <span className="text-xs font-bold font-mono dir-ltr">{formatCurrency(parseFloat(display.replace(/,/g, '')) || 0)}</span>
+      </div>
+    );
+  }
 
   const handleCopy = () => {
     navigator.clipboard.writeText(display.replace(/,/g, ''));

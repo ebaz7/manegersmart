@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { User, TradeRecord, TradeStage, TradeItem, SystemSettings, InsuranceEndorsement, CurrencyPurchaseData, TradeTransaction, CurrencyTranche, CurrencyDelivery, TradeStageData, ShippingDocument, ShippingDocType, DocStatus, InvoiceItem, InspectionData, InspectionPayment, InspectionCertificate, ClearanceData, WarehouseReceipt, ClearancePayment, GreenLeafData, GreenLeafCustomsDuty, GreenLeafGuarantee, GreenLeafTax, GreenLeafRoadToll, InternalShippingData, ShippingPayment, AgentData, AgentPayment, PackingItem, UserRole, GuaranteeCheque } from '../types';
+import { User, TradeRecord, ProformaHistoryEntry, TradeStage, TradeItem, SystemSettings, InsuranceEndorsement, CurrencyPurchaseData, TradeTransaction, CurrencyTranche, CurrencyDelivery, TradeStageData, ShippingDocument, ShippingDocType, DocStatus, InvoiceItem, InspectionData, InspectionPayment, InspectionCertificate, ClearanceData, WarehouseReceipt, ClearancePayment, GreenLeafData, GreenLeafCustomsDuty, GreenLeafGuarantee, GreenLeafTax, GreenLeafRoadToll, InternalShippingData, ShippingPayment, AgentData, AgentPayment, PackingItem, UserRole, GuaranteeCheque } from '../types';
 import { getTradeRecords, saveTradeRecord, updateTradeRecord, deleteTradeRecord, getSettings, uploadFile } from '../services/storageService';
 import { getUsers } from '../services/authService';
 import { generateUUID, formatCurrency, formatNumberString, deformatNumberString, parsePersianDate, formatDate, calculateDaysDiff, calculateDaysBetween, getStatusLabel } from '../constants';
@@ -230,6 +230,13 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     
     const [showClearancePrint, setShowClearancePrint] = useState(false);
     const [showProformaPrint, setShowProformaPrint] = useState(false);
+    const [proformaPrintTarget, setProformaPrintTarget] = useState<{
+        record: TradeRecord;
+        isHistorical?: boolean;
+        historyTitle?: string;
+        historySubtitle?: string;
+    } | null>(null);
+    const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
     const [selectedShippingDocForPrint, setSelectedShippingDocForPrint] = useState<ShippingDocument | null>(null);
     const [expandedShippingDocIds, setExpandedShippingDocIds] = useState<Record<string, boolean>>({});
 
@@ -298,7 +305,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     }, [selectedRecord, settings, availableBanks]);
 
     useEffect(() => {
-        const hasActiveModal = showNewModal || showEditMetadataModal || !!editingStage || !!selectedTrancheForDeliveries || showTransferModal || showProformaPrint || showFinalReportPrint || showClearancePrint || !!selectedShippingDocForPrint;
+        const hasActiveModal = showNewModal || showEditMetadataModal || !!editingStage || !!selectedTrancheForDeliveries || showTransferModal || showProformaPrint || !!proformaPrintTarget || showFinalReportPrint || showClearancePrint || !!selectedShippingDocForPrint;
         const needsCustomBack = hasActiveModal || viewMode !== 'dashboard' || navLevel !== 'ROOT';
 
         if (needsCustomBack) {
@@ -311,8 +318,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             const handleBack = () => {
                 if (showTransferModal) {
                     setShowTransferModal(false);
-                } else if (showProformaPrint) {
+                } else if (showProformaPrint || proformaPrintTarget) {
                     setShowProformaPrint(false);
+                    setProformaPrintTarget(null);
                 } else if (selectedShippingDocForPrint) {
                     setSelectedShippingDocForPrint(null);
                 } else if (showFinalReportPrint) {
@@ -345,7 +353,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         return () => {
             window.dispatchEvent(new CustomEvent('UNREGISTER_BACK_ACTION'));
         };
-    }, [showNewModal, showEditMetadataModal, editingStage, viewMode, navLevel, selectedCompany, selectedTrancheForDeliveries, showTransferModal, showProformaPrint, showFinalReportPrint, showClearancePrint, selectedShippingDocForPrint]);
+    }, [showNewModal, showEditMetadataModal, editingStage, viewMode, navLevel, selectedCompany, selectedTrancheForDeliveries, showTransferModal, showProformaPrint, proformaPrintTarget, showFinalReportPrint, showClearancePrint, selectedShippingDocForPrint]);
 
     useEffect(() => {
         loadRecords();
@@ -428,25 +436,50 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 payments: isData.payments || []
             });
 
-            // Comprehensive extraction of agent payments from any possible structure
-            let extractedAgentPayments: AgentPayment[] = [];
+            // Comprehensive extraction of agent payments from any possible structure (MERGED to prevent hiding old rows)
+            let extractedAgentPaymentsMap = new Map<string, AgentPayment>();
             const anyRec = selectedRecord as any;
+            
+            const addPaymentsToMap = (payments: any[]) => {
+                if (Array.isArray(payments)) {
+                    payments.forEach(p => {
+                        if (p && p.id) {
+                            // normalize legacy structures if needed
+                            extractedAgentPaymentsMap.set(p.id, {
+                                id: p.id,
+                                agentName: p.agentName || p.description || 'نامشخص',
+                                amount: Number(p.amount) || 0,
+                                bank: p.bank || '',
+                                date: p.date || '',
+                                part: p.part || '',
+                                description: p.description || ''
+                            });
+                        }
+                    });
+                }
+            };
+
             if (selectedRecord.agentData && Array.isArray(selectedRecord.agentData.payments)) {
-                extractedAgentPayments = selectedRecord.agentData.payments;
-            } else if (Array.isArray(selectedRecord.agentData)) {
-                extractedAgentPayments = selectedRecord.agentData as any;
-            } else if (Array.isArray(anyRec.agentPayments)) {
-                extractedAgentPayments = anyRec.agentPayments;
-            } else if (Array.isArray(anyRec.agentFees)) {
-                extractedAgentPayments = anyRec.agentFees;
-            } else if (Array.isArray(anyRec.clearanceAgentPayments)) {
-                extractedAgentPayments = anyRec.clearanceAgentPayments;
-            } else if (selectedRecord.stages?.[TradeStage.AGENT_FEES] && Array.isArray((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments)) {
-                extractedAgentPayments = (selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments;
+                addPaymentsToMap(selectedRecord.agentData.payments);
+            }
+            if (Array.isArray(selectedRecord.agentData)) {
+                addPaymentsToMap(selectedRecord.agentData);
+            }
+            if (Array.isArray(anyRec.agentPayments)) {
+                addPaymentsToMap(anyRec.agentPayments);
+            }
+            if (Array.isArray(anyRec.agentFees)) {
+                addPaymentsToMap(anyRec.agentFees);
+            }
+            if (Array.isArray(anyRec.clearanceAgentPayments)) {
+                addPaymentsToMap(anyRec.clearanceAgentPayments);
+            }
+            if (selectedRecord.stages?.[TradeStage.AGENT_FEES] && Array.isArray((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments)) {
+                addPaymentsToMap((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments);
             }
 
             setAgentForm({
-                payments: extractedAgentPayments || []
+                payments: Array.from(extractedAgentPaymentsMap.values())
             });
 
             const curData = (selectedRecord.currencyPurchaseData || {}) as CurrencyPurchaseData;
@@ -2010,13 +2043,28 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         if (!selectedRecord) return; 
         if (!confirm('آیا مطمئن هستید؟ این عملیات اقلام و هزینه حمل پروفرما را با مقادیر این اینویس جایگزین می‌کند و نسخه فعلی به عنوان سابقه و بایگانی در پرونده ذخیره خواهد شد.')) return; 
         
-        const historyEntry = {
+        const historyEntry: ProformaHistoryEntry = {
             id: generateUUID(),
-            items: [...selectedRecord.items],
+            items: JSON.parse(JSON.stringify(selectedRecord.items || [])),
             freightCost: selectedRecord.freightCost || 0,
             updatedAt: Date.now(),
             updatedBy: currentUser.fullName,
-            description: 'نسخ اینویس و جایگزینی پروفرما'
+            description: 'جایگزینی اقلام پروفرما با اینویس حمل',
+            proformaNumber: selectedRecord.proformaNumber,
+            orderNumber: selectedRecord.orderNumber,
+            fileNumber: selectedRecord.fileNumber,
+            registrationNumber: selectedRecord.registrationNumber,
+            registrationDate: selectedRecord.registrationDate,
+            goodsName: selectedRecord.goodsName,
+            commodityGroup: selectedRecord.commodityGroup,
+            sellerName: selectedRecord.sellerName,
+            company: selectedRecord.company,
+            mainCurrency: selectedRecord.mainCurrency,
+            operatingBank: selectedRecord.operatingBank,
+            startDate: selectedRecord.startDate,
+            sourceRecordId: selectedRecord.id,
+            attachments: selectedRecord.attachments ? [...selectedRecord.attachments] : [],
+            recordSnapshot: JSON.parse(JSON.stringify(selectedRecord))
         };
         const existingHistory = selectedRecord.proformaHistory || [];
 
@@ -2062,6 +2110,30 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
         const newGoodsNameClean = transferForm.newGoodsName.trim();
         
+        const historicalProformaSnapshot: ProformaHistoryEntry = {
+            id: generateUUID(),
+            items: JSON.parse(JSON.stringify(selectedRecord.items || [])),
+            freightCost: selectedRecord.freightCost || 0,
+            updatedAt: Date.now(),
+            updatedBy: currentUser.fullName,
+            description: `انتقال ثبت سفارش از پرونده ${selectedRecord.fileNumber} (${selectedRecord.goodsName} - گروه ${selectedRecord.commodityGroup}) به این پرونده جدید (${newGoodsNameClean} - گروه ${transferForm.targetCommodityGroup})`,
+            proformaNumber: selectedRecord.proformaNumber,
+            orderNumber: selectedRecord.orderNumber,
+            fileNumber: selectedRecord.fileNumber,
+            registrationNumber: selectedRecord.registrationNumber,
+            registrationDate: selectedRecord.registrationDate,
+            goodsName: selectedRecord.goodsName,
+            commodityGroup: selectedRecord.commodityGroup,
+            sellerName: selectedRecord.sellerName,
+            company: selectedRecord.company,
+            mainCurrency: selectedRecord.mainCurrency,
+            operatingBank: selectedRecord.operatingBank,
+            startDate: selectedRecord.startDate,
+            sourceRecordId: selectedRecord.id,
+            attachments: selectedRecord.attachments ? [...selectedRecord.attachments] : [],
+            recordSnapshot: JSON.parse(JSON.stringify(selectedRecord))
+        };
+
         const newRecord: TradeRecord = {
             ...selectedRecord,
             id: generateUUID(),
@@ -2075,17 +2147,15 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             transferredFrom: {
                 fileNumber: selectedRecord.fileNumber,
                 goodsName: selectedRecord.goodsName,
-                commodityGroup: selectedRecord.commodityGroup
+                commodityGroup: selectedRecord.commodityGroup,
+                recordId: selectedRecord.id,
+                proformaNumber: selectedRecord.proformaNumber,
+                registrationNumber: selectedRecord.registrationNumber,
+                sellerName: selectedRecord.sellerName,
+                mainCurrency: selectedRecord.mainCurrency
             },
             proformaHistory: [
-                {
-                    id: generateUUID(),
-                    items: [...selectedRecord.items],
-                    freightCost: selectedRecord.freightCost || 0,
-                    updatedAt: Date.now(),
-                    updatedBy: currentUser.fullName,
-                    description: `انتقال از پروفرم ${selectedRecord.fileNumber} (${selectedRecord.goodsName} - گروه ${selectedRecord.commodityGroup}) به این پروفرم جدید (${newGoodsNameClean} - گروه ${transferForm.targetCommodityGroup})`
-                },
+                historicalProformaSnapshot,
                 ...(selectedRecord.proformaHistory || [])
             ]
         };
@@ -2097,7 +2167,10 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             transferredTo: {
                 fileNumber: transferForm.newFileNumber.trim(),
                 goodsName: newGoodsNameClean,
-                commodityGroup: transferForm.targetCommodityGroup.trim()
+                commodityGroup: transferForm.targetCommodityGroup.trim(),
+                recordId: newRecord.id,
+                proformaNumber: newRecord.proformaNumber,
+                registrationNumber: newRecord.registrationNumber
             }
         };
 
@@ -2202,10 +2275,50 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
     const saveMetadata = async () => {
         if (!selectedRecord) return;
-        const updatedRecord = { ...selectedRecord, ...editMetadataForm };
+
+        const isGoodsOrRegChanged = 
+            (editMetadataForm.goodsName && editMetadataForm.goodsName.trim() !== (selectedRecord.goodsName || '').trim()) ||
+            (editMetadataForm.registrationNumber !== undefined && editMetadataForm.registrationNumber.trim() !== (selectedRecord.registrationNumber || '').trim()) ||
+            (editMetadataForm.proformaNumber !== undefined && editMetadataForm.proformaNumber.trim() !== (selectedRecord.proformaNumber || '').trim()) ||
+            (editMetadataForm.commodityGroup && editMetadataForm.commodityGroup.trim() !== (selectedRecord.commodityGroup || '').trim());
+
+        let updatedHistory = selectedRecord.proformaHistory ? [...selectedRecord.proformaHistory] : [];
+        
+        if (isGoodsOrRegChanged) {
+            const historyEntry: ProformaHistoryEntry = {
+                id: generateUUID(),
+                items: JSON.parse(JSON.stringify(selectedRecord.items || [])),
+                freightCost: selectedRecord.freightCost || 0,
+                updatedAt: Date.now(),
+                updatedBy: currentUser.fullName,
+                description: `تغییر مشخصات پرونده/ثبت سفارش: از «${selectedRecord.goodsName || '---'}» (ثبت: ${selectedRecord.registrationNumber || '---'} / گروه: ${selectedRecord.commodityGroup || '---'}) به «${editMetadataForm.goodsName}» (ثبت: ${editMetadataForm.registrationNumber || '---'} / گروه: ${editMetadataForm.commodityGroup || '---'})`,
+                proformaNumber: selectedRecord.proformaNumber,
+                orderNumber: selectedRecord.orderNumber,
+                fileNumber: selectedRecord.fileNumber,
+                registrationNumber: selectedRecord.registrationNumber,
+                registrationDate: selectedRecord.registrationDate,
+                goodsName: selectedRecord.goodsName,
+                commodityGroup: selectedRecord.commodityGroup,
+                sellerName: selectedRecord.sellerName,
+                company: selectedRecord.company,
+                mainCurrency: selectedRecord.mainCurrency,
+                operatingBank: selectedRecord.operatingBank,
+                startDate: selectedRecord.startDate,
+                sourceRecordId: selectedRecord.id,
+                attachments: selectedRecord.attachments ? [...selectedRecord.attachments] : [],
+                recordSnapshot: JSON.parse(JSON.stringify(selectedRecord))
+            };
+            updatedHistory = [historyEntry, ...updatedHistory];
+        }
+
+        const updatedRecord = { 
+            ...selectedRecord, 
+            ...editMetadataForm,
+            proformaHistory: updatedHistory
+        };
         await persistRecordUpdate(updatedRecord);
         setShowEditMetadataModal(false);
-        alert('مشخصات پرونده بروزرسانی شد.');
+        alert('مشخصات پرونده بروزرسانی شد و سابقه تغییرات در بخش بایگانی پروفرما ثبت گردید.');
     };
 
     const handlePrintReport = () => {
@@ -2512,6 +2625,200 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         );
     };
 
+    const buildHistoricalProformaRecord = (
+        hist: ProformaHistoryEntry, 
+        currentRecord: TradeRecord,
+        recordsList: TradeRecord[]
+    ): TradeRecord => {
+        // 1. If hist.recordSnapshot exists and has items
+        if (hist.recordSnapshot && hist.recordSnapshot.items && hist.recordSnapshot.items.length > 0) {
+            return {
+                ...hist.recordSnapshot,
+                items: (hist.items && hist.items.length > 0) ? hist.items : hist.recordSnapshot.items,
+                freightCost: hist.freightCost !== undefined ? hist.freightCost : (hist.recordSnapshot.freightCost || 0)
+            };
+        }
+
+        // 2. Look for source record in recordsList
+        const sourceRec = recordsList.find(r => 
+            (hist.sourceRecordId && r.id === hist.sourceRecordId) ||
+            (hist.fileNumber && r.fileNumber === hist.fileNumber && r.id !== currentRecord.id)
+        );
+        if (sourceRec) {
+            return {
+                ...sourceRec,
+                items: (hist.items && hist.items.length > 0) ? hist.items : (sourceRec.items || []),
+                freightCost: hist.freightCost !== undefined ? hist.freightCost : (sourceRec.freightCost || 0),
+                goodsName: hist.goodsName || sourceRec.goodsName,
+                proformaNumber: hist.proformaNumber || sourceRec.proformaNumber,
+                orderNumber: hist.orderNumber || sourceRec.orderNumber,
+                registrationNumber: hist.registrationNumber || sourceRec.registrationNumber,
+                commodityGroup: hist.commodityGroup || sourceRec.commodityGroup
+            };
+        }
+
+        // 3. Fallback: virtual record with fallback to currentRecord attributes
+        return {
+            ...currentRecord,
+            id: hist.id || `hist-${Date.now()}`,
+            fileNumber: hist.fileNumber || currentRecord.transferredFrom?.fileNumber || currentRecord.fileNumber,
+            proformaNumber: hist.proformaNumber || (currentRecord.transferredFrom ? '' : currentRecord.proformaNumber) || '',
+            orderNumber: hist.orderNumber || currentRecord.orderNumber || '',
+            registrationNumber: hist.registrationNumber || (currentRecord.transferredFrom ? '---' : currentRecord.registrationNumber) || '',
+            registrationDate: hist.registrationDate || currentRecord.registrationDate || '',
+            goodsName: hist.goodsName || currentRecord.transferredFrom?.goodsName || currentRecord.goodsName,
+            commodityGroup: hist.commodityGroup || currentRecord.transferredFrom?.commodityGroup || currentRecord.commodityGroup,
+            sellerName: hist.sellerName || currentRecord.sellerName,
+            company: hist.company || currentRecord.company,
+            mainCurrency: hist.mainCurrency || currentRecord.mainCurrency || 'USD',
+            operatingBank: hist.operatingBank || currentRecord.operatingBank || '',
+            startDate: hist.startDate || (hist.updatedAt ? new Date(hist.updatedAt).toLocaleDateString('fa-IR') : currentRecord.startDate),
+            freightCost: hist.freightCost !== undefined ? hist.freightCost : (currentRecord.freightCost || 0),
+            items: hist.items || []
+        };
+    };
+
+    const getAllPreviousProformas = (record: TradeRecord | null, recordsList: TradeRecord[]) => {
+        if (!record) return [];
+        const list: Array<{
+            key: string;
+            source: 'history' | 'transferredFrom';
+            historyEntry?: ProformaHistoryEntry;
+            proformaRecord: TradeRecord;
+            goodsName: string;
+            commodityGroup: string;
+            fileNumber: string;
+            registrationNumber?: string;
+            proformaNumber?: string;
+            sellerName: string;
+            dateLabel: string;
+            userLabel?: string;
+            description: string;
+            itemsCount: number;
+            totalWeight: number;
+            totalGrossWeight: number;
+            totalFob: number;
+            freightCost: number;
+            totalGrand: number;
+            currency: string;
+            canOpenSourceRecord?: boolean;
+            sourceRecordId?: string;
+        }> = [];
+
+        // 1. Process proformaHistory
+        if (record.proformaHistory && record.proformaHistory.length > 0) {
+            record.proformaHistory.forEach((hist, idx) => {
+                const profRec = buildHistoricalProformaRecord(hist, record, recordsList);
+                const totalW = (profRec.items || []).reduce((s, i) => s + (i.weight || 0), 0);
+                const totalGW = (profRec.items || []).reduce((s, i) => s + (i.grossWeight || i.weight || 0), 0);
+                const totalFob = (profRec.items || []).reduce((s, i) => s + (i.totalPrice || (i.weight * i.unitPrice) || 0), 0);
+                const freight = Number(profRec.freightCost) || 0;
+                const sourceRec = recordsList.find(r => 
+                    (hist.sourceRecordId && r.id === hist.sourceRecordId) ||
+                    (hist.fileNumber && r.fileNumber === hist.fileNumber && r.id !== record.id)
+                );
+
+                list.push({
+                    key: hist.id || `hist-${idx}`,
+                    source: 'history',
+                    historyEntry: hist,
+                    proformaRecord: profRec,
+                    goodsName: profRec.goodsName || hist.goodsName || '---',
+                    commodityGroup: profRec.commodityGroup || hist.commodityGroup || '---',
+                    fileNumber: profRec.fileNumber || hist.fileNumber || '---',
+                    registrationNumber: profRec.registrationNumber || hist.registrationNumber,
+                    proformaNumber: profRec.proformaNumber || hist.proformaNumber,
+                    sellerName: profRec.sellerName || '---',
+                    dateLabel: hist.updatedAt ? new Date(hist.updatedAt).toLocaleDateString('fa-IR') : (profRec.startDate || '---'),
+                    userLabel: hist.updatedBy,
+                    description: hist.description || `نسخه بایگانی پروفرما ثبت شده در تاریخ ${hist.updatedAt ? new Date(hist.updatedAt).toLocaleDateString('fa-IR') : '---'}`,
+                    itemsCount: (profRec.items || []).length,
+                    totalWeight: totalW,
+                    totalGrossWeight: totalGW,
+                    totalFob: totalFob,
+                    freightCost: freight,
+                    totalGrand: totalFob + freight,
+                    currency: profRec.mainCurrency || record.mainCurrency || 'USD',
+                    canOpenSourceRecord: !!sourceRec,
+                    sourceRecordId: sourceRec?.id
+                });
+            });
+        }
+
+        // 2. Ensure transferredFrom is represented if present
+        if (record.transferredFrom) {
+            const tf = record.transferredFrom;
+            const alreadyRepresented = list.some(item => 
+                (tf.fileNumber && (item.fileNumber === tf.fileNumber || item.description?.includes(tf.fileNumber))) ||
+                (tf.recordId && item.sourceRecordId === tf.recordId)
+            );
+
+            if (!alreadyRepresented) {
+                const sourceRec = recordsList.find(r => 
+                    (tf.recordId && r.id === tf.recordId) ||
+                    (tf.fileNumber && r.fileNumber === tf.fileNumber && r.id !== record.id)
+                );
+
+                const fallbackProfRec: TradeRecord = sourceRec ? sourceRec : {
+                    ...record,
+                    id: tf.recordId || `tf-${Date.now()}`,
+                    fileNumber: tf.fileNumber || '---',
+                    goodsName: tf.goodsName || '---',
+                    commodityGroup: tf.commodityGroup || '---',
+                    proformaNumber: tf.proformaNumber || '',
+                    registrationNumber: tf.registrationNumber || '---',
+                    sellerName: tf.sellerName || record.sellerName,
+                    mainCurrency: tf.mainCurrency || record.mainCurrency,
+                    items: [],
+                    freightCost: 0
+                };
+
+                const totalW = (fallbackProfRec.items || []).reduce((s, i) => s + (i.weight || 0), 0);
+                const totalGW = (fallbackProfRec.items || []).reduce((s, i) => s + (i.grossWeight || i.weight || 0), 0);
+                const totalFob = (fallbackProfRec.items || []).reduce((s, i) => s + (i.totalPrice || (i.weight * i.unitPrice) || 0), 0);
+                const freight = Number(fallbackProfRec.freightCost) || 0;
+
+                list.unshift({
+                    key: `transferredFrom-${tf.fileNumber || Date.now()}`,
+                    source: 'transferredFrom',
+                    proformaRecord: fallbackProfRec,
+                    goodsName: tf.goodsName || fallbackProfRec.goodsName || '---',
+                    commodityGroup: tf.commodityGroup || fallbackProfRec.commodityGroup || '---',
+                    fileNumber: tf.fileNumber || fallbackProfRec.fileNumber || '---',
+                    registrationNumber: tf.registrationNumber || fallbackProfRec.registrationNumber,
+                    proformaNumber: tf.proformaNumber || fallbackProfRec.proformaNumber,
+                    sellerName: fallbackProfRec.sellerName || '---',
+                    dateLabel: fallbackProfRec.startDate || '---',
+                    description: `پرونده و ثبت سفارش مبدا قبل از انتقال به این پرونده (${record.goodsName})`,
+                    itemsCount: (fallbackProfRec.items || []).length,
+                    totalWeight: totalW,
+                    totalGrossWeight: totalGW,
+                    totalFob: totalFob,
+                    freightCost: freight,
+                    totalGrand: totalFob + freight,
+                    currency: fallbackProfRec.mainCurrency || record.mainCurrency || 'USD',
+                    canOpenSourceRecord: !!sourceRec,
+                    sourceRecordId: sourceRec?.id
+                });
+            }
+        }
+
+        return list;
+    };
+
+    const handleOpenHistoricalProforma = (
+        profRecord: TradeRecord,
+        title?: string,
+        subtitle?: string
+    ) => {
+        setProformaPrintTarget({
+            record: profRecord,
+            isHistorical: true,
+            historyTitle: title || `پروفرم قبلی: ${profRecord.goodsName || '---'} (پرونده: ${profRecord.fileNumber || '---'})`,
+            historySubtitle: subtitle
+        });
+    };
+
     if (selectedRecord && viewMode === 'details') {
         const totalItemsCurrency = selectedRecord.items.reduce((a, b) => a + b.totalPrice, 0);
         const totalFreightCurrency = selectedRecord.freightCost || 0;
@@ -2564,12 +2871,18 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     />
                 )}
 
-                {/* Proforma Print Overlay */}
-                {showProformaPrint && selectedRecord && (
+                {/* Proforma Print Overlay (Current or Historical) */}
+                {(showProformaPrint || proformaPrintTarget) && (selectedRecord || proformaPrintTarget?.record) && (
                     <PrintProforma 
-                        record={selectedRecord} 
+                        record={proformaPrintTarget?.record || selectedRecord!} 
                         settings={settings} 
-                        onClose={() => setShowProformaPrint(false)} 
+                        onClose={() => {
+                            setShowProformaPrint(false);
+                            setProformaPrintTarget(null);
+                        }}
+                        isHistorical={proformaPrintTarget?.isHistorical}
+                        historyTitle={proformaPrintTarget?.historyTitle}
+                        historySubtitle={proformaPrintTarget?.historySubtitle}
                     />
                 )}
 
@@ -2738,9 +3051,29 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                 </h1>
                                 <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">{selectedRecord.company} | {selectedRecord.sellerName}</p>
                                 {selectedRecord.transferredFrom && (
-                                    <div className="mt-1 flex items-center gap-1 text-[10px] sm:text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-lg w-fit font-medium">
-                                        <ArrowRightLeft size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                                        <span>انتقال یافته از پروفرم {selectedRecord.transferredFrom.fileNumber} ({selectedRecord.transferredFrom.goodsName})</span>
+                                    <div className="mt-1 flex items-center gap-1.5 text-[10px] sm:text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-lg w-fit font-medium flex-wrap">
+                                        <ArrowRightLeft size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                                        <span>انتقال یافته از ثبت سفارش/کالای قبلی: <strong className="font-bold">{selectedRecord.transferredFrom.goodsName}</strong> (پرونده {selectedRecord.transferredFrom.fileNumber})</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const prevs = getAllPreviousProformas(selectedRecord, records);
+                                                if (prevs.length > 0) {
+                                                    handleOpenHistoricalProforma(
+                                                        prevs[0].proformaRecord,
+                                                        `پروفرم قبلی: ${prevs[0].goodsName} (پرونده: ${prevs[0].fileNumber})`,
+                                                        prevs[0].dateLabel
+                                                    );
+                                                } else {
+                                                    setActiveTab('proforma');
+                                                }
+                                            }}
+                                            className="mr-1 inline-flex items-center gap-1 px-2 py-0.5 bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700 text-amber-950 dark:text-amber-100 rounded text-[10px] font-black cursor-pointer transition-colors shadow-2xs"
+                                            title="مشاهده و باز کردن پروفرم قبلی با تمام جزئیات"
+                                        >
+                                            <Eye size={11} />
+                                            <span>مشاهده پروفرم قبلی</span>
+                                        </button>
                                     </div>
                                 )}
                                 {selectedRecord.transferredTo && (
@@ -2933,40 +3266,205 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                 </div>
                             </div>
 
-                            {/* Proforma History / Archive Section */}
-                            {selectedRecord.proformaHistory && selectedRecord.proformaHistory.length > 0 && (
-                                <div className="glass-panel p-6 rounded-xl shadow-sm border bg-amber-50/50">
-                                    <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                                        <History size={18} className="text-amber-600"/> بایگانی و سوابق پروفرم‌های قبلی این پرونده
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {selectedRecord.proformaHistory.map((hist, hIdx) => (
-                                            <div key={hist.id || hIdx} className="bg-white p-4 rounded-xl border border-amber-200 text-xs shadow-xs space-y-2">
-                                                <div className="flex justify-between items-center text-gray-500 border-b pb-2">
-                                                    <span className="font-bold text-gray-800">{hist.description || 'نسخه قبلی پروفرما'}</span>
-                                                    <div className="flex gap-3 font-mono">
-                                                        <span>ویرایش‌کننده: {hist.updatedBy}</span>
-                                                        <span>تاریخ: {new Date(hist.updatedAt).toLocaleDateString('fa-IR')}</span>
-                                                    </div>
+                            {/* Previous Proformas & Order Registration History Section */}
+                            {(() => {
+                                const previousProformas = getAllPreviousProformas(selectedRecord, records);
+                                if (previousProformas.length === 0) return null;
+
+                                return (
+                                    <div className="glass-panel p-5 sm:p-6 rounded-2xl shadow-sm border border-amber-200/90 dark:border-amber-900/60 bg-gradient-to-b from-amber-50/70 to-orange-50/40 dark:from-amber-950/20 dark:to-zinc-900/40 space-y-4">
+                                        <div className="flex justify-between items-center flex-wrap gap-2 border-b border-amber-200 dark:border-amber-800/60 pb-3">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                                                    <History size={18} />
                                                 </div>
-                                                <div className="text-gray-700">
-                                                    <span className="font-bold block mb-1">اقلام این نسخه:</span>
-                                                    <ul className="list-disc pr-4 space-y-0.5">
-                                                        {hist.items.map((i, iIdx) => (
-                                                            <li key={i.id || iIdx}>
-                                                                {i.name} - وزن: {formatNumberString(i.weight)} KG - قیمت کل: {formatNumberString(i.totalPrice)} {selectedRecord.mainCurrency}
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                    <div className="mt-2 font-bold font-mono text-gray-800">
-                                                        هزینه حمل: {formatNumberString(hist.freightCost)} {selectedRecord.mainCurrency}
-                                                    </div>
+                                                <div>
+                                                    <h3 className="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base flex items-center gap-2">
+                                                        <span>پروفرم‌های قبلی و سوابق تغییر ثبت سفارش</span>
+                                                        <span className="px-2 py-0.5 bg-amber-200 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 text-xs rounded-full font-bold">
+                                                            {previousProformas.length} نسخه بایگانی
+                                                        </span>
+                                                    </h3>
+                                                    <p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-0.5">
+                                                        پیش‌فاکتورها و اقلام ثبت سفارش قبلی (مانند تغییر کالا از {previousProformas[0]?.goodsName || 'POY'} به {selectedRecord.goodsName}) با جزئیات کامل و قابلیت باز کردن، مشاهده، چاپ و دانلود در دسترس هستند.
+                                                    </p>
                                                 </div>
                                             </div>
-                                        ))}
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {previousProformas.map((prev) => {
+                                                const isExpanded = expandedHistoryId === prev.key;
+                                                return (
+                                                    <div 
+                                                        key={prev.key} 
+                                                        className="bg-white dark:bg-zinc-900 rounded-xl border border-amber-200 dark:border-zinc-800 p-4 shadow-xs hover:shadow-md transition-all space-y-3"
+                                                    >
+                                                        {/* Header row */}
+                                                        <div className="flex justify-between items-start flex-wrap gap-3">
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className="px-2.5 py-0.5 rounded-lg text-xs font-black bg-amber-100 dark:bg-amber-950 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                                                        کالای قبلی: {prev.goodsName}
+                                                                    </span>
+                                                                    <span className="text-xs text-gray-600 dark:text-gray-300 font-bold">
+                                                                        گروه کالایی: {prev.commodityGroup}
+                                                                    </span>
+                                                                    <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                                                                        پرونده: {prev.fileNumber}
+                                                                    </span>
+                                                                    {prev.registrationNumber && (
+                                                                        <span className="text-xs font-mono bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                                                                            ثبت سفارش: {prev.registrationNumber}
+                                                                        </span>
+                                                                    )}
+                                                                    {prev.proformaNumber && (
+                                                                        <span className="text-xs font-mono bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded">
+                                                                            پروفرم: {prev.proformaNumber}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                                    {prev.description}
+                                                                </p>
+                                                                <div className="flex items-center gap-3 text-[11px] text-gray-400 dark:text-gray-500 flex-wrap">
+                                                                    <span>تاریخ: {prev.dateLabel}</span>
+                                                                    {prev.userLabel && <span>توسط: {prev.userLabel}</span>}
+                                                                    <span>فروشنده: {prev.sellerName}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Action buttons */}
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenHistoricalProforma(
+                                                                        prev.proformaRecord, 
+                                                                        `پروفرم قبلی: ${prev.goodsName} (پرونده: ${prev.fileNumber})`,
+                                                                        `تاریخ نسخه: ${prev.dateLabel}${prev.userLabel ? ` | توسط: ${prev.userLabel}` : ''}`
+                                                                    )}
+                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer active:scale-95"
+                                                                    title="باز کردن و مشاهده کامل پروفرم قبلی مشابه پروفرماهای جدید"
+                                                                >
+                                                                    <Eye size={14} />
+                                                                    <span>مشاهده و باز کردن پروفرما</span>
+                                                                </button>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setExpandedHistoryId(isExpanded ? null : prev.key)}
+                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                                                    title="مشاهده اقلام در همین صفحه"
+                                                                >
+                                                                    <FileText size={14} />
+                                                                    <span>{isExpanded ? 'بستن اقلام' : `اقلام (${prev.itemsCount})`}</span>
+                                                                    {isExpanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                                                                </button>
+
+                                                                {prev.canOpenSourceRecord && prev.sourceRecordId && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const sourceRec = records.find(r => r.id === prev.sourceRecordId);
+                                                                            if (sourceRec) {
+                                                                                setSelectedRecord(sourceRec);
+                                                                                setActiveTab('proforma');
+                                                                            }
+                                                                        }}
+                                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                                                        title="رفتن به پرونده اصلی این کالا"
+                                                                    >
+                                                                        <ExternalLink size={14} />
+                                                                        <span>رفتن به پرونده {prev.goodsName}</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Summary Metrics Bar */}
+                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800 text-xs">
+                                                            <div className="bg-gray-50 dark:bg-zinc-800/60 p-2 rounded-lg">
+                                                                <span className="text-[11px] text-gray-400 block">تعداد اقلام / وزن خالص:</span>
+                                                                <span className="font-bold text-gray-800 dark:text-gray-200 font-mono">
+                                                                    {prev.itemsCount} قلم | {formatNumberString(prev.totalWeight)} kg
+                                                                </span>
+                                                            </div>
+                                                            <div className="bg-gray-50 dark:bg-zinc-800/60 p-2 rounded-lg">
+                                                                <span className="text-[11px] text-gray-400 block">وزن ناخالص:</span>
+                                                                <span className="font-bold text-gray-800 dark:text-gray-200 font-mono">
+                                                                    {formatNumberString(prev.totalGrossWeight)} kg
+                                                                </span>
+                                                            </div>
+                                                            <div className="bg-gray-50 dark:bg-zinc-800/60 p-2 rounded-lg">
+                                                                <span className="text-[11px] text-gray-400 block">مبلغ اقلام (FOB):</span>
+                                                                <span className="font-bold text-gray-800 dark:text-gray-200 font-mono">
+                                                                    {formatNumberString(prev.totalFob)} {prev.currency}
+                                                                </span>
+                                                            </div>
+                                                            <div className="bg-amber-50/80 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                                                                <span className="text-[11px] text-amber-800 dark:text-amber-300 block font-medium">جمع کل پروفرما (+حمل):</span>
+                                                                <span className="font-black text-amber-950 dark:text-amber-100 font-mono text-xs sm:text-sm">
+                                                                    {formatNumberString(prev.totalGrand)} {prev.currency}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Collapsible detailed items table */}
+                                                        {isExpanded && (
+                                                            <div className="pt-2 border-t border-dashed border-gray-200 dark:border-zinc-800 space-y-2 animate-in fade-in">
+                                                                {prev.proformaRecord.items && prev.proformaRecord.items.length > 0 ? (
+                                                                    <div className="overflow-x-auto border rounded-xl dark:border-zinc-800">
+                                                                        <table className="w-full text-right text-xs">
+                                                                            <thead className="bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 font-bold border-b dark:border-zinc-700">
+                                                                                <tr>
+                                                                                    <th className="p-2 text-center w-10">#</th>
+                                                                                    <th className="p-2">شرح کالا</th>
+                                                                                    <th className="p-2 text-center">تعرفه (HS)</th>
+                                                                                    <th className="p-2 text-center">وزن خالص (kg)</th>
+                                                                                    <th className="p-2 text-center">وزن ناخالص (kg)</th>
+                                                                                    <th className="p-2 text-center">قیمت واحد ({prev.currency})</th>
+                                                                                    <th className="p-2 text-center">مبلغ کل ({prev.currency})</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
+                                                                                {prev.proformaRecord.items.map((item, idx) => (
+                                                                                    <tr key={item.id || idx} className="hover:bg-gray-50/50 dark:hover:bg-zinc-800/40">
+                                                                                        <td className="p-2 text-center font-mono text-gray-500">{idx + 1}</td>
+                                                                                        <td className="p-2 font-medium text-gray-800 dark:text-gray-200">{item.name}</td>
+                                                                                        <td className="p-2 text-center font-mono text-gray-600 dark:text-gray-400">{item.hsCode || '---'}</td>
+                                                                                        <td className="p-2 text-center font-mono">{formatNumberString(item.weight)}</td>
+                                                                                        <td className="p-2 text-center font-mono">{formatNumberString(item.grossWeight || item.weight)}</td>
+                                                                                        <td className="p-2 text-center font-mono">{formatNumberString(item.unitPrice)}</td>
+                                                                                        <td className="p-2 text-center font-mono font-bold text-gray-900 dark:text-gray-100">{formatNumberString(item.totalPrice || (item.weight * item.unitPrice))}</td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                                {prev.freightCost > 0 && (
+                                                                                    <tr className="bg-gray-50 dark:bg-zinc-800/50 font-bold">
+                                                                                        <td colSpan={6} className="p-2 text-left pl-4">هزینه حمل کل (Freight):</td>
+                                                                                        <td className="p-2 text-center font-mono text-blue-700 dark:text-blue-300">+{formatNumberString(prev.freightCost)} {prev.currency}</td>
+                                                                                    </tr>
+                                                                                )}
+                                                                                <tr className="bg-amber-50 dark:bg-amber-950/40 font-black text-amber-950 dark:text-amber-200">
+                                                                                    <td colSpan={6} className="p-2 text-left pl-4">جمع کل نهایی پروفرما:</td>
+                                                                                    <td className="p-2 text-center font-mono text-sm">{formatNumberString(prev.totalGrand)} {prev.currency}</td>
+                                                                                </tr>
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="p-3 text-center text-xs text-gray-500 bg-gray-50 dark:bg-zinc-800/50 rounded-lg">
+                                                                        اقلام کالایی به صورت مجزا برای این نسخه ثبت نشده است. برای مشاهده مشخصات کامل روی دکمه «مشاهده و باز کردن پروفرما» کلیک فرمایید.
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             <div className="glass-panel p-6 rounded-xl shadow-sm border">
                                 <div className="flex justify-between items-center mb-4 border-b pb-2">
@@ -4131,8 +4629,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                             <span className="text-xs font-bold text-teal-800 dark:text-teal-300">مبلغ کل هزینه ترخیص ثبت‌شده در پرونده:</span>
                                             <div className="flex items-baseline gap-2">
                                                 <span className="text-lg font-black font-mono text-teal-900 dark:text-teal-100">{formatCurrency(stageRegisteredCost)}</span>
-                                                <span className="text-xs text-teal-700 dark:text-teal-400">ریال</span>
-                                                <span className="text-xs font-bold text-teal-600 dark:text-teal-400">({formatCurrency(Math.round(stageRegisteredCost / 10))} تومان)</span>
                                             </div>
                                             <span className="text-[11px] text-gray-500 block">مبلغ اعمال‌شده در محاسبه نهایی و قیمت تمام‌شده</span>
                                         </div>
@@ -4152,8 +4648,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                             <span className="text-xs font-bold text-gray-700 dark:text-gray-300">جمع کل ردیف‌های پرداخت تفکیک‌شده:</span>
                                             <div className="flex items-baseline gap-2">
                                                 <span className="text-lg font-black font-mono text-gray-900 dark:text-gray-100">{formatCurrency(currentPaymentsTotal)}</span>
-                                                <span className="text-xs text-gray-500">ریال</span>
-                                                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">({formatCurrency(Math.round(currentPaymentsTotal / 10))} تومان)</span>
                                             </div>
                                             <span className="text-[11px] text-gray-500 block">{agentForm.payments?.length || 0} ردیف پرداخت ثبت‌شده در این بخش</span>
                                         </div>

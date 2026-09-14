@@ -1254,6 +1254,30 @@ export interface TradeComment {
     role?: string;
 }
 
+export interface ProformaHistoryEntry {
+    id: string;
+    items: TradeItem[];
+    freightCost: number;
+    updatedAt: number;
+    updatedBy: string;
+    description?: string;
+    proformaNumber?: string;
+    orderNumber?: string;
+    fileNumber?: string;
+    registrationNumber?: string;
+    registrationDate?: string;
+    goodsName?: string;
+    commodityGroup?: string;
+    sellerName?: string;
+    company?: string;
+    mainCurrency?: string;
+    operatingBank?: string;
+    startDate?: string;
+    sourceRecordId?: string;
+    attachments?: Array<{ fileName: string; url: string; data?: string }>;
+    recordSnapshot?: any;
+}
+
 export interface TradeRecord {
     id: string;
     fileNumber: string; // شماره پرونده
@@ -1307,20 +1331,22 @@ export interface TradeRecord {
         fileNumber: string;
         goodsName: string;
         commodityGroup: string;
+        recordId?: string;
+        proformaNumber?: string;
+        registrationNumber?: string;
+        sellerName?: string;
+        mainCurrency?: string;
     };
     transferredTo?: {
         fileNumber: string;
         goodsName: string;
         commodityGroup: string;
+        recordId?: string;
+        proformaNumber?: string;
+        registrationNumber?: string;
     };
-    proformaHistory?: Array<{
-        id: string;
-        items: TradeItem[];
-        freightCost: number;
-        updatedAt: number;
-        updatedBy: string;
-        description?: string;
-    }>;
+    proformaHistory?: ProformaHistoryEntry[];
+    attachments?: any[];
 }
 
 export enum MeetingStatus {

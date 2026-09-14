@@ -9,9 +9,19 @@ interface PrintProformaProps {
   record: TradeRecord;
   settings: SystemSettings | null;
   onClose: () => void;
+  isHistorical?: boolean;
+  historyTitle?: string;
+  historySubtitle?: string;
 }
 
-const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose }) => {
+const PrintProforma: React.FC<PrintProformaProps> = ({ 
+  record, 
+  settings, 
+  onClose,
+  isHistorical,
+  historyTitle,
+  historySubtitle
+}) => {
   const [processing, setProcessing] = useState(false);
   const totalWeight = record.items?.reduce((sum, item) => sum + (item.weight || 0), 0) || 0;
   const totalGrossWeight = record.items?.reduce((sum, item) => sum + (item.grossWeight || item.weight || 0), 0) || 0;
@@ -212,6 +222,23 @@ const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose
 
   const content = (
     <div id="proforma-content" className="printable-content glass-panel p-8 text-black text-right dir-rtl shadow-2xl relative" style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box', margin: '0 auto', backgroundColor: '#ffffff' }}>
+      {/* Historical Proforma Banner */}
+      {isHistorical && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-3.5 mb-5 text-xs text-amber-900 shadow-xs print:border-amber-500">
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-amber-200 text-amber-950 font-black rounded text-[11px]">نسخه بایگانی / پروفرم قبلی</span>
+              <span className="font-bold text-sm text-amber-950">{historyTitle || `این پیش‌فاکتور مربوط به سوابق قبلی این پرونده است.`}</span>
+            </div>
+            {historySubtitle && (
+              <span className="text-[11px] text-amber-800 font-medium">
+                {historySubtitle}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-6">
         <div>
@@ -242,6 +269,7 @@ const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose
         <div>
           <div className="font-bold border-b pb-1 mb-1 bg-gray-100 p-1">مشخصات فروشنده / تامین‌کننده:</div>
           <div><span className="font-bold">نام:</span> {record.sellerName || (record as any).supplier || '---'}</div>
+          <div><span className="font-bold">شرح کالا (ثبت سفارش):</span> {record.goodsName || '---'}</div>
           <div><span className="font-bold">گروه کالایی:</span> {record.commodityGroup || '---'}</div>
           <div><span className="font-bold">شماره پرونده:</span> {record.fileNumber || '---'}</div>
         </div>
@@ -322,10 +350,26 @@ const PrintProforma: React.FC<PrintProformaProps> = ({ record, settings, onClose
       {/* Sticky Top Header Bar */}
       <header className="sticky top-0 z-50 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-gray-200 dark:border-zinc-800 px-3 py-2.5 md:px-6 md:py-3 shadow-md flex items-center justify-between gap-2 flex-wrap shrink-0 no-print">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shadow-xs">
-            📄
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shadow-xs ${isHistorical ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400'}`}>
+            {isHistorical ? '📜' : '📄'}
           </div>
-          <span className="font-bold text-sm md:text-base text-gray-800 dark:text-gray-100">پیش‌نمایش پروفرما ({proformaNum})</span>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-sm md:text-base text-gray-800 dark:text-gray-100">
+                {isHistorical ? 'مشاهده پروفرم قبلی (سوابق پرونده)' : `پیش‌نمایش پروفرما (${proformaNum})`}
+              </span>
+              {isHistorical && (
+                <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-md text-[11px] font-bold">
+                  {record.goodsName || 'نسخه قبلی'}
+                </span>
+              )}
+            </div>
+            {isHistorical && record.registrationNumber && (
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                شماره ثبت سفارش: {record.registrationNumber} {record.proformaNumber ? `| پروفرم: ${record.proformaNumber}` : ''}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Interactive Zoom Toolbar */}

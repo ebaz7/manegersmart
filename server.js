@@ -102,7 +102,7 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-const PORT = 3000;
+const PORT = process.argv.includes('--dev') ? 3000 : (process.env.PORT || 3000);
 
 app.disable('x-powered-by');
 app.use(cors()); 
@@ -11040,13 +11040,13 @@ app.post('/api/ai/sayan-send-bot', async (req, res) => {
 });
 
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const isExplicitDev = process.env.NODE_ENV !== "production" || process.argv.includes("--dev");
+const isExplicitDev = process.argv.includes("--dev") || process.env.NODE_ENV === "development";
 
 if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
     console.log("Starting in Development mode with Vite Middleware...");
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: false },
+        server: { middlewareMode: true },
         appType: "spa",
     });
     app.use(vite.middlewares);

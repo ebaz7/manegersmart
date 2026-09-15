@@ -909,8 +909,17 @@ export const deleteDriverPayment = async (id: string): Promise<DriverPayment[]> 
     return await apiCall<DriverPayment[]>(`/security/driver-payments/${id}`, 'DELETE');
 };
 
-export const notifyDriverPaymentToBots = async (payment: DriverPayment): Promise<{ success: boolean; message?: string; count?: number }> => {
-    return await apiCall<{ success: boolean; message?: string; count?: number }>('/security/driver-payments/notify', 'POST', payment);
+export const notifyDriverPaymentToBots = async (
+    payment: DriverPayment,
+    options?: { stage?: 'supervisor' | 'factory' | 'manual' | 'initial'; targetGroupId?: string; platform?: string }
+): Promise<{ success: boolean; message?: string; count?: number }> => {
+    return await apiCall<{ success: boolean; message?: string; count?: number }>('/security/driver-payments/notify', 'POST', {
+        payment,
+        stage: options?.stage,
+        targetGroupId: options?.targetGroupId,
+        platform: options?.platform,
+        options
+    });
 };
 
 

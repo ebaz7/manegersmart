@@ -12,7 +12,7 @@ import {
     getGroups, sendMessage
 } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, getYesterdayShamsiDate, jalaliToGregorian, formatDate, getShamsiDateFromIso, formatLocalDateToIso, getIsoFromJalali } from '../constants';
-import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck, DollarSign, CreditCard, Paperclip, ExternalLink, Send, FileImage, Download } from 'lucide-react';
+import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck, DollarSign, CreditCard, Paperclip, ExternalLink, Send, FileImage, Download, Building2, ShieldCheck, Copy, Share2 } from 'lucide-react';
 import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport, PrintPersonnelOvertime } from './security/SecurityPrints';
 import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
 import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, findDriverByName, findDriverByPlate, syncDriversFromRecords, SavedDriver } from '../services/driverMemoryService';
@@ -280,9 +280,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const [driverPaymentForm, setDriverPaymentForm] = useState<Partial<DriverPayment>>({});
     const [driverPaymentEditingId, setDriverPaymentEditingId] = useState<string | null>(null);
     const [showDriverPaymentForm, setShowDriverPaymentForm] = useState(false);
+    const [viewingPaymentModal, setViewingPaymentModal] = useState<DriverPayment | null>(null);
+    const [driverPaymentStatusFilter, setDriverPaymentStatusFilter] = useState<'all' | 'pending_supervisor' | 'pending_factory' | 'archived'>('all');
     const [isUploadingPaymentFile, setIsUploadingPaymentFile] = useState(false);
     const [driverPaymentSearchQuery, setDriverPaymentSearchQuery] = useState('');
     const [sharingPaymentId, setSharingPaymentId] = useState<string | null>(null);
+    const [approvingPaymentId, setApprovingPaymentId] = useState<string | null>(null);
     const [showDriverPaymentSettingsModal, setShowDriverPaymentSettingsModal] = useState(false);
     const [chatGroupsList, setChatGroupsList] = useState<ChatGroup[]>([]);
     const [savingSecuritySettings, setSavingSecuritySettings] = useState(false);
@@ -1331,82 +1334,162 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         return await finishRes.json();
     };
 
-    const handleSharePaymentToGroup = async (dp: DriverPayment) => {
+    const handleSharePaymentToGroup = async (dp: DriverPayment, stage?: 'supervisor' | 'factory' | 'initial') => {
         try {
             setSharingPaymentId(dp.id);
+            const resolvedStage = stage || (dp.factoryApproved || dp.status === 'ARCHIVED' ? 'factory' : (dp.supervisorApproved || dp.status === 'PENDING_FACTORY' ? 'supervisor' : 'initial'));
 
-            // 1. Notify messenger bots (Telegram, Bale, WhatsApp) configured in settings
-            let botResult: any = null;
+            // 1. Notify messenger bots (Telegram, Bale, WhatsApp) configured in settings for this stage
             try {
-                botResult = await notifyDriverPaymentToBots(dp);
+                await notifyDriverPaymentToBots(dp, { stage: resolvedStage });
             } catch (bErr) {
                 console.warn("Could not notify external bots directly:", bErr);
             }
 
             // 2. Share to internal chat
-            let targetGroupId = settings?.securityDriverPaymentInternalGroupId;
+            let targetGroupId = resolvedStage === 'factory'
+                ? (settings?.securityDriverPaymentSecondInternalGroupId || settings?.securityDriverPaymentInternalGroupId)
+                : settings?.securityDriverPaymentInternalGroupId;
+
             if (!targetGroupId) {
                 const groupsList = await getGroups();
                 if (groupsList && groupsList.length > 0) {
-                    const match = groupsList.find(g => g.name.includes('انتظامات') || g.name.includes('نگهبانی') || g.name.includes('مالی')) || groupsList[0];
-                    if (match) {
-                        targetGroupId = match.id;
+                    if (resolvedStage === 'factory') {
+                        const match = groupsList.find(g => g.name.includes('مدیر') || g.name.includes('مالی') || g.name.includes('حسابداری')) || groupsList[0];
+                        if (match) targetGroupId = match.id;
+                    } else {
+                        const match = groupsList.find(g => g.name.includes('انتظامات') || g.name.includes('نگهبانی')) || groupsList[0];
+                        if (match) targetGroupId = match.id;
                     }
                 }
             }
 
             const formattedAmount = dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'مشخص نشده';
-            const fileCaption = `📊 **فرم حواله/واریزی رانندگان - واحد انتظامات**\n\n` +
+            let stageTitle = '🚚 فرم حواله/واریزی رانندگان - واحد انتظامات';
+            if (resolvedStage === 'factory') {
+                stageTitle = '✅ تایید نهایی مدیر کارخانه و بایگانی: فرم واریزی راننده';
+            } else if (resolvedStage === 'supervisor') {
+                stageTitle = '📋 تایید سرپرست انتظامات: فرم واریزی راننده (ارسال به انتظامات)';
+            }
+
+            const fileCaption = `📊 **${stageTitle}**\n\n` +
                                 `👤 **نام راننده**: ${dp.driverName}\n` +
                                 `📱 **تلفن**: ${dp.driverPhone || 'ثبت نشده'}\n` +
                                 `🚗 **شماره پلاک**: ${dp.plateNumber || 'ثبت نشده'}\n` +
                                 `💰 **مبلغ واریزی**: ${formattedAmount}\n` +
                                 `💳 **نوع پرداخت**: ${dp.paymentType || 'کارت به کارت'}\n` +
+                                (dp.cardNumber ? `💳 **شماره کارت**: \`${dp.cardNumber}\`\n` : '') +
+                                (dp.shebaNumber ? `🏦 **شماره شبا**: \`${dp.shebaNumber}\`\n` : '') +
+                                ((dp.bankName || dp.accountHolder) ? `🏛️ **بانک / صاحب حساب**: ${dp.bankName || ''} ${dp.accountHolder ? `(${dp.accountHolder})` : ''}\n` : '') +
                                 `📦 **کالا**: ${dp.goodsName || 'ثبت نشده'}\n` +
                                 `🔢 **مقدار/تعداد**: ${dp.quantity || 'ثبت نشده'}\n` +
                                 `📍 **مسیر حمل**: از *${dp.origin || 'نامشخص'}* به *${dp.destination || 'نامشخص'}*\n` +
+                                (dp.supervisorApproved ? `👮‍♂️ **تایید سرپرست انتظامات**: تایید شده توسط ${dp.supervisorApproverName || 'سرپرست'}\n` : '') +
+                                (dp.factoryApproved ? `🏭 **تایید مدیر کارخانه**: تایید و بایگانی شده توسط ${dp.factoryApproverName || 'مدیریت'}\n` : '') +
                                 `👤 **ثبت کننده**: ${dp.registrant || 'واحد نگهبانی'}\n` +
                                 `📅 **تاریخ ثبت**: ${formatDate(dp.date)}\n` +
                                 (dp.description ? `📝 **توضیحات**: ${dp.description}\n` : '');
 
-            const baseMsg = {
-                id: generateUUID(),
-                sender: currentUser.fullName,
-                senderUsername: currentUser.username,
-                role: currentUser.role,
-                message: fileCaption,
-                timestamp: Date.now(),
-                groupId: targetGroupId
-            };
-            await sendMessage(baseMsg);
+            if (targetGroupId) {
+                const baseMsg = {
+                    id: generateUUID(),
+                    sender: currentUser.fullName,
+                    senderUsername: currentUser.username,
+                    role: currentUser.role,
+                    message: fileCaption,
+                    timestamp: Date.now(),
+                    groupId: targetGroupId
+                };
+                await sendMessage(baseMsg);
 
-            if (dp.attachments && dp.attachments.length > 0) {
-                for (const att of dp.attachments) {
-                    const attMsg = {
-                        id: generateUUID(),
-                        sender: currentUser.fullName,
-                        senderUsername: currentUser.username,
-                        role: currentUser.role,
-                        message: `پیوست سند واریزی راننده (${dp.driverName}) : ${att.fileName}`,
-                        timestamp: Date.now(),
-                        groupId: targetGroupId,
-                        attachment: {
-                            fileName: att.fileName,
-                            url: att.url
-                        }
-                    };
-                    await sendMessage(attMsg);
+                if (dp.attachments && dp.attachments.length > 0) {
+                    for (const att of dp.attachments) {
+                        const attMsg = {
+                            id: generateUUID(),
+                            sender: currentUser.fullName,
+                            senderUsername: currentUser.username,
+                            role: currentUser.role,
+                            message: `پیوست سند واریزی راننده (${dp.driverName}) : ${att.fileName}`,
+                            timestamp: Date.now(),
+                            groupId: targetGroupId,
+                            attachment: {
+                                fileName: att.fileName,
+                                url: att.url
+                            }
+                        };
+                        await sendMessage(attMsg);
+                    }
                 }
             }
 
-            const attCount = dp.attachments?.length || 0;
-            const extraMsg = attCount > 0 ? ` و ${attCount} فایل پیوست دونه‌به‌دونه` : '';
-            alert(`فرم واریزی راننده (${dp.driverName})${extraMsg} با موفقیت به ربات‌های پیام‌رسان (تلگرام/بله/واتساپ) و گروه گفتگو ارسال شد ✅`);
+            const groupStageName = resolvedStage === 'factory' ? 'گروه دوم (مدیریت/مالی)' : 'گروه اول (انتظامات)';
+            alert(`فرم واریزی راننده (${dp.driverName}) با موفقیت به ${groupStageName} و پیام‌رسان‌ها ارسال شد ✅`);
         } catch (err) {
             console.error('Error sharing driver payment to group:', err);
             alert('خطا در ارسال اطلاعات به گروه‌ها.');
         } finally {
             setSharingPaymentId(null);
+        }
+    };
+
+    // --- APPROVAL WORKFLOW HANDLERS ---
+    const handleSupervisorApprove = async (dp: DriverPayment) => {
+        try {
+            setApprovingPaymentId(dp.id);
+            const updated: DriverPayment = {
+                ...dp,
+                supervisorApproved: true,
+                supervisorApprovedAt: Date.now(),
+                supervisorApproverName: currentUser.fullName,
+                status: 'PENDING_FACTORY'
+            };
+            await updateDriverPayment(updated);
+            await loadData();
+            if (viewingPaymentModal && viewingPaymentModal.id === dp.id) {
+                setViewingPaymentModal(updated);
+            }
+
+            // Auto send to Group 1 (Security group)
+            if (settings?.botDriverPaymentAutoSendEnabled !== false) {
+                await handleSharePaymentToGroup(updated, 'supervisor');
+            } else {
+                alert('تایید سرپرست انتظامات با موفقیت ثبت شد.');
+            }
+        } catch (e: any) {
+            console.error("Supervisor approval error:", e);
+            alert('خطا در ثبت تایید سرپرست انتظامات: ' + (e?.message || ''));
+        } finally {
+            setApprovingPaymentId(null);
+        }
+    };
+
+    const handleFactoryApprove = async (dp: DriverPayment) => {
+        try {
+            setApprovingPaymentId(dp.id);
+            const updated: DriverPayment = {
+                ...dp,
+                factoryApproved: true,
+                factoryApprovedAt: Date.now(),
+                factoryApproverName: currentUser.fullName,
+                status: 'ARCHIVED'
+            };
+            await updateDriverPayment(updated);
+            await loadData();
+            if (viewingPaymentModal && viewingPaymentModal.id === dp.id) {
+                setViewingPaymentModal(updated);
+            }
+
+            // Auto send to Group 2 (Management / Finance group)
+            if (settings?.botDriverPaymentAutoSendEnabled !== false) {
+                await handleSharePaymentToGroup(updated, 'factory');
+            } else {
+                alert('تایید مدیر کارخانه ثبت و سند واریزی با موفقیت بایگانی شد.');
+            }
+        } catch (e: any) {
+            console.error("Factory approval error:", e);
+            alert('خطا در ثبت تایید مدیر کارخانه: ' + (e?.message || ''));
+        } finally {
+            setApprovingPaymentId(null);
         }
     };
 
@@ -1416,9 +1499,14 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             setSecuritySettingsDraft({
                 securityDriverPaymentInternalGroupId: currentSettings.securityDriverPaymentInternalGroupId || '',
                 securityDriverPaymentInternalGroupName: currentSettings.securityDriverPaymentInternalGroupName || '',
+                securityDriverPaymentSecondInternalGroupId: currentSettings.securityDriverPaymentSecondInternalGroupId || '',
+                securityDriverPaymentSecondInternalGroupName: currentSettings.securityDriverPaymentSecondInternalGroupName || '',
                 botDriverPaymentGroupIdTele: currentSettings.botDriverPaymentGroupIdTele || currentSettings.botDriverPaymentGroupId || '',
                 botDriverPaymentGroupIdBale: currentSettings.botDriverPaymentGroupIdBale || '',
                 botDriverPaymentGroupIdWhatsApp: currentSettings.botDriverPaymentGroupIdWhatsApp || '',
+                botDriverPaymentSecondGroupIdTele: currentSettings.botDriverPaymentSecondGroupIdTele || '',
+                botDriverPaymentSecondGroupIdBale: currentSettings.botDriverPaymentSecondGroupIdBale || '',
+                botDriverPaymentSecondGroupIdWhatsApp: currentSettings.botDriverPaymentSecondGroupIdWhatsApp || '',
                 botDriverPaymentAutoSendEnabled: currentSettings.botDriverPaymentAutoSendEnabled !== false
             });
             const groups = await getGroups();
@@ -1437,7 +1525,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             await saveSettings(next);
             setSettings(next);
             setShowDriverPaymentSettingsModal(false);
-            alert('تنظیمات گروه‌های ارسال فیش واریزی با موفقیت ذخیره شد.');
+            alert('تنظیمات گروه‌های مرحله ۱ (انتظامات) و مرحله ۲ (مدیریت/مالی) با موفقیت ذخیره شد.');
         } catch (e) {
             console.error(e);
             alert('خطا در ذخیره تنظیمات');
@@ -1470,6 +1558,11 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 driverName: driverPaymentForm.driverName || '',
                 driverPhone: driverPaymentForm.driverPhone || '',
                 plateNumber: driverPaymentForm.plateNumber || '',
+                cardNumber: driverPaymentForm.cardNumber || '',
+                shebaNumber: driverPaymentForm.shebaNumber || '',
+                accountNumber: driverPaymentForm.accountNumber || '',
+                bankName: driverPaymentForm.bankName || '',
+                accountHolder: driverPaymentForm.accountHolder || '',
                 amount: driverPaymentForm.amount || '',
                 paymentType: driverPaymentForm.paymentType || 'کارت به کارت',
                 origin: driverPaymentForm.origin || '',
@@ -1480,6 +1573,9 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 registrant: currentUser.fullName,
                 description: driverPaymentForm.description || '',
                 attachments: driverPaymentForm.attachments || [],
+                supervisorApproved: false,
+                factoryApproved: false,
+                status: 'PENDING_SUPERVISOR',
                 createdAt: Date.now()
             } as DriverPayment;
             await saveDriverPayment(finalRecord);
@@ -1491,7 +1587,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
         loadData();
         
         if (shouldShare) {
-            await handleSharePaymentToGroup(finalRecord);
+            await handleSharePaymentToGroup(finalRecord, 'initial');
         } else {
             alert('سند واریزی با موفقیت ذخیره شد.');
         }
@@ -2171,7 +2267,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
                             {/* Payment Section */}
                             <div className="bg-emerald-50/30 dark:bg-emerald-950/5 p-3.5 rounded-xl border border-emerald-100/60 dark:border-emerald-900/20 space-y-3">
-                                <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-400 mb-1">💰 اطلاعات پرداخت و حساب</h4>
+                                <h4 className="text-xs font-black text-emerald-700 dark:text-emerald-400 mb-1">💰 اطلاعات پرداخت و حساب بانکی راننده</h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div>
                                         <label className="text-xs font-bold block mb-1">مبلغ واریزی (ریال)</label>
@@ -2201,6 +2297,62 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                             <option value="چک صیادی">چک صیادی</option>
                                             <option value="سایر">سایر</option>
                                         </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">شماره کارت راننده (۱۶ رقم)</label>
+                                        <input 
+                                            type="text"
+                                            maxLength={19}
+                                            dir="ltr"
+                                            className="w-full border rounded p-2 text-sm font-mono text-center bg-white dark:bg-gray-800 tracking-wider"
+                                            placeholder="XXXX-XXXX-XXXX-XXXX"
+                                            value={driverPaymentForm.cardNumber || ''}
+                                            onChange={e => {
+                                                const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                                const formatted = raw.match(/.{1,4}/g)?.join('-') || raw;
+                                                setDriverPaymentForm({ ...driverPaymentForm, cardNumber: formatted });
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">شماره شبا (IR + ۲۴ رقم)</label>
+                                        <div className="relative">
+                                            <input 
+                                                type="text"
+                                                maxLength={26}
+                                                dir="ltr"
+                                                className="w-full border rounded p-2 text-sm font-mono text-left bg-white dark:bg-gray-800"
+                                                placeholder="IR000000000000000000000000"
+                                                value={driverPaymentForm.shebaNumber || ''}
+                                                onChange={e => {
+                                                    let val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                                                    if (val && !val.startsWith('IR') && /^\d/.test(val)) {
+                                                        val = 'IR' + val;
+                                                    }
+                                                    setDriverPaymentForm({ ...driverPaymentForm, shebaNumber: val.slice(0, 26) });
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">نام بانک</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: بانک ملی، ملت، صادرات..."
+                                            value={driverPaymentForm.bankName || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, bankName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold block mb-1">نام صاحب حساب</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full border rounded p-2 text-sm bg-white dark:bg-gray-800"
+                                            placeholder="مثال: عباس کریمی"
+                                            value={driverPaymentForm.accountHolder || ''}
+                                            onChange={e => setDriverPaymentForm({ ...driverPaymentForm, accountHolder: e.target.value })}
+                                        />
                                     </div>
                                 </div>
                                 <div>
@@ -3474,22 +3626,25 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
 
                 {activeTab === 'driver_payments' && (
                     <div className="p-4 sm:p-6 space-y-4">
+                        {/* Header Banner */}
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-gray-50 dark:bg-gray-800/40 p-4 rounded-2xl border border-gray-200 dark:border-gray-800">
                             <div>
                                 <h3 className="font-black text-gray-800 dark:text-gray-100 text-base flex items-center gap-2">
                                     <DollarSign className="text-purple-600" size={20}/>
-                                    <span>فرم‌های واریزی و پرداختی رانندگان</span>
+                                    <span>فرم‌های واریزی و کرایه رانندگان (فرآیند تایید و بایگانی دو مرحله‌ای)</span>
                                 </h3>
-                                <p className="text-xs text-gray-500 mt-1">مدیریت، تایید و ارسال اسناد واریزی رانندگان حمل کالا به گروه‌های گفتگو</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    مرحله ۱: تایید سرپرست انتظامات (ارسال خودکار به گروه ۱) ➔ مرحله ۲: تایید مدیر کارخانه و بایگانی (ارسال خودکار به گروه ۲)
+                                </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button 
                                     onClick={handleOpenSecurityGroupSettings}
                                     className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 border border-gray-200 dark:border-gray-600 shadow-xs"
-                                    title="تنظیم گروه گفتگوی داخلی و ربات‌های تلگرام، بله، واتساپ برای دریافت فیش‌ها"
+                                    title="تنظیم گروه گفتگوی داخلی و ربات‌های تلگرام، بله، واتساپ برای مراحل ۱ و ۲"
                                 >
                                     <Settings size={15} className="text-purple-600 dark:text-purple-400" />
-                                    <span>تنظیم گروه‌های ارسال</span>
+                                    <span>تنظیم گروه‌های ۱ و ۲</span>
                                 </button>
                                 <button 
                                     onClick={() => {
@@ -3499,6 +3654,11 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                             driverName: '',
                                             driverPhone: '',
                                             plateNumber: '',
+                                            cardNumber: '',
+                                            shebaNumber: '',
+                                            accountNumber: '',
+                                            bankName: '',
+                                            accountHolder: '',
                                             amount: '',
                                             paymentType: 'کارت به کارت',
                                             origin: '',
@@ -3508,7 +3668,10 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                             permitProvider: '',
                                             registrant: currentUser.fullName,
                                             description: '',
-                                            attachments: []
+                                            attachments: [],
+                                            supervisorApproved: false,
+                                            factoryApproved: false,
+                                            status: 'PENDING_SUPERVISOR'
                                         });
                                         setDriverPaymentEditingId(null);
                                         setShowDriverPaymentForm(true);
@@ -3521,15 +3684,64 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                             </div>
                         </div>
 
-                        {/* Search and Filter */}
-                        <div className="flex gap-2 w-full max-w-md">
-                            <input 
-                                type="text" 
-                                placeholder="جستجو بر اساس نام راننده، پلاک یا کالا..." 
-                                className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 outline-none focus:border-purple-500 dark:focus:border-purple-500 transition-all"
-                                value={driverPaymentSearchQuery}
-                                onChange={e => setDriverPaymentSearchQuery(e.target.value)}
-                            />
+                        {/* Search and Stage Filter Tabs */}
+                        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+                            <div className="flex gap-2 w-full max-w-md">
+                                <input 
+                                    type="text" 
+                                    placeholder="جستجو بر اساس نام راننده، پلاک، شماره کارت، شبا یا کالا..." 
+                                    className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 outline-none focus:border-purple-500 dark:focus:border-purple-500 transition-all"
+                                    value={driverPaymentSearchQuery}
+                                    onChange={e => setDriverPaymentSearchQuery(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Status Filter Badges */}
+                            <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800/80 p-1 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto text-xs">
+                                <button
+                                    onClick={() => setDriverPaymentStatusFilter('all')}
+                                    className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap ${
+                                        driverPaymentStatusFilter === 'all'
+                                            ? 'bg-white dark:bg-gray-700 text-purple-700 dark:text-purple-300 shadow-xs'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                                    }`}
+                                >
+                                    همه ({driverPayments.length})
+                                </button>
+                                <button
+                                    onClick={() => setDriverPaymentStatusFilter('pending_supervisor')}
+                                    className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                                        driverPaymentStatusFilter === 'pending_supervisor'
+                                            ? 'bg-amber-500 text-white shadow-xs'
+                                            : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                                    }`}
+                                >
+                                    <Clock size={13} />
+                                    <span>انتظار تایید سرپرست ({driverPayments.filter(p => !p.supervisorApproved).length})</span>
+                                </button>
+                                <button
+                                    onClick={() => setDriverPaymentStatusFilter('pending_factory')}
+                                    className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                                        driverPaymentStatusFilter === 'pending_factory'
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30'
+                                    }`}
+                                >
+                                    <Building2 size={13} />
+                                    <span>انتظار تایید مدیر کارخانه ({driverPayments.filter(p => p.supervisorApproved && !p.factoryApproved).length})</span>
+                                </button>
+                                <button
+                                    onClick={() => setDriverPaymentStatusFilter('archived')}
+                                    className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                                        driverPaymentStatusFilter === 'archived'
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                                    }`}
+                                >
+                                    <CheckCheck size={13} />
+                                    <span>بایگانی شده ({driverPayments.filter(p => p.factoryApproved || p.status === 'ARCHIVED').length})</span>
+                                </button>
+                            </div>
                         </div>
 
                         {/* List / Table */}
@@ -3544,18 +3756,24 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                         <tr className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 border-b border-gray-100 dark:border-gray-800">
                                             <th className="p-3 font-bold text-center w-12">ردیف</th>
                                             <th className="p-3 font-bold">تاریخ</th>
-                                            <th className="p-3 font-bold">راننده</th>
-                                            <th className="p-3 font-bold">پلاک خودرو</th>
-                                            <th className="p-3 font-bold">مبلغ (ریال)</th>
-                                            <th className="p-3 font-bold">نوع پرداخت</th>
+                                            <th className="p-3 font-bold">راننده و خودرو</th>
+                                            <th className="p-3 font-bold">اطلاعات حساب و شبا</th>
+                                            <th className="p-3 font-bold">مبلغ و نوع پرداخت</th>
                                             <th className="p-3 font-bold">کالا و مسیر</th>
+                                            <th className="p-3 font-bold text-center">وضعیت تایید و گردش</th>
                                             <th className="p-3 font-bold text-center">پیوست‌ها</th>
-                                            <th className="p-3 font-bold text-center">عملیات</th>
+                                            <th className="p-3 font-bold text-center">عملیات و اقدامات</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                         {driverPayments
                                             .filter(dp => {
+                                                // Status tab filter
+                                                if (driverPaymentStatusFilter === 'pending_supervisor' && dp.supervisorApproved) return false;
+                                                if (driverPaymentStatusFilter === 'pending_factory' && (!dp.supervisorApproved || dp.factoryApproved)) return false;
+                                                if (driverPaymentStatusFilter === 'archived' && (!dp.factoryApproved && dp.status !== 'ARCHIVED')) return false;
+
+                                                // Search query
                                                 const q = driverPaymentSearchQuery.trim().toLowerCase();
                                                 if (!q) return true;
                                                 return (
@@ -3563,7 +3781,11 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                     (dp.plateNumber || '').toLowerCase().includes(q) ||
                                                     (dp.goodsName || '').toLowerCase().includes(q) ||
                                                     (dp.origin || '').toLowerCase().includes(q) ||
-                                                    (dp.destination || '').toLowerCase().includes(q)
+                                                    (dp.destination || '').toLowerCase().includes(q) ||
+                                                    (dp.cardNumber || '').replace(/-/g, '').includes(q) ||
+                                                    (dp.shebaNumber || '').toLowerCase().includes(q) ||
+                                                    (dp.bankName || '').toLowerCase().includes(q) ||
+                                                    (dp.accountHolder || '').toLowerCase().includes(q)
                                                 );
                                             })
                                             .map((dp, idx) => (
@@ -3573,21 +3795,73 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                     <td className="p-3">
                                                         <div className="font-bold text-gray-800 dark:text-gray-200">{dp.driverName}</div>
                                                         {dp.driverPhone && <div className="text-[10px] text-gray-400 font-mono mt-0.5">{dp.driverPhone}</div>}
+                                                        <div className="mt-1">
+                                                            <IranianPlateDisplay value={dp.plateNumber} />
+                                                        </div>
                                                     </td>
                                                     <td className="p-3">
-                                                        <IranianPlateDisplay value={dp.plateNumber} />
+                                                        {dp.cardNumber ? (
+                                                            <div className="font-mono text-[11px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/80 dark:bg-indigo-950/40 px-2 py-0.5 rounded inline-block dir-ltr" title="شماره کارت">
+                                                                💳 {dp.cardNumber}
+                                                            </div>
+                                                        ) : null}
+                                                        {dp.shebaNumber ? (
+                                                            <div className="font-mono text-[10px] text-gray-600 dark:text-gray-400 mt-0.5 dir-ltr truncate max-w-[150px]" title={dp.shebaNumber}>
+                                                                🏦 {dp.shebaNumber}
+                                                            </div>
+                                                        ) : null}
+                                                        {(dp.bankName || dp.accountHolder) && (
+                                                            <div className="text-[10px] text-gray-500 mt-0.5">
+                                                                {dp.bankName} {dp.accountHolder ? `(${dp.accountHolder})` : ''}
+                                                            </div>
+                                                        )}
+                                                        {!dp.cardNumber && !dp.shebaNumber && !dp.bankName && (
+                                                            <span className="text-[10px] text-gray-400">ثبت نشده</span>
+                                                        )}
                                                     </td>
-                                                    <td className="p-3 font-mono font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                                                        {dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'ثبت نشده'}
-                                                    </td>
-                                                    <td className="p-3">
-                                                        <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                                    <td className="p-3 whitespace-nowrap">
+                                                        <div className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                                                            {dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'ثبت نشده'}
+                                                        </div>
+                                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 inline-block mt-1">
                                                             {dp.paymentType || 'کارت به کارت'}
                                                         </span>
                                                     </td>
                                                     <td className="p-3">
                                                         <div className="font-bold text-xs">{dp.goodsName || 'نامشخص'}</div>
                                                         <div className="text-[10px] text-gray-400 mt-0.5">{dp.origin || 'مبدا'} ➔ {dp.destination || 'مقصد'}</div>
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        {dp.factoryApproved || dp.status === 'ARCHIVED' ? (
+                                                            <div className="inline-flex flex-col items-center gap-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                                                                <span className="flex items-center gap-1 font-black text-[11px]">
+                                                                    <CheckCheck size={13} className="text-emerald-600" />
+                                                                    تایید نهایی و بایگانی
+                                                                </span>
+                                                                {dp.factoryApproverName && (
+                                                                    <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80">
+                                                                        توسط: {dp.factoryApproverName}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : dp.supervisorApproved ? (
+                                                            <div className="inline-flex flex-col items-center gap-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-xl border border-blue-200 dark:border-blue-800">
+                                                                <span className="flex items-center gap-1 font-black text-[11px]">
+                                                                    <ShieldCheck size={13} className="text-blue-600" />
+                                                                    تایید سرپرست / منتظر مدیر
+                                                                </span>
+                                                                {dp.supervisorApproverName && (
+                                                                    <span className="text-[9px] text-blue-600/80 dark:text-blue-400/80">
+                                                                        توسط: {dp.supervisorApproverName}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="inline-flex items-center gap-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-xl border border-amber-200 dark:border-amber-800 font-black text-[11px]">
+                                                                <Clock size={13} className="text-amber-600" />
+                                                                در انتظار تایید سرپرست
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="p-3 text-center">
                                                         {dp.attachments && dp.attachments.length > 0 ? (
@@ -3611,6 +3885,42 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                     </td>
                                                     <td className="p-3 text-center whitespace-nowrap">
                                                         <div className="flex items-center justify-center gap-1">
+                                                            {/* View Details Button */}
+                                                            <button 
+                                                                onClick={() => setViewingPaymentModal(dp)}
+                                                                className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 transition-all"
+                                                                title="مشاهده جزئیات کامل فرم واریزی"
+                                                            >
+                                                                <Eye size={15}/>
+                                                            </button>
+
+                                                            {/* Stage 1: Supervisor Approve Action */}
+                                                            {!dp.supervisorApproved && (
+                                                                <button 
+                                                                    disabled={approvingPaymentId === dp.id}
+                                                                    onClick={() => handleSupervisorApprove(dp)}
+                                                                    className="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                                                                    title="تایید سرپرست انتظامات و ارسال اتومات به گروه ۱ (انتظامات)"
+                                                                >
+                                                                    {approvingPaymentId === dp.id ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
+                                                                    <span>تایید سرپرست</span>
+                                                                </button>
+                                                            )}
+
+                                                            {/* Stage 2: Factory Manager Approve Action */}
+                                                            {dp.supervisorApproved && !dp.factoryApproved && (
+                                                                <button 
+                                                                    disabled={approvingPaymentId === dp.id}
+                                                                    onClick={() => handleFactoryApprove(dp)}
+                                                                    className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                                                                    title="تایید مدیر کارخانه، ارسال اتومات به گروه ۲ (مدیریت/مالی) و بایگانی"
+                                                                >
+                                                                    {approvingPaymentId === dp.id ? <Loader2 size={12} className="animate-spin" /> : <Building2 size={12} />}
+                                                                    <span>تایید مدیر و بایگانی</span>
+                                                                </button>
+                                                            )}
+
+                                                            {/* Share to Bots / Groups */}
                                                             <button 
                                                                 disabled={sharingPaymentId === dp.id}
                                                                 onClick={async () => {
@@ -3621,10 +3931,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                                     }
                                                                 }}
                                                                 className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-all disabled:opacity-50"
-                                                                title="ارسال به بات و گروه‌ها (تلگرام، بله، واتساپ و چت)"
+                                                                title="ارسال مجدد به ربات‌ها و گروه‌ها"
                                                             >
                                                                 {sharingPaymentId === dp.id ? <Loader2 size={14} className="animate-spin text-purple-600" /> : <Send size={14}/>}
                                                             </button>
+
+                                                            {/* Edit */}
                                                             <button 
                                                                 onClick={() => {
                                                                     setDriverPaymentForm({ ...dp });
@@ -3636,6 +3948,8 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                             >
                                                                 <Pencil size={14}/>
                                                             </button>
+
+                                                            {/* Delete */}
                                                             <button 
                                                                 onClick={async () => {
                                                                     if (confirm('آیا از حذف این سند واریزی اطمینان دارید؟')) {
@@ -3660,15 +3974,325 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 )}
             </div>
 
-            {/* DRIVER PAYMENT GROUP SETTINGS MODAL */}
+            {/* DRIVER PAYMENT DETAILED VIEW MODAL */}
+            {viewingPaymentModal && typeof document !== 'undefined' && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/75 backdrop-blur-xs z-[99999] flex items-center justify-center p-3 sm:p-4 animate-fade-in"
+                    onClick={() => setViewingPaymentModal(null)}
+                    dir="rtl"
+                >
+                    <div 
+                        className="bg-white dark:bg-zinc-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[92vh] overflow-hidden border border-gray-200 dark:border-gray-800"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="px-5 py-4 bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white flex justify-between items-center shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white/15 rounded-xl backdrop-blur-xs">
+                                    <DollarSign size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-sm sm:text-base">مشاهده سند واریزی و کرایه راننده</h3>
+                                    <div className="text-[11px] text-purple-200 flex items-center gap-2 mt-0.5">
+                                        <span>تاریخ ثبت: {formatDate(viewingPaymentModal.date)}</span>
+                                        <span>•</span>
+                                        <span>ثبت‌کننده: {viewingPaymentModal.registrant || 'واحد انتظامات'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setViewingPaymentModal(null)}
+                                className="p-1 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                            {/* Workflow Status Banner */}
+                            <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                                viewingPaymentModal.factoryApproved || viewingPaymentModal.status === 'ARCHIVED'
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100'
+                                    : viewingPaymentModal.supervisorApproved
+                                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-100'
+                                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100'
+                            }`}>
+                                <div className="space-y-1">
+                                    <div className="font-black text-sm flex items-center gap-2">
+                                        {viewingPaymentModal.factoryApproved || viewingPaymentModal.status === 'ARCHIVED' ? (
+                                            <>
+                                                <CheckCheck className="text-emerald-600" size={18} />
+                                                <span>وضعیت: تایید نهایی مدیر کارخانه و بایگانی شده ✅</span>
+                                            </>
+                                        ) : viewingPaymentModal.supervisorApproved ? (
+                                            <>
+                                                <ShieldCheck className="text-blue-600" size={18} />
+                                                <span>وضعیت: تایید شده توسط سرپرست انتظامات (در انتظار تایید مدیر کارخانه) 📋</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Clock className="text-amber-600" size={18} />
+                                                <span>وضعیت: در انتظار تایید سرپرست انتظامات ⏳</span>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="text-[11px] opacity-80">
+                                        {viewingPaymentModal.factoryApproved ? (
+                                            `تایید مدیر کارخانه توسط ${viewingPaymentModal.factoryApproverName || 'مدیریت'} در تاریخ ${viewingPaymentModal.factoryApprovedAt ? formatDate(new Date(viewingPaymentModal.factoryApprovedAt).toISOString()) : '-'}`
+                                        ) : viewingPaymentModal.supervisorApproved ? (
+                                            `تایید سرپرست انتظامات توسط ${viewingPaymentModal.supervisorApproverName || 'سرپرست'} در تاریخ ${viewingPaymentModal.supervisorApprovedAt ? formatDate(new Date(viewingPaymentModal.supervisorApprovedAt).toISOString()) : '-'}`
+                                        ) : (
+                                            'سند پس از تایید سرپرست به گروه ۱ ارسال و سپس جهت تایید نهایی به مدیر کارخانه ارسال می‌گردد.'
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Direct Approval Button inside Modal */}
+                                {!viewingPaymentModal.supervisorApproved ? (
+                                    <button 
+                                        disabled={approvingPaymentId === viewingPaymentModal.id}
+                                        onClick={() => handleSupervisorApprove(viewingPaymentModal)}
+                                        className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+                                    >
+                                        {approvingPaymentId === viewingPaymentModal.id ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                                        <span>تایید سرپرست و ارسال به گروه ۱</span>
+                                    </button>
+                                ) : !viewingPaymentModal.factoryApproved ? (
+                                    <button 
+                                        disabled={approvingPaymentId === viewingPaymentModal.id}
+                                        onClick={() => handleFactoryApprove(viewingPaymentModal)}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+                                    >
+                                        {approvingPaymentId === viewingPaymentModal.id ? <Loader2 size={14} className="animate-spin" /> : <Building2 size={14} />}
+                                        <span>تایید مدیر کارخانه، ارسال به گروه ۲ و بایگانی</span>
+                                    </button>
+                                ) : null}
+                            </div>
+
+                            {/* Section 1: Driver & Plate */}
+                            <div className="bg-purple-50/50 dark:bg-purple-950/15 p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 space-y-3">
+                                <h4 className="font-black text-purple-800 dark:text-purple-300 flex items-center gap-2">
+                                    <span>👤 اطلاعات راننده و خودرو</span>
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">نام راننده:</span>
+                                        <span className="font-bold text-sm text-gray-800 dark:text-gray-100">{viewingPaymentModal.driverName}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">تلفن تماس:</span>
+                                        <span className="font-mono font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.driverPhone || 'ثبت نشده'}</span>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <span className="text-gray-500 block mb-1">پلاک خودرو:</span>
+                                        <IranianPlateDisplay value={viewingPaymentModal.plateNumber} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section 2: Bank & Payment Info */}
+                            <div className="bg-emerald-50/50 dark:bg-emerald-950/15 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 space-y-3">
+                                <h4 className="font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                                    <span>💳 اطلاعات حساب بانکی و واریز</span>
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">مبلغ واریزی:</span>
+                                        <div className="font-black text-base text-emerald-600 dark:text-emerald-400 font-mono">
+                                            {viewingPaymentModal.amount ? Number(viewingPaymentModal.amount).toLocaleString('fa-IR') + ' ریال' : 'مشخص نشده'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">نوع پرداخت:</span>
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 inline-block">
+                                            {viewingPaymentModal.paymentType || 'کارت به کارت'}
+                                        </span>
+                                    </div>
+                                    {viewingPaymentModal.cardNumber && (
+                                        <div className="sm:col-span-2 bg-white dark:bg-gray-800 p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                                            <div>
+                                                <span className="text-gray-500 text-[10px] block">شماره کارت راننده:</span>
+                                                <span className="font-mono font-black text-indigo-700 dark:text-indigo-300 text-sm tracking-wider dir-ltr block">
+                                                    {viewingPaymentModal.cardNumber}
+                                                </span>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(viewingPaymentModal.cardNumber!.replace(/-/g, ''));
+                                                    alert('شماره کارت در حافظه کپی شد.');
+                                                }}
+                                                className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 flex items-center gap-1 font-bold text-[11px]"
+                                            >
+                                                <Copy size={13} />
+                                                <span>کپی</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                    {viewingPaymentModal.shebaNumber && (
+                                        <div className="sm:col-span-2 bg-white dark:bg-gray-800 p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                                            <div>
+                                                <span className="text-gray-500 text-[10px] block">شماره شبا:</span>
+                                                <span className="font-mono font-black text-gray-800 dark:text-gray-100 text-xs dir-ltr block">
+                                                    {viewingPaymentModal.shebaNumber}
+                                                </span>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(viewingPaymentModal.shebaNumber!);
+                                                    alert('شماره شبا در حافظه کپی شد.');
+                                                }}
+                                                className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 flex items-center gap-1 font-bold text-[11px]"
+                                            >
+                                                <Copy size={13} />
+                                                <span>کپی</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                    {viewingPaymentModal.bankName && (
+                                        <div>
+                                            <span className="text-gray-500 block mb-0.5">نام بانک:</span>
+                                            <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.bankName}</span>
+                                        </div>
+                                    )}
+                                    {viewingPaymentModal.accountHolder && (
+                                        <div>
+                                            <span className="text-gray-500 block mb-0.5">صاحب حساب:</span>
+                                            <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.accountHolder}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Section 3: Cargo & Route Details */}
+                            <div className="bg-blue-50/50 dark:bg-blue-950/15 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/30 space-y-3">
+                                <h4 className="font-black text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                                    <span>📦 مشخصات بار و مسیر حمل</span>
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">نام کالا / بار:</span>
+                                        <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.goodsName || 'ثبت نشده'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">مقدار / وزن:</span>
+                                        <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.quantity || 'ثبت نشده'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">مبدا بارگیری:</span>
+                                        <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.origin || 'ثبت نشده'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 block mb-0.5">مقصد تخلیه:</span>
+                                        <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.destination || 'ثبت نشده'}</span>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <span className="text-gray-500 block mb-0.5">مجوز دهنده / هماهنگ‌کننده:</span>
+                                        <span className="font-bold text-gray-800 dark:text-gray-100">{viewingPaymentModal.permitProvider || 'ثبت نشده'}</span>
+                                    </div>
+                                    {viewingPaymentModal.description && (
+                                        <div className="sm:col-span-2 bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700">
+                                            <span className="text-gray-500 text-[10px] block mb-1">توضیحات و بابت پرداخت:</span>
+                                            <p className="text-gray-700 dark:text-gray-200 whitespace-pre-line">{viewingPaymentModal.description}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Section 4: Attachments (Image & PDF Preview) */}
+                            <div className="bg-gray-50 dark:bg-gray-800/40 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-3">
+                                <h4 className="font-black text-gray-800 dark:text-gray-200 flex items-center justify-between">
+                                    <span>📎 اسناد و فاکتورهای پیوست ({viewingPaymentModal.attachments?.length || 0})</span>
+                                </h4>
+                                {viewingPaymentModal.attachments && viewingPaymentModal.attachments.length > 0 ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                        {viewingPaymentModal.attachments.map((att, attIdx) => {
+                                            const isImage = /\.(jpg|jpeg|png|webp)$/i.test(att.url);
+                                            return (
+                                                <div 
+                                                    key={attIdx} 
+                                                    onClick={() => setViewAttachmentUrl(att.url)}
+                                                    className="group cursor-pointer bg-white dark:bg-gray-900 rounded-xl p-2 border border-gray-200 dark:border-gray-700 hover:border-purple-500 transition-all shadow-xs flex flex-col items-center text-center"
+                                                >
+                                                    {isImage ? (
+                                                        <div className="w-full h-24 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 mb-2">
+                                                            <img 
+                                                                src={att.url} 
+                                                                alt={att.fileName} 
+                                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                                                                referrerPolicy="no-referrer"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-full h-24 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex flex-col items-center justify-center text-blue-600 mb-2">
+                                                            <FileText size={32} />
+                                                            <span className="text-[10px] font-bold mt-1">سند PDF</span>
+                                                        </div>
+                                                    )}
+                                                    <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 truncate w-full" title={att.fileName}>
+                                                        {att.fileName}
+                                                    </span>
+                                                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold mt-0.5">
+                                                        کلیک برای مشاهده
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="text-gray-400 text-center py-4 text-xs">
+                                        هیچ تصویر یا سندی برای این فرم پیوست نشده است.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    disabled={sharingPaymentId === viewingPaymentModal.id}
+                                    onClick={() => handleSharePaymentToGroup(viewingPaymentModal)}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    {sharingPaymentId === viewingPaymentModal.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                    <span>ارسال به گروه‌ها و بات‌ها</span>
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        const dp = viewingPaymentModal;
+                                        setViewingPaymentModal(null);
+                                        setDriverPaymentForm({ ...dp });
+                                        setDriverPaymentEditingId(dp.id);
+                                        setShowDriverPaymentForm(true);
+                                    }}
+                                    className="bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300 hover:bg-blue-100 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                                >
+                                    <Pencil size={14} />
+                                    <span>ویرایش</span>
+                                </button>
+                            </div>
+                            <button 
+                                onClick={() => setViewingPaymentModal(null)}
+                                className="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 px-5 py-2 rounded-xl text-xs font-bold transition-all"
+                            >
+                                بستن
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* DRIVER PAYMENT GROUP SETTINGS MODAL (2-STAGE CONFIGURATION) */}
             {showDriverPaymentSettingsModal && (
                 <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" dir="rtl">
-                    <div className="bg-white dark:bg-gray-900 w-full max-w-xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
+                    <div className="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-fade-in flex flex-col max-h-[92vh]">
                         {/* Header */}
                         <div className="p-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex justify-between items-center">
                             <div className="flex items-center gap-2">
                                 <Settings size={20} />
-                                <h3 className="font-black text-sm">تنظیم گروه‌های ارسال فیش واریزی رانندگان</h3>
+                                <h3 className="font-black text-sm">تنظیم گروه‌های ارسال دو مرحله‌ای فیش واریزی رانندگان</h3>
                             </div>
                             <button
                                 onClick={() => setShowDriverPaymentSettingsModal(false)}
@@ -3681,7 +4305,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                         {/* Body */}
                         <div className="p-5 space-y-4 overflow-y-auto text-xs">
                             {/* Auto send toggle */}
-                            <label className="flex items-center gap-2 cursor-pointer bg-purple-50 dark:bg-purple-950/40 p-3 rounded-xl border border-purple-200 dark:border-purple-800">
+                            <label className="flex items-center gap-2 cursor-pointer bg-purple-50 dark:bg-purple-950/40 p-3.5 rounded-xl border border-purple-200 dark:border-purple-800">
                                 <input
                                     type="checkbox"
                                     checked={securitySettingsDraft.botDriverPaymentAutoSendEnabled !== false}
@@ -3694,107 +4318,147 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                                 />
                                 <span className="font-bold text-purple-950 dark:text-purple-200">
-                                    ارسال خودکار به گروه‌ها و بات‌ها هنگام ثبت یا ویرایش فرم واریزی
+                                    ارسال خودکار به گروه‌ها و بات‌ها هنگام تایید مراحل ۱ و ۲
                                 </span>
                             </label>
 
-                            {/* Internal Chat Group */}
-                            <div className="space-y-2 p-3.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-200/60 dark:border-blue-800/40">
-                                <label className="font-bold text-blue-950 dark:text-blue-200 block">
-                                    💬 گروه گفتگوی داخلی سیستم (چت سازمانی):
-                                </label>
-                                <select
-                                    value={securitySettingsDraft.securityDriverPaymentInternalGroupId || ""}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        const sel = chatGroupsList.find((g) => g.id === val);
-                                        setSecuritySettingsDraft({
-                                            ...securitySettingsDraft,
-                                            securityDriverPaymentInternalGroupId: val,
-                                            securityDriverPaymentInternalGroupName: sel ? sel.name : "",
-                                        });
-                                    }}
-                                    className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-lg p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-sans focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="">-- پیش‌فرض خودکار (گروه انتظامات / نگهبانی / مالی) --</option>
-                                    {chatGroupsList.map((g) => (
-                                        <option key={g.id} value={g.id}>
-                                            👥 {g.name} {g.members?.length ? `(${g.members.length} عضو)` : ""}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div className="mt-2">
-                                    <label className="text-[11px] text-gray-500 block mb-1">یا شناسه دستی گروه:</label>
-                                    <input
-                                        type="text"
+                            {/* STAGE 1: SUPERVISOR APPROVAL -> GROUP 1 */}
+                            <div className="space-y-3 p-4 bg-amber-50/60 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-800/40">
+                                <div className="flex items-center gap-2">
+                                    <ShieldCheck className="text-amber-600" size={18} />
+                                    <h4 className="font-black text-amber-950 dark:text-amber-200 text-sm">
+                                        گروه ۱: ارسال پس از تایید سرپرست انتظامات (واحد انتظامات)
+                                    </h4>
+                                </div>
+                                <p className="text-[11px] text-gray-500">
+                                    پس از اینکه سرپرست انتظامات تیک تایید را بزند، سند فورا به این گروه‌ها ارسال می‌شود.
+                                </p>
+                                <div>
+                                    <label className="font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                                        💬 گروه چت سازمانی مرحله ۱ (انتظامات):
+                                    </label>
+                                    <select
                                         value={securitySettingsDraft.securityDriverPaymentInternalGroupId || ""}
-                                        onChange={(e) =>
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            const sel = chatGroupsList.find((g) => g.id === val);
                                             setSecuritySettingsDraft({
                                                 ...securitySettingsDraft,
-                                                securityDriverPaymentInternalGroupId: e.target.value,
-                                            })
-                                        }
-                                        placeholder="group-..."
-                                        className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-800 font-mono dir-ltr"
-                                    />
+                                                securityDriverPaymentInternalGroupId: val,
+                                                securityDriverPaymentInternalGroupName: sel ? sel.name : "",
+                                            });
+                                        }}
+                                        className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                                    >
+                                        <option value="">-- پیش‌فرض خودکار (گروه انتظامات / نگهبانی) --</option>
+                                        {chatGroupsList.map((g) => (
+                                            <option key={g.id} value={g.id}>
+                                                👥 {g.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                                    <div>
+                                        <label className="text-[11px] text-gray-600 dark:text-gray-400 block mb-0.5">تلگرام گروه ۱:</label>
+                                        <input
+                                            type="text"
+                                            value={securitySettingsDraft.botDriverPaymentGroupIdTele || ""}
+                                            onChange={(e) => setSecuritySettingsDraft({ ...securitySettingsDraft, botDriverPaymentGroupIdTele: e.target.value })}
+                                            placeholder="-100..."
+                                            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] text-gray-600 dark:text-gray-400 block mb-0.5">بله گروه ۱:</label>
+                                        <input
+                                            type="text"
+                                            value={securitySettingsDraft.botDriverPaymentGroupIdBale || ""}
+                                            onChange={(e) => setSecuritySettingsDraft({ ...securitySettingsDraft, botDriverPaymentGroupIdBale: e.target.value })}
+                                            placeholder="شناسه بله"
+                                            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] text-gray-600 dark:text-gray-400 block mb-0.5">واتساپ گروه ۱:</label>
+                                        <input
+                                            type="text"
+                                            value={securitySettingsDraft.botDriverPaymentGroupIdWhatsApp || ""}
+                                            onChange={(e) => setSecuritySettingsDraft({ ...securitySettingsDraft, botDriverPaymentGroupIdWhatsApp: e.target.value })}
+                                            placeholder="...g.us"
+                                            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* External Messenger Groups */}
-                            <div className="space-y-3">
-                                <h4 className="font-bold text-gray-700 dark:text-gray-300">
-                                    📱 شناسه‌های گروه‌های پیام‌رسان‌های بیرونی:
-                                </h4>
-                                <div>
-                                    <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                                        گروه تلگرام واریزی رانندگان:
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={securitySettingsDraft.botDriverPaymentGroupIdTele || ""}
-                                        onChange={(e) =>
-                                            setSecuritySettingsDraft({
-                                                ...securitySettingsDraft,
-                                                botDriverPaymentGroupIdTele: e.target.value,
-                                            })
-                                        }
-                                        placeholder="-100... یا @group"
-                                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
-                                    />
+                            {/* STAGE 2: FACTORY MANAGER APPROVAL -> GROUP 2 */}
+                            <div className="space-y-3 p-4 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-200 dark:border-blue-800/40">
+                                <div className="flex items-center gap-2">
+                                    <Building2 className="text-blue-600" size={18} />
+                                    <h4 className="font-black text-blue-950 dark:text-blue-200 text-sm">
+                                        گروه ۲: ارسال پس از تایید مدیر کارخانه (مدیریت، مالی و بایگانی)
+                                    </h4>
                                 </div>
+                                <p className="text-[11px] text-gray-500">
+                                    پس از اینکه مدیر کارخانه تیک تایید را بزند، سند فورا به این گروه دوم ارسال شده و بایگانی نهایی می‌شود.
+                                </p>
                                 <div>
-                                    <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                                        گروه بله واریزی رانندگان:
+                                    <label className="font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                                        💬 گروه چت سازمانی مرحله ۲ (مدیریت/مالی):
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={securitySettingsDraft.botDriverPaymentGroupIdBale || ""}
-                                        onChange={(e) =>
+                                    <select
+                                        value={securitySettingsDraft.securityDriverPaymentSecondInternalGroupId || ""}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            const sel = chatGroupsList.find((g) => g.id === val);
                                             setSecuritySettingsDraft({
                                                 ...securitySettingsDraft,
-                                                botDriverPaymentGroupIdBale: e.target.value,
-                                            })
-                                        }
-                                        placeholder="شناسه گروه بله"
-                                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
-                                    />
+                                                securityDriverPaymentSecondInternalGroupId: val,
+                                                securityDriverPaymentSecondInternalGroupName: sel ? sel.name : "",
+                                            });
+                                        }}
+                                        className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100"
+                                    >
+                                        <option value="">-- پیش‌فرض خودکار (گروه مدیریت کارخانه / مالی / حسابداری) --</option>
+                                        {chatGroupsList.map((g) => (
+                                            <option key={g.id} value={g.id}>
+                                                👥 {g.name}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
-                                <div>
-                                    <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                                        گروه واتساپ واریزی رانندگان:
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={securitySettingsDraft.botDriverPaymentGroupIdWhatsApp || ""}
-                                        onChange={(e) =>
-                                            setSecuritySettingsDraft({
-                                                ...securitySettingsDraft,
-                                                botDriverPaymentGroupIdWhatsApp: e.target.value,
-                                            })
-                                        }
-                                        placeholder="120363...@g.us"
-                                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
-                                    />
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                                    <div>
+                                        <label className="text-[11px] text-gray-600 dark:text-gray-400 block mb-0.5">تلگرام گروه ۲:</label>
+                                        <input
+                                            type="text"
+                                            value={securitySettingsDraft.botDriverPaymentSecondGroupIdTele || ""}
+                                            onChange={(e) => setSecuritySettingsDraft({ ...securitySettingsDraft, botDriverPaymentSecondGroupIdTele: e.target.value })}
+                                            placeholder="-100..."
+                                            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] text-gray-600 dark:text-gray-400 block mb-0.5">بله گروه ۲:</label>
+                                        <input
+                                            type="text"
+                                            value={securitySettingsDraft.botDriverPaymentSecondGroupIdBale || ""}
+                                            onChange={(e) => setSecuritySettingsDraft({ ...securitySettingsDraft, botDriverPaymentSecondGroupIdBale: e.target.value })}
+                                            placeholder="شناسه بله"
+                                            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] text-gray-600 dark:text-gray-400 block mb-0.5">واتساپ گروه ۲:</label>
+                                        <input
+                                            type="text"
+                                            value={securitySettingsDraft.botDriverPaymentSecondGroupIdWhatsApp || ""}
+                                            onChange={(e) => setSecuritySettingsDraft({ ...securitySettingsDraft, botDriverPaymentSecondGroupIdWhatsApp: e.target.value })}
+                                            placeholder="...g.us"
+                                            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>

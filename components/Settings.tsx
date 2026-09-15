@@ -4909,65 +4909,141 @@ const Settings: React.FC<SettingsProps> = ({
                             className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                           />
                           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                            ارسال خودکار هنگام ثبت و ویرایش فرم واریزی
+                            ارسال خودکار پس از هر مرحله تایید (سرپرست / مدیر کارخانه)
                           </span>
                         </label>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                            شناسه گروه تلگرام واریزی رانندگان
-                          </label>
-                          <input
-                            type="text"
-                            value={settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || ""}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                botDriverPaymentGroupIdTele: e.target.value,
-                                botDriverPaymentGroupId: e.target.value,
-                              })
-                            }
-                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
-                            placeholder="-100... یا @group"
-                          />
+                      {/* Stage 1: Security Group (After Supervisor Approval) */}
+                      <div className="bg-purple-50/60 dark:bg-purple-950/20 p-4 rounded-xl border border-purple-200/70 dark:border-purple-800/50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h5 className="font-extrabold text-xs text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                            <span className="bg-purple-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px]">۱</span>
+                            گروه اول: انتظامات (ارسال خودکار پس از تایید سرپرست انتظامات)
+                          </h5>
+                          <span className="text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-2 py-0.5 rounded-md font-bold">مرحله اول</span>
                         </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                              شناسه تلگرام گروه اول (انتظامات)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || ""}
+                              onChange={(e) =>
+                                setSettings({
+                                  ...settings,
+                                  botDriverPaymentGroupIdTele: e.target.value,
+                                  botDriverPaymentGroupId: e.target.value,
+                                })
+                              }
+                              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                              placeholder="-100... یا @group"
+                            />
+                          </div>
 
-                        <div>
-                          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                            شناسه گروه بله واریزی رانندگان
-                          </label>
-                          <input
-                            type="text"
-                            value={settings.botDriverPaymentGroupIdBale || ""}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                botDriverPaymentGroupIdBale: e.target.value,
-                              })
-                            }
-                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
-                            placeholder="شناسه عددی گروه یا لینک"
-                          />
+                          <div>
+                            <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                              شناسه بله گروه اول (انتظامات)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.botDriverPaymentGroupIdBale || ""}
+                              onChange={(e) =>
+                                setSettings({
+                                  ...settings,
+                                  botDriverPaymentGroupIdBale: e.target.value,
+                                })
+                              }
+                              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                              placeholder="شناسه عددی گروه در بله"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                              شناسه واتساپ گروه اول (انتظامات)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.botDriverPaymentGroupIdWhatsApp || ""}
+                              onChange={(e) =>
+                                setSettings({
+                                  ...settings,
+                                  botDriverPaymentGroupIdWhatsApp: e.target.value,
+                                })
+                              }
+                              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                              placeholder="...@g.us"
+                            />
+                          </div>
                         </div>
+                      </div>
 
-                        <div>
-                          <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                            شناسه گروه واتساپ واریزی رانندگان
-                          </label>
-                          <input
-                            type="text"
-                            value={settings.botDriverPaymentGroupIdWhatsApp || ""}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                botDriverPaymentGroupIdWhatsApp: e.target.value,
-                              })
-                            }
-                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
-                            placeholder="...@g.us"
-                          />
+                      {/* Stage 2: Management / Finance Group (After Factory Manager Approval) */}
+                      <div className="bg-emerald-50/60 dark:bg-emerald-950/20 p-4 rounded-xl border border-emerald-200/70 dark:border-emerald-800/50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h5 className="font-extrabold text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                            <span className="bg-emerald-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px]">۲</span>
+                            گروه دوم: مدیریت کارخانه / مالی (ارسال خودکار پس از تایید مدیر کارخانه و بایگانی)
+                          </h5>
+                          <span className="text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md font-bold">مرحله دوم</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                              شناسه تلگرام گروه دوم (مدیریت / مالی)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.botDriverPaymentSecondGroupIdTele || ""}
+                              onChange={(e) =>
+                                setSettings({
+                                  ...settings,
+                                  botDriverPaymentSecondGroupIdTele: e.target.value,
+                                })
+                              }
+                              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                              placeholder="-100... یا @group"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                              شناسه بله گروه دوم (مدیریت / مالی)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.botDriverPaymentSecondGroupIdBale || ""}
+                              onChange={(e) =>
+                                setSettings({
+                                  ...settings,
+                                  botDriverPaymentSecondGroupIdBale: e.target.value,
+                                })
+                              }
+                              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                              placeholder="شناسه عددی گروه در بله"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                              شناسه واتساپ گروه دوم (مدیریت / مالی)
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.botDriverPaymentSecondGroupIdWhatsApp || ""}
+                              onChange={(e) =>
+                                setSettings({
+                                  ...settings,
+                                  botDriverPaymentSecondGroupIdWhatsApp: e.target.value,
+                                })
+                              }
+                              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                              placeholder="...@g.us"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -6897,28 +6973,32 @@ const Settings: React.FC<SettingsProps> = ({
                         className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                       />
                       <span className="text-xs font-bold text-purple-900 dark:text-purple-200">
-                        ارسال خودکار هنگام ثبت و ویرایش فرم واریزی
+                        ارسال خودکار پس از هر مرحله تایید (سرپرست انتظامات / مدیر کارخانه)
                       </span>
                     </label>
                   </div>
 
-                  {/* Internal Chat Group Selector */}
-                  <div className="bg-gradient-to-r from-blue-50/60 to-indigo-50/60 dark:from-blue-950/20 dark:to-indigo-950/20 p-5 rounded-2xl border border-blue-200/60 dark:border-blue-800/40 space-y-3">
+                  {/* STAGE 1: SUPERVISOR APPROVAL -> GROUP 1 (SECURITY) */}
+                  <div className="bg-gradient-to-r from-blue-50/70 to-indigo-50/70 dark:from-blue-950/30 dark:to-indigo-950/30 p-5 rounded-2xl border border-blue-200/80 dark:border-blue-800/60 space-y-4">
                     <div className="flex items-center justify-between flex-wrap gap-2">
-                      <label className="text-xs font-black text-blue-950 dark:text-blue-200 flex items-center gap-1.5">
-                        <MessageCircle size={16} className="text-blue-600" />
-                        گروه گفتگوی داخلی سیستم (چت سازمانی) برای فیش‌های واریزی رانندگان
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center">۱</span>
+                        <label className="text-xs font-black text-blue-950 dark:text-blue-200 flex items-center gap-1.5">
+                          <MessageCircle size={16} className="text-blue-600" />
+                          مرحله اول: گروه انتظامات (ارسال پس از تایید سرپرست انتظامات)
+                        </label>
+                      </div>
                       {settings.securityDriverPaymentInternalGroupId && (
                         <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-lg font-mono">
-                          شناسه گروه فعال: {settings.securityDriverPaymentInternalGroupId}
+                          شناسه فعال: {settings.securityDriverPaymentInternalGroupId}
                         </span>
                       )}
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                          انتخاب از لیست گروه‌های چت داخلی:
+                          انتخاب گروه گفتگوی داخلی سیستم (چت سازمانی):
                         </label>
                         <select
                           value={settings.securityDriverPaymentInternalGroupId || ""}
@@ -6933,7 +7013,7 @@ const Settings: React.FC<SettingsProps> = ({
                           }}
                           className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-sans focus:ring-2 focus:ring-blue-500 outline-none"
                         >
-                          <option value="">-- پیش‌فرض هوشمند (گروه انتظامات / نگهبانی / مالی) --</option>
+                          <option value="">-- پیش‌فرض هوشمند (گروه انتظامات / نگهبانی) --</option>
                           {chatGroups.map((g) => (
                             <option key={g.id} value={g.id}>
                               👥 {g.name} {g.members?.length ? `(${g.members.length} عضو)` : ""}
@@ -6955,25 +7035,16 @@ const Settings: React.FC<SettingsProps> = ({
                               securityDriverPaymentInternalGroupId: val
                             });
                           }}
-                          placeholder="مثال: group-123..."
+                          placeholder="مثال: group-security..."
                           className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-mono dir-ltr focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                       </div>
                     </div>
-                    <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
-                      💡 به محض ثبت یا تایید فیش واریزی راننده توسط نگهبانی، متن فرم به همراه کلیه تصاویر فیش‌ها به عنوان پیام و فایل پیوست دانه‌به‌دانه به این گروه ارسال خواهد شد.
-                    </p>
-                  </div>
 
-                  {/* External Messenger Bot Groups (Telegram, Bale, WhatsApp) */}
-                  <div className="space-y-3">
-                    <h5 className="font-black text-xs text-gray-700 dark:text-gray-300">
-                      📱 شناسه‌های گروه‌های پیام‌رسان‌های بیرونی (تلگرام، بله، واتساپ)
-                    </h5>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-gray-50/70 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5">
-                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
-                          شناسه گروه تلگرام واریزی رانندگان
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          شناسه گروه تلگرام اول:
                         </label>
                         <input
                           type="text"
@@ -6985,15 +7056,13 @@ const Settings: React.FC<SettingsProps> = ({
                               botDriverPaymentGroupId: e.target.value,
                             })
                           }
-                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
-                          placeholder="-100... یا @group"
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2 text-xs dir-ltr font-mono focus:ring-2 focus:ring-blue-500"
+                          placeholder="-100..."
                         />
-                        <p className="text-[10px] text-gray-400">شناسه عددی گروه یا کانال تلگرام</p>
                       </div>
-
-                      <div className="bg-gray-50/70 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5">
-                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
-                          شناسه گروه بله واریزی رانندگان
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          شناسه گروه بله اول:
                         </label>
                         <input
                           type="text"
@@ -7004,15 +7073,13 @@ const Settings: React.FC<SettingsProps> = ({
                               botDriverPaymentGroupIdBale: e.target.value,
                             })
                           }
-                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
-                          placeholder="شناسه عددی گروه در بله"
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2 text-xs dir-ltr font-mono focus:ring-2 focus:ring-blue-500"
+                          placeholder="شناسه عددی بله"
                         />
-                        <p className="text-[10px] text-gray-400">شناسه گروه یا کانال در پیام‌رسان بله</p>
                       </div>
-
-                      <div className="bg-gray-50/70 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5">
-                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
-                          شناسه گروه واتساپ واریزی رانندگان
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          شناسه گروه واتساپ اول:
                         </label>
                         <input
                           type="text"
@@ -7023,10 +7090,127 @@ const Settings: React.FC<SettingsProps> = ({
                               botDriverPaymentGroupIdWhatsApp: e.target.value,
                             })
                           }
-                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
-                          placeholder="120363...@g.us"
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2 text-xs dir-ltr font-mono focus:ring-2 focus:ring-blue-500"
+                          placeholder="...@g.us"
                         />
-                        <p className="text-[10px] text-gray-400">شناسه JID گروه در واتساپ</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* STAGE 2: FACTORY MANAGER APPROVAL -> GROUP 2 (MANAGEMENT / FINANCE) */}
+                  <div className="bg-gradient-to-r from-emerald-50/70 to-teal-50/70 dark:from-emerald-950/30 dark:to-teal-950/30 p-5 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center">۲</span>
+                        <label className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                          <MessageCircle size={16} className="text-emerald-600" />
+                          مرحله دوم: گروه مدیریت کارخانه و مالی (ارسال پس از تایید مدیر و بایگانی)
+                        </label>
+                      </div>
+                      {settings.securityDriverPaymentSecondInternalGroupId && (
+                        <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-2.5 py-1 rounded-lg font-mono">
+                          شناسه فعال: {settings.securityDriverPaymentSecondInternalGroupId}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          انتخاب گروه گفتگوی داخلی سیستم مرحله دوم (مثلاً گروه مالی یا مدیریت):
+                        </label>
+                        <select
+                          value={settings.securityDriverPaymentSecondInternalGroupId || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const sel = chatGroups.find(g => g.id === val);
+                            setSettings({
+                              ...settings,
+                              securityDriverPaymentSecondInternalGroupId: val,
+                              securityDriverPaymentSecondInternalGroupName: sel ? sel.name : ""
+                            });
+                          }}
+                          className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-sans focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                          <option value="">-- پیش‌فرض هوشمند (گروه مدیریت / حسابداری / مالی) --</option>
+                          {chatGroups.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              👥 {g.name} {g.members?.length ? `(${g.members.length} عضو)` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          یا ورود دستی شناسه گروه چت مرحله دوم:
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.securityDriverPaymentSecondInternalGroupId || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSettings({
+                              ...settings,
+                              securityDriverPaymentSecondInternalGroupId: val
+                            });
+                          }}
+                          placeholder="مثال: group-finance..."
+                          className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-mono dir-ltr focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          شناسه تلگرام گروه دوم (مدیریت/مالی):
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.botDriverPaymentSecondGroupIdTele || ""}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              botDriverPaymentSecondGroupIdTele: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                          placeholder="-100..."
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          شناسه بله گروه دوم (مدیریت/مالی):
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.botDriverPaymentSecondGroupIdBale || ""}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              botDriverPaymentSecondGroupIdBale: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                          placeholder="شناسه عددی بله"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          شناسه واتساپ گروه دوم (مدیریت/مالی):
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.botDriverPaymentSecondGroupIdWhatsApp || ""}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              botDriverPaymentSecondGroupIdWhatsApp: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                          placeholder="...@g.us"
+                        />
                       </div>
                     </div>
                   </div>

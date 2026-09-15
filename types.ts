@@ -426,6 +426,12 @@ export interface SystemSettings {
   botDriverPaymentAutoSendEnabled?: boolean;
   securityDriverPaymentInternalGroupId?: string;
   securityDriverPaymentInternalGroupName?: string;
+  // Group 2 settings (Factory Manager / Finance approval step)
+  botDriverPaymentSecondGroupIdTele?: string;
+  botDriverPaymentSecondGroupIdBale?: string;
+  botDriverPaymentSecondGroupIdWhatsApp?: string;
+  securityDriverPaymentSecondInternalGroupId?: string;
+  securityDriverPaymentSecondInternalGroupName?: string;
   botForceJoinChannels?: { name: string; link: string; id: string; platform?: 'telegram' | 'bale' | 'all' }[];
   botForceJoinEnabled?: boolean;
   botStoreLinks?: { title: string; url: string }[];
@@ -800,6 +806,11 @@ export interface DriverPayment {
     plateNumber: string;
     amount?: string;
     paymentType?: string;
+    cardNumber?: string;
+    shebaNumber?: string;
+    accountNumber?: string;
+    bankName?: string;
+    accountHolder?: string;
     origin?: string;
     destination?: string;
     goodsName?: string;
@@ -810,6 +821,19 @@ export interface DriverPayment {
     description?: string;
     attachments?: { fileName: string; url: string }[];
     status?: string;
+    supervisorApproved?: boolean;
+    supervisorApproverName?: string;
+    supervisorApprovedAt?: number;
+    supervisorComment?: string;
+    factoryApproved?: boolean;
+    factoryApproverName?: string;
+    factoryApprovedAt?: number;
+    factoryComment?: string;
+    rejectionReason?: string;
+    rejectedBy?: string;
+    rejectedAt?: number;
+    sentToGroup1At?: number;
+    sentToGroup2At?: number;
 }
 
 export interface PersonnelDelay {

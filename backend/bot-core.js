@@ -3136,27 +3136,59 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
         const isEdit = eventType === 'EDIT';
         const isDelete = eventType === 'DELETE';
         const isManual = eventType === 'MANUAL';
+        const stage = options.stage || (dp.factoryApproved || dp.status === 'ARCHIVED' ? 'factory' : (dp.supervisorApproved || dp.status === 'PENDING_FACTORY' ? 'supervisor' : 'initial'));
 
-        const dedupeKey = `DRIVER_PAY_${dp.id}_${eventType}`;
+        const dedupeKey = `DRIVER_PAY_${dp.id}_${eventType}_${stage}`;
         if (!isManual && isDuplicateNotification(dedupeKey)) return { success: true, deduped: true };
 
         const settings = db?.settings || {};
 
-        const tgGroupId = settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || '';
-        const baleGroupId = settings.botDriverPaymentGroupIdBale || '';
-        const waGroupId = settings.botDriverPaymentGroupIdWhatsApp || '';
+        // Support Stage 2 (Factory Manager approval) vs Stage 1 (Supervisor / Initial)
+        let tgGroupId = '';
+        let baleGroupId = '';
+        let waGroupId = '';
+
+        if (stage === 'factory') {
+            tgGroupId = settings.botDriverPaymentSecondGroupIdTele || settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || '';
+            baleGroupId = settings.botDriverPaymentSecondGroupIdBale || settings.botDriverPaymentGroupIdBale || '';
+            waGroupId = settings.botDriverPaymentSecondGroupIdWhatsApp || settings.botDriverPaymentGroupIdWhatsApp || '';
+        } else {
+            tgGroupId = settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || '';
+            baleGroupId = settings.botDriverPaymentGroupIdBale || '';
+            waGroupId = settings.botDriverPaymentGroupIdWhatsApp || '';
+        }
+
+        // Allow explicit targetGroupId override
+        if (options.targetGroupId) {
+            if (options.platform === 'tele') tgGroupId = options.targetGroupId;
+            else if (options.platform === 'bale') baleGroupId = options.targetGroupId;
+            else if (options.platform === 'wa') waGroupId = options.targetGroupId;
+            else {
+                tgGroupId = options.targetGroupId;
+                baleGroupId = options.targetGroupId;
+            }
+        }
 
         if (!tgGroupId && !baleGroupId && !waGroupId) {
-            console.log(">>> notifyDriverPayment: No driver payment bot groups configured in settings.");
+            console.log(">>> notifyDriverPayment: No driver payment bot groups configured in settings for stage:", stage);
             return { success: false, message: 'هیچ گروهی برای ارسال واریزی رانندگان در تنظیمات ربات تعیین نشده است.' };
         }
 
         const formattedAmount = dp.amount ? Number(dp.amount).toLocaleString('fa-IR') + ' ریال' : 'مشخص نشده';
         const dateStr = dp.date ? (toShamsiFull ? toShamsiFull(dp.date) : dp.date) : '-';
 
-        let header = isDelete 
-            ? `❌ *حذف شد: فرم حواله و واریزی راننده*` 
-            : (isEdit ? `✏️ *ویرایش شد: فرم حواله و واریزی راننده*` : `🚚 *فرم واریزی و کرایه راننده - واحد انتظامات*`);
+        let header = '';
+        if (isDelete) {
+            header = `❌ *حذف شد: فرم حواله و واریزی راننده*`;
+        } else if (isEdit) {
+            header = `✏️ *ویرایش شد: فرم حواله و واریزی راننده*`;
+        } else if (stage === 'factory') {
+            header = `✅ *تایید نهایی مدیر کارخانه و بایگانی: فرم واریزی راننده*`;
+        } else if (stage === 'supervisor') {
+            header = `📋 *تایید سرپرست انتظامات: فرم واریزی راننده (ارسال به انتظامات)*`;
+        } else {
+            header = `🚚 *فرم واریزی و کرایه راننده - واحد انتظامات*`;
+        }
 
         let caption = `${header}\n\n` +
             `👤 *نام راننده:* ${dp.driverName || '-'}\n` +
@@ -3164,15 +3196,30 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
             `🚗 *شماره پلاک:* ${dp.plateNumber || 'ثبت نشده'}\n` +
             `💰 *مبلغ واریزی:* ${formattedAmount}\n` +
             `💳 *نوع پرداخت:* ${dp.paymentType || 'کارت به کارت'}\n` +
+            (dp.cardNumber ? `💳 *شماره کارت:* \`${dp.cardNumber}\`\n` : '') +
+            (dp.shebaNumber ? `🏦 *شماره شبا:* \`${dp.shebaNumber}\`\n` : '') +
+            ((dp.bankName || dp.accountHolder) ? `🏛️ *بانک / حساب:* ${dp.bankName || ''} ${dp.accountHolder ? `(به نام: ${dp.accountHolder})` : ''}\n` : '') +
             `📦 *نام کالا:* ${dp.goodsName || 'ثبت نشده'}\n` +
             `🔢 *مقدار / تعداد:* ${dp.quantity || 'ثبت نشده'}\n` +
             `📍 *مسیر حمل:* از *${dp.origin || 'نامشخص'}* به *${dp.destination || 'نامشخص'}*\n` +
             (dp.permitProvider ? `🏢 *شرکت / صادرکننده:* ${dp.permitProvider}\n` : '') +
             `👤 *ثبت‌کننده:* ${dp.registrant || 'واحد انتظامات'}\n` +
             `📅 *تاریخ:* ${dateStr}\n` +
+            (dp.supervisorApproved ? `👮‍♂️ *تایید سرپرست انتظامات:* تایید شده توسط ${dp.supervisorApproverName || 'سرپرست'}\n` : '') +
+            (dp.factoryApproved ? `🏭 *تایید مدیر کارخانه:* تایید و بایگانی شده توسط ${dp.factoryApproverName || 'مدیریت'}\n` : '') +
             (dp.description ? `📝 *توضیحات:* ${dp.description}\n` : '') +
             `${isEdit ? '\n⚠️ *این یک پیام ویرایشی است*' : ''}` +
             `${isDelete ? '\n⚠️ *این سند واریزی حذف شده است*' : ''}`;
+
+        // Generate Record Card Image
+        let formImageBuffer = null;
+        try {
+            if (Renderer && Renderer.generateRecordImage) {
+                formImageBuffer = await Renderer.generateRecordImage(dp, 'DRIVER_PAYMENT', { isEdit, isDelete });
+            }
+        } catch (imgErr) {
+            console.error("Failed to render driver payment card image:", imgErr.message);
+        }
 
         const attachments = Array.isArray(dp.attachments) ? dp.attachments : [];
         if (attachments.length > 0) {
@@ -3242,8 +3289,17 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
         if (tgGroupId && settings.telegramBotToken) {
             const cleanId = sanitizeGroupId(tgGroupId);
             import('./telegram.js').then(async (mod) => {
-                if (mod?.sendBotMessage) {
-                    await mod.sendBotMessage(cleanId, caption, { parse_mode: 'Markdown' }).catch(e => console.error("TG Driver Payment Text Error:", e.message));
+                if (mod) {
+                    // Send form card image with caption if available
+                    if (formImageBuffer && mod.sendBotPhoto) {
+                        await mod.sendBotPhoto(cleanId, formImageBuffer, caption, { parse_mode: 'Markdown', filename: `driver_payment_${dp.id}.png` })
+                            .catch(async () => {
+                                if (mod.sendBotMessage) await mod.sendBotMessage(cleanId, caption, { parse_mode: 'Markdown' });
+                            });
+                    } else if (mod.sendBotMessage) {
+                        await mod.sendBotMessage(cleanId, caption, { parse_mode: 'Markdown' }).catch(e => console.error("TG Driver Payment Text Error:", e.message));
+                    }
+
                     // Send attachments one by one
                     for (const item of loadedAttachments) {
                         await new Promise(r => setTimeout(r, 600));
@@ -3262,8 +3318,17 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
         if (baleGroupId && settings.baleBotToken) {
             const cleanId = sanitizeGroupId(baleGroupId);
             import('./bale.js').then(async (mod) => {
-                if (mod?.sendBotMessage) {
-                    await mod.sendBotMessage(cleanId, caption).catch(e => console.error("Bale Driver Payment Text Error:", e.message));
+                if (mod) {
+                    // Send form card image with caption if available
+                    if (formImageBuffer && mod.sendBotPhoto) {
+                        await mod.sendBotPhoto(cleanId, formImageBuffer, caption, { filename: `driver_payment_${dp.id}.png` })
+                            .catch(async () => {
+                                if (mod.sendBotMessage) await mod.sendBotMessage(cleanId, caption);
+                            });
+                    } else if (mod.sendBotMessage) {
+                        await mod.sendBotMessage(cleanId, caption).catch(e => console.error("Bale Driver Payment Text Error:", e.message));
+                    }
+
                     // Send attachments one by one
                     for (const item of loadedAttachments) {
                         await new Promise(r => setTimeout(r, 600));
@@ -3282,7 +3347,19 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
         if (waGroupId && settings.whatsappEnabled) {
             import('./whatsapp.js').then(async (mod) => {
                 if (mod?.sendMessage) {
-                    await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Driver Payment Text Error:", e.message));
+                    if (formImageBuffer) {
+                        const b64 = formImageBuffer.toString('base64');
+                        await mod.sendMessage(waGroupId, caption, {
+                            data: b64,
+                            mimeType: 'image/png',
+                            filename: `driver_payment_${dp.id}.png`
+                        }).catch(async () => {
+                            await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Driver Payment Text Error:", e.message));
+                        });
+                    } else {
+                        await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Driver Payment Text Error:", e.message));
+                    }
+
                     // Send attachments one by one
                     for (const item of loadedAttachments) {
                         await new Promise(r => setTimeout(r, 800));

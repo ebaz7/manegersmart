@@ -6598,12 +6598,15 @@ CRUD_COLLECTIONS.forEach(({ route, dbKey }) => {
 // --- DRIVER PAYMENTS NOTIFICATION ENDPOINT ---
 app.post('/api/security/driver-payments/notify', async (req, res) => {
     try {
-        const payment = req.body;
+        const body = req.body || {};
+        const payment = body.payment || body;
+        const stage = body.stage || (payment.factoryApproved || payment.status === 'ARCHIVED' ? 'factory' : (payment.supervisorApproved || payment.status === 'PENDING_FACTORY' ? 'supervisor' : 'initial'));
+        const options = body.options || { stage, targetGroupId: body.targetGroupId, platform: body.platform };
         if (!payment || !payment.id) {
             return res.status(400).json({ success: false, error: 'اطلاعات فرم واریزی نامعتبر است.' });
         }
         const db = getDb();
-        const result = await notifyDriverPayment(payment, db, 'MANUAL');
+        const result = await notifyDriverPayment(payment, db, 'MANUAL', options);
         res.json(result || { success: true });
     } catch (e) {
         console.error("Manual driver payment notify error:", e);

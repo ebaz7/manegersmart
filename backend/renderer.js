@@ -335,6 +335,69 @@ export const generateRecordImage = async (record, type, options = {}) => {
                 <div class="row" style="margin-top: 15px; border-top: 2px solid #eee; padding-top: 10px;"><span class="label">درخواست‌کننده:</span><span class="value">${record.requester}</span></div>
                 <div class="row"><span class="label">وضعیت نهایی:</span><span class="value" style="color: ${record.status.includes("تایید") ? "#15803d" : "#444"}">${record.status}</span></div>
             `;
+    } else if (type === "DRIVER_PAYMENT") {
+      title = "فرم حواله و واریزی راننده";
+      if (isEdit) title += " (ویرایش شده)";
+      if (isDelete) title += " (حذف شده)";
+
+      const formattedAmount = record.amount ? Number(record.amount).toLocaleString('fa-IR') + ' ریال' : 'مشخص نشده';
+      const plateHtml = renderPlate(record.plateNumber);
+
+      const statusBadge = record.factoryApproved || record.status === 'ARCHIVED'
+        ? '<div style="background:#166534; color:white; padding:4px 12px; border-radius:8px; font-weight:bold; font-size:14px; display:inline-block;">✅ تایید نهایی مدیر کارخانه و بایگانی شده</div>'
+        : (record.supervisorApproved || record.status === 'PENDING_FACTORY'
+          ? '<div style="background:#1e40af; color:white; padding:4px 12px; border-radius:8px; font-weight:bold; font-size:14px; display:inline-block;">👮‍♂️ تایید سرپرست انتظامات (در انتظار مدیر کارخانه)</div>'
+          : '<div style="background:#d97706; color:white; padding:4px 12px; border-radius:8px; font-weight:bold; font-size:14px; display:inline-block;">⏳ در انتظار تایید سرپرست انتظامات</div>');
+
+      htmlData = `
+        <div style="margin-bottom: 12px; text-align: center;">
+          ${statusBadge}
+        </div>
+        <div class="row"><span class="label">نام راننده:</span><span class="value" style="font-size: 20px; font-weight: bold;">${record.driverName || '-'}</span></div>
+        <div class="row"><span class="label">شماره پلاک:</span><span class="value">${plateHtml}</span></div>
+        <div class="row"><span class="label">تلفن تماس:</span><span class="value font-mono" dir="ltr">${record.driverPhone || 'ثبت نشده'}</span></div>
+        <div class="row"><span class="label">مبلغ واریزی / کرایه:</span><span class="value amount" style="color:#1e40af; font-size: 24px; font-weight: 900;">${formattedAmount}</span></div>
+        <div class="row"><span class="label">نوع پرداخت:</span><span class="value">${record.paymentType || 'کارت به کارت'}</span></div>
+        
+        ${record.cardNumber ? `
+        <div class="row" style="background:#f0fdf4; padding:8px; border-radius:8px; border:1px solid #bbf7d0;">
+          <span class="label" style="color:#166534;">شماره کارت بانکی:</span>
+          <span class="value font-mono" dir="ltr" style="font-size: 18px; font-weight: bold; color:#15803d; letter-spacing: 2px;">${record.cardNumber}</span>
+        </div>` : ''}
+
+        ${record.shebaNumber ? `
+        <div class="row" style="background:#f8fafc; padding:8px; border-radius:8px; border:1px solid #e2e8f0;">
+          <span class="label" style="color:#475569;">شماره شبا (IBAN):</span>
+          <span class="value font-mono" dir="ltr" style="font-size: 15px; font-weight: bold; color:#334155; letter-spacing: 1px;">${record.shebaNumber}</span>
+        </div>` : ''}
+
+        ${(record.bankName || record.accountHolder) ? `
+        <div class="row">
+          <span class="label">بانک و صاحب حساب:</span>
+          <span class="value" style="font-weight: bold;">${record.bankName || ''} ${record.accountHolder ? `(صاحب حساب: ${record.accountHolder})` : ''}</span>
+        </div>` : ''}
+
+        <div class="row"><span class="label">نام کالا و تعداد:</span><span class="value">${record.goodsName || '-'} ${record.quantity ? `(تعداد / مقدار: ${record.quantity})` : ''}</span></div>
+        <div class="row"><span class="label">مسیر حمل کالا:</span><span class="value">از <b>${record.origin || 'نامشخص'}</b> به <b>${record.destination || 'نامشخص'}</b></span></div>
+        ${record.permitProvider ? `<div class="row"><span class="label">صاحب کالا / پیمانکار:</span><span class="value">${record.permitProvider}</span></div>` : ''}
+        <div class="row"><span class="label">ثبت‌کننده:</span><span class="value">${record.registrant || 'واحد انتظامات'}</span></div>
+        ${record.description ? `<div class="row"><span class="label">توضیحات:</span><span class="value" style="font-size: 14px; background: #fafafa; padding: 6px 10px; border-radius: 6px; border: 1px solid #eee;">${record.description}</span></div>` : ''}
+        
+        <div style="margin-top: 15px; border-top: 2px solid #eee; padding-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; text-align: center; background: ${record.supervisorApproved ? '#f0fdf4' : '#fafafa'};">
+            <div style="font-size: 11px; font-weight: bold; color: ${record.supervisorApproved ? '#166534' : '#64748b'};">مهر و تایید سرپرست انتظامات</div>
+            <div style="font-size: 13px; font-weight: bold; margin-top: 4px; color: ${record.supervisorApproved ? '#15803d' : '#94a3b8'};">
+              ${record.supervisorApproved ? `✅ تایید شده توسط ${record.supervisorApproverName || 'سرپرست'}` : '⏳ در انتظار تایید'}
+            </div>
+          </div>
+          <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; text-align: center; background: ${record.factoryApproved ? '#f0fdf4' : '#fafafa'};">
+            <div style="font-size: 11px; font-weight: bold; color: ${record.factoryApproved ? '#166534' : '#64748b'};">مهر و تایید مدیریت کارخانه</div>
+            <div style="font-size: 13px; font-weight: bold; margin-top: 4px; color: ${record.factoryApproved ? '#15803d' : '#94a3b8'};">
+              ${record.factoryApproved ? `✅ تایید نهایی توسط ${record.factoryApproverName || 'مدیر کارخانه'}` : '⏳ در انتظار تایید'}
+            </div>
+          </div>
+        </div>
+      `;
     } else if (type === "EXIT" || type === "CUSTOMER_INVOICE") {
       const isInvoice = type === "CUSTOMER_INVOICE";
       const showDelivery =

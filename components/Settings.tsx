@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   getSettings,
   saveSettings,
+  getGroups,
   uploadFile,
   uploadFileChunked,
   getSecretariatSettings,
@@ -21,6 +22,7 @@ import {
   PrintTemplate,
   SecretariatCompanySettings,
   SecretariatTemplate,
+  ChatGroup,
 } from "../types";
 import {
   Settings as SettingsIcon,
@@ -32,6 +34,7 @@ import {
   Plus,
   Trash2,
   Building,
+  Shield,
   ShieldCheck,
   Landmark,
   AppWindow,
@@ -206,11 +209,14 @@ const Settings: React.FC<SettingsProps> = ({
     | "bot"
     | "meetings"
     | "secretariat"
+    | "security"
     | "camera"
     | "theme"
     | "desktop"
     | "updates"
   >("system");
+
+  const [chatGroups, setChatGroups] = useState<ChatGroup[]>([]);
 
   // --- Secretariat Settings State ---
   const [secConfigs, setSecConfigs] = useState<SecretariatCompanySettings[]>(
@@ -1448,6 +1454,20 @@ const Settings: React.FC<SettingsProps> = ({
     }
   }, [selectedCompanyIdForSec, secConfigs]);
 
+  useEffect(() => {
+    const fetchChatGroups = async () => {
+      try {
+        const groups = await getGroups();
+        if (Array.isArray(groups)) {
+          setChatGroups(groups);
+        }
+      } catch (err) {
+        console.error("Failed to load chat groups in settings:", err);
+      }
+    };
+    fetchChatGroups();
+  }, []);
+
   const checkWhatsappStatus = async () => {
     setRefreshingWA(true);
     try {
@@ -2327,6 +2347,13 @@ const Settings: React.FC<SettingsProps> = ({
                 className={`whitespace-nowrap flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs md:text-sm font-medium transition-all ${activeCategory === "secretariat" ? "bg-purple-600 text-white shadow-md font-bold" : "text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-800"}`}
               >
                 <FileText size={16} /> تنظیمات دبیرخانه
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCategory("security")}
+                className={`whitespace-nowrap flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs md:text-sm font-medium transition-all ${activeCategory === "security" ? "bg-purple-600 text-white shadow-md font-bold" : "text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-800"}`}
+              >
+                <Shield size={16} /> تنظیمات انتظامات و نگهبانی
               </button>
               <button
                 type="button"
@@ -6807,6 +6834,298 @@ const Settings: React.FC<SettingsProps> = ({
                       قالبی یافت نشد.
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {activeCategory === "security" && (
+              <div className="space-y-6 animate-fade-in text-right" dir="rtl">
+                {/* Header card */}
+                <div className="glass-panel p-6 rounded-2xl border border-purple-200/70 dark:border-purple-800/40 bg-gradient-to-r from-purple-50/60 to-indigo-50/60 dark:from-purple-950/30 dark:to-indigo-950/30">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-purple-600 text-white rounded-2xl shadow-md">
+                        <Shield size={24} />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-gray-800 dark:text-white text-lg">
+                          تنظیمات بخش انتظامات و نگهبانی
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          تنظیم گروه‌های دریافت فیش واریزی رانندگان (چت سازمانی، تلگرام، بله، واتساپ)، گزارش‌های خروج و دوربین
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleSave(e as any)}
+                      disabled={loading}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all active:scale-95"
+                    >
+                      {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                      <span>ذخیره تنظیمات انتظامات</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 1. Driver Payments & Remittances Group Settings */}
+                <div className="glass-panel p-6 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm space-y-6">
+                  <div className="flex items-center justify-between flex-wrap gap-2 border-b border-gray-200 dark:border-gray-800 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded-xl">
+                        <Truck size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm text-gray-800 dark:text-white">
+                          🚚 تنظیمات گروه ارسال واریزی و فیش رانندگان
+                        </h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          ارسال فرم‌های حواله و واریزی رانندگان به همراه عکس فیش‌ها و پیوست‌ها به گروه‌های گفتگو و پیام‌رسان‌ها
+                        </p>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer bg-purple-50 dark:bg-purple-950/40 px-3.5 py-2 rounded-xl border border-purple-200 dark:border-purple-800 shadow-xs">
+                      <input
+                        type="checkbox"
+                        checked={settings.botDriverPaymentAutoSendEnabled !== false}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            botDriverPaymentAutoSendEnabled: e.target.checked,
+                          })
+                        }
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-xs font-bold text-purple-900 dark:text-purple-200">
+                        ارسال خودکار هنگام ثبت و ویرایش فرم واریزی
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Internal Chat Group Selector */}
+                  <div className="bg-gradient-to-r from-blue-50/60 to-indigo-50/60 dark:from-blue-950/20 dark:to-indigo-950/20 p-5 rounded-2xl border border-blue-200/60 dark:border-blue-800/40 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <label className="text-xs font-black text-blue-950 dark:text-blue-200 flex items-center gap-1.5">
+                        <MessageCircle size={16} className="text-blue-600" />
+                        گروه گفتگوی داخلی سیستم (چت سازمانی) برای فیش‌های واریزی رانندگان
+                      </label>
+                      {settings.securityDriverPaymentInternalGroupId && (
+                        <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-lg font-mono">
+                          شناسه گروه فعال: {settings.securityDriverPaymentInternalGroupId}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          انتخاب از لیست گروه‌های چت داخلی:
+                        </label>
+                        <select
+                          value={settings.securityDriverPaymentInternalGroupId || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const sel = chatGroups.find(g => g.id === val);
+                            setSettings({
+                              ...settings,
+                              securityDriverPaymentInternalGroupId: val,
+                              securityDriverPaymentInternalGroupName: sel ? sel.name : ""
+                            });
+                          }}
+                          className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-sans focus:ring-2 focus:ring-blue-500 outline-none"
+                        >
+                          <option value="">-- پیش‌فرض هوشمند (گروه انتظامات / نگهبانی / مالی) --</option>
+                          {chatGroups.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              👥 {g.name} {g.members?.length ? `(${g.members.length} عضو)` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                          یا ورود دستی شناسه گروه چت داخلی:
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.securityDriverPaymentInternalGroupId || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSettings({
+                              ...settings,
+                              securityDriverPaymentInternalGroupId: val
+                            });
+                          }}
+                          placeholder="مثال: group-123..."
+                          className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-mono dir-ltr focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-blue-800 dark:text-blue-300 leading-relaxed">
+                      💡 به محض ثبت یا تایید فیش واریزی راننده توسط نگهبانی، متن فرم به همراه کلیه تصاویر فیش‌ها به عنوان پیام و فایل پیوست دانه‌به‌دانه به این گروه ارسال خواهد شد.
+                    </p>
+                  </div>
+
+                  {/* External Messenger Bot Groups (Telegram, Bale, WhatsApp) */}
+                  <div className="space-y-3">
+                    <h5 className="font-black text-xs text-gray-700 dark:text-gray-300">
+                      📱 شناسه‌های گروه‌های پیام‌رسان‌های بیرونی (تلگرام، بله، واتساپ)
+                    </h5>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-gray-50/70 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
+                          شناسه گروه تلگرام واریزی رانندگان
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.botDriverPaymentGroupIdTele || settings.botDriverPaymentGroupId || ""}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              botDriverPaymentGroupIdTele: e.target.value,
+                              botDriverPaymentGroupId: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                          placeholder="-100... یا @group"
+                        />
+                        <p className="text-[10px] text-gray-400">شناسه عددی گروه یا کانال تلگرام</p>
+                      </div>
+
+                      <div className="bg-gray-50/70 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
+                          شناسه گروه بله واریزی رانندگان
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.botDriverPaymentGroupIdBale || ""}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              botDriverPaymentGroupIdBale: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                          placeholder="شناسه عددی گروه در بله"
+                        />
+                        <p className="text-[10px] text-gray-400">شناسه گروه یا کانال در پیام‌رسان بله</p>
+                      </div>
+
+                      <div className="bg-gray-50/70 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-1.5">
+                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
+                          شناسه گروه واتساپ واریزی رانندگان
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.botDriverPaymentGroupIdWhatsApp || ""}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              botDriverPaymentGroupIdWhatsApp: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-purple-500"
+                          placeholder="120363...@g.us"
+                        />
+                        <p className="text-[10px] text-gray-400">شناسه JID گروه در واتساپ</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Daily Exit & Security Reports Group Settings */}
+                <div className="glass-panel p-6 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm space-y-4">
+                  <div className="flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 pb-3">
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-xl">
+                      <ShieldCheck size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm text-gray-800 dark:text-white">
+                        🚗 تنظیمات ارسال گزارش‌های روزانه تردد و خروج کالا
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        شناسه‌های گروه‌های اختصاصی جهت ارسال خلاصه خروج کالا، تردد و وقایع انتظامات
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                        گروه تلگرام گزارش خروج روزانه
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.dailyExitReportDedicatedTelegramId || ""}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            dailyExitReportDedicatedTelegramId: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                        placeholder="-100..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                        گروه بله گزارش خروج روزانه
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.dailyExitReportDedicatedBaleId || ""}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            dailyExitReportDedicatedBaleId: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                        placeholder="شناسه گروه بله"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                        گروه واتساپ گزارش خروج روزانه
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.dailyExitReportDedicatedWhatsAppId || ""}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            dailyExitReportDedicatedWhatsAppId: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
+                        placeholder="...@g.us"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Camera and Plate OCR Access Card */}
+                <div className="glass-panel p-6 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300 rounded-xl">
+                      <Camera size={22} />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm text-gray-800 dark:text-white">
+                        📷 تنظیمات دوربین و تصویربرداری انتظامات
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        تنظیم اتصال دوربین‌های USB/وبکم و دوربین‌های تحت شبکه IP Camera جهت ثبت تصاویر و پلاک
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveCategory("camera")}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    <Camera size={16} />
+                    <span>ورود به تنظیمات دوربین</span>
+                  </button>
                 </div>
               </div>
             )}

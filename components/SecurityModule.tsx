@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, SecurityLog, DriverPayment, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings, PersonnelOvertime, SecurityGoodsItem } from '../types';
+import { User, SecurityLog, DriverPayment, PersonnelDelay, SecurityIncident, SecurityStatus, UserRole, DailySecurityMeta, SystemSettings, PersonnelOvertime, SecurityGoodsItem, ChatGroup } from '../types';
 import { 
     getSecurityLogs, saveSecurityLog, updateSecurityLog, deleteSecurityLog, 
     getPersonnelDelays, savePersonnelDelay, updatePersonnelDelay, deletePersonnelDelay, 
@@ -283,6 +283,10 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const [isUploadingPaymentFile, setIsUploadingPaymentFile] = useState(false);
     const [driverPaymentSearchQuery, setDriverPaymentSearchQuery] = useState('');
     const [sharingPaymentId, setSharingPaymentId] = useState<string | null>(null);
+    const [showDriverPaymentSettingsModal, setShowDriverPaymentSettingsModal] = useState(false);
+    const [chatGroupsList, setChatGroupsList] = useState<ChatGroup[]>([]);
+    const [savingSecuritySettings, setSavingSecuritySettings] = useState(false);
+    const [securitySettingsDraft, setSecuritySettingsDraft] = useState<Partial<SystemSettings>>({});
     const [selectedDate, setSelectedDate] = useState({ year: financialYear ? parseInt(financialYear) : currentShamsi.year, month: currentShamsi.month, day: currentShamsi.day });
 
     const [overtimes, setOvertimes] = useState<PersonnelOvertime[]>([]);
@@ -1340,12 +1344,14 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             }
 
             // 2. Share to internal chat
-            const groupsList = await getGroups();
-            let targetGroupId = undefined;
-            if (groupsList && groupsList.length > 0) {
-                const match = groupsList.find(g => g.name.includes('انتظامات') || g.name.includes('نگهبانی') || g.name.includes('مالی')) || groupsList[0];
-                if (match) {
-                    targetGroupId = match.id;
+            let targetGroupId = settings?.securityDriverPaymentInternalGroupId;
+            if (!targetGroupId) {
+                const groupsList = await getGroups();
+                if (groupsList && groupsList.length > 0) {
+                    const match = groupsList.find(g => g.name.includes('انتظامات') || g.name.includes('نگهبانی') || g.name.includes('مالی')) || groupsList[0];
+                    if (match) {
+                        targetGroupId = match.id;
+                    }
                 }
             }
 
@@ -1401,6 +1407,42 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
             alert('خطا در ارسال اطلاعات به گروه‌ها.');
         } finally {
             setSharingPaymentId(null);
+        }
+    };
+
+    const handleOpenSecurityGroupSettings = async () => {
+        try {
+            const currentSettings = settings || await getSettings();
+            setSecuritySettingsDraft({
+                securityDriverPaymentInternalGroupId: currentSettings.securityDriverPaymentInternalGroupId || '',
+                securityDriverPaymentInternalGroupName: currentSettings.securityDriverPaymentInternalGroupName || '',
+                botDriverPaymentGroupIdTele: currentSettings.botDriverPaymentGroupIdTele || currentSettings.botDriverPaymentGroupId || '',
+                botDriverPaymentGroupIdBale: currentSettings.botDriverPaymentGroupIdBale || '',
+                botDriverPaymentGroupIdWhatsApp: currentSettings.botDriverPaymentGroupIdWhatsApp || '',
+                botDriverPaymentAutoSendEnabled: currentSettings.botDriverPaymentAutoSendEnabled !== false
+            });
+            const groups = await getGroups();
+            setChatGroupsList(Array.isArray(groups) ? groups : []);
+            setShowDriverPaymentSettingsModal(true);
+        } catch (e) {
+            console.error("Failed to prepare group settings:", e);
+        }
+    };
+
+    const handleSaveSecurityPaymentSettings = async () => {
+        try {
+            setSavingSecuritySettings(true);
+            const current = settings || await getSettings();
+            const next = { ...current, ...securitySettingsDraft };
+            await saveSettings(next);
+            setSettings(next);
+            setShowDriverPaymentSettingsModal(false);
+            alert('تنظیمات گروه‌های ارسال فیش واریزی با موفقیت ذخیره شد.');
+        } catch (e) {
+            console.error(e);
+            alert('خطا در ذخیره تنظیمات');
+        } finally {
+            setSavingSecuritySettings(false);
         }
     };
 
@@ -3440,33 +3482,43 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 </h3>
                                 <p className="text-xs text-gray-500 mt-1">مدیریت، تایید و ارسال اسناد واریزی رانندگان حمل کالا به گروه‌های گفتگو</p>
                             </div>
-                            <button 
-                                onClick={() => {
-                                    setDriverPaymentForm({
-                                        id: generateUUID(),
-                                        date: getIsoSelectedDate(),
-                                        driverName: '',
-                                        driverPhone: '',
-                                        plateNumber: '',
-                                        amount: '',
-                                        paymentType: 'کارت به کارت',
-                                        origin: '',
-                                        destination: '',
-                                        goodsName: '',
-                                        quantity: '',
-                                        permitProvider: '',
-                                        registrant: currentUser.fullName,
-                                        description: '',
-                                        attachments: []
-                                    });
-                                    setDriverPaymentEditingId(null);
-                                    setShowDriverPaymentForm(true);
-                                }}
-                                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow transition-all active:scale-95"
-                            >
-                                <Plus size={16}/>
-                                <span>ثبت فرم واریزی جدید</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={handleOpenSecurityGroupSettings}
+                                    className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 border border-gray-200 dark:border-gray-600 shadow-xs"
+                                    title="تنظیم گروه گفتگوی داخلی و ربات‌های تلگرام، بله، واتساپ برای دریافت فیش‌ها"
+                                >
+                                    <Settings size={15} className="text-purple-600 dark:text-purple-400" />
+                                    <span>تنظیم گروه‌های ارسال</span>
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        setDriverPaymentForm({
+                                            id: generateUUID(),
+                                            date: getIsoSelectedDate(),
+                                            driverName: '',
+                                            driverPhone: '',
+                                            plateNumber: '',
+                                            amount: '',
+                                            paymentType: 'کارت به کارت',
+                                            origin: '',
+                                            destination: '',
+                                            goodsName: '',
+                                            quantity: '',
+                                            permitProvider: '',
+                                            registrant: currentUser.fullName,
+                                            description: '',
+                                            attachments: []
+                                        });
+                                        setDriverPaymentEditingId(null);
+                                        setShowDriverPaymentForm(true);
+                                    }}
+                                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm hover:shadow transition-all active:scale-95"
+                                >
+                                    <Plus size={16}/>
+                                    <span>ثبت فرم واریزی جدید</span>
+                                </button>
+                            </div>
                         </div>
 
                         {/* Search and Filter */}
@@ -3607,6 +3659,168 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                     </div>
                 )}
             </div>
+
+            {/* DRIVER PAYMENT GROUP SETTINGS MODAL */}
+            {showDriverPaymentSettingsModal && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4" dir="rtl">
+                    <div className="bg-white dark:bg-gray-900 w-full max-w-xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-fade-in flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="p-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Settings size={20} />
+                                <h3 className="font-black text-sm">تنظیم گروه‌های ارسال فیش واریزی رانندگان</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowDriverPaymentSettingsModal(false)}
+                                className="p-1 text-white/80 hover:text-white rounded-lg hover:bg-white/10"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-5 space-y-4 overflow-y-auto text-xs">
+                            {/* Auto send toggle */}
+                            <label className="flex items-center gap-2 cursor-pointer bg-purple-50 dark:bg-purple-950/40 p-3 rounded-xl border border-purple-200 dark:border-purple-800">
+                                <input
+                                    type="checkbox"
+                                    checked={securitySettingsDraft.botDriverPaymentAutoSendEnabled !== false}
+                                    onChange={(e) =>
+                                        setSecuritySettingsDraft({
+                                            ...securitySettingsDraft,
+                                            botDriverPaymentAutoSendEnabled: e.target.checked,
+                                        })
+                                    }
+                                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                                />
+                                <span className="font-bold text-purple-950 dark:text-purple-200">
+                                    ارسال خودکار به گروه‌ها و بات‌ها هنگام ثبت یا ویرایش فرم واریزی
+                                </span>
+                            </label>
+
+                            {/* Internal Chat Group */}
+                            <div className="space-y-2 p-3.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-200/60 dark:border-blue-800/40">
+                                <label className="font-bold text-blue-950 dark:text-blue-200 block">
+                                    💬 گروه گفتگوی داخلی سیستم (چت سازمانی):
+                                </label>
+                                <select
+                                    value={securitySettingsDraft.securityDriverPaymentInternalGroupId || ""}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const sel = chatGroupsList.find((g) => g.id === val);
+                                        setSecuritySettingsDraft({
+                                            ...securitySettingsDraft,
+                                            securityDriverPaymentInternalGroupId: val,
+                                            securityDriverPaymentInternalGroupName: sel ? sel.name : "",
+                                        });
+                                    }}
+                                    className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-lg p-2.5 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-sans focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">-- پیش‌فرض خودکار (گروه انتظامات / نگهبانی / مالی) --</option>
+                                    {chatGroupsList.map((g) => (
+                                        <option key={g.id} value={g.id}>
+                                            👥 {g.name} {g.members?.length ? `(${g.members.length} عضو)` : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="mt-2">
+                                    <label className="text-[11px] text-gray-500 block mb-1">یا شناسه دستی گروه:</label>
+                                    <input
+                                        type="text"
+                                        value={securitySettingsDraft.securityDriverPaymentInternalGroupId || ""}
+                                        onChange={(e) =>
+                                            setSecuritySettingsDraft({
+                                                ...securitySettingsDraft,
+                                                securityDriverPaymentInternalGroupId: e.target.value,
+                                            })
+                                        }
+                                        placeholder="group-..."
+                                        className="w-full text-xs border border-gray-300 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-800 font-mono dir-ltr"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* External Messenger Groups */}
+                            <div className="space-y-3">
+                                <h4 className="font-bold text-gray-700 dark:text-gray-300">
+                                    📱 شناسه‌های گروه‌های پیام‌رسان‌های بیرونی:
+                                </h4>
+                                <div>
+                                    <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 block mb-1">
+                                        گروه تلگرام واریزی رانندگان:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={securitySettingsDraft.botDriverPaymentGroupIdTele || ""}
+                                        onChange={(e) =>
+                                            setSecuritySettingsDraft({
+                                                ...securitySettingsDraft,
+                                                botDriverPaymentGroupIdTele: e.target.value,
+                                            })
+                                        }
+                                        placeholder="-100... یا @group"
+                                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 block mb-1">
+                                        گروه بله واریزی رانندگان:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={securitySettingsDraft.botDriverPaymentGroupIdBale || ""}
+                                        onChange={(e) =>
+                                            setSecuritySettingsDraft({
+                                                ...securitySettingsDraft,
+                                                botDriverPaymentGroupIdBale: e.target.value,
+                                            })
+                                        }
+                                        placeholder="شناسه گروه بله"
+                                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 block mb-1">
+                                        گروه واتساپ واریزی رانندگان:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={securitySettingsDraft.botDriverPaymentGroupIdWhatsApp || ""}
+                                        onChange={(e) =>
+                                            setSecuritySettingsDraft({
+                                                ...securitySettingsDraft,
+                                                botDriverPaymentGroupIdWhatsApp: e.target.value,
+                                            })
+                                        }
+                                        placeholder="120363...@g.us"
+                                        className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs dir-ltr font-mono bg-white dark:bg-gray-800"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowDriverPaymentSettingsModal(false)}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                            >
+                                انصراف
+                            </button>
+                            <button
+                                type="button"
+                                disabled={savingSecuritySettings}
+                                onClick={handleSaveSecurityPaymentSettings}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+                            >
+                                {savingSecuritySettings ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                <span>ذخیره تنظیمات</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Subtab Back Trigger */}
             {activeTab !== 'logs' && (

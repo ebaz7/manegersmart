@@ -424,6 +424,8 @@ export interface SystemSettings {
   botDriverPaymentGroupIdBale?: string;
   botDriverPaymentGroupIdWhatsApp?: string;
   botDriverPaymentAutoSendEnabled?: boolean;
+  securityDriverPaymentInternalGroupId?: string;
+  securityDriverPaymentInternalGroupName?: string;
   botForceJoinChannels?: { name: string; link: string; id: string; platform?: 'telegram' | 'bale' | 'all' }[];
   botForceJoinEnabled?: boolean;
   botStoreLinks?: { title: string; url: string }[];
@@ -990,6 +992,7 @@ export interface TradeStageData {
     allocationDate?: string;
     allocationCode?: string;
     allocationExpiry?: string;
+    payments?: any[];
 }
 
 export interface CurrencyDelivery {

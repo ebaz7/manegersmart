@@ -1188,6 +1188,7 @@ export interface GreenLeafGuarantee {
     cashAmount?: number;
     cashBank?: string;
     cashDate?: string;
+    dueDate?: string;
     part?: string;
     guaranteeBank?: string;
     guaranteeType?: 'cheque' | 'credit';

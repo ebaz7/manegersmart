@@ -1781,9 +1781,15 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isDropTarget={dragOverWidgetId === 'date_card'}
           >
             <div 
-                onClick={() => setShowGoogleWidget(prev => !prev)}
+                onClick={() => {
+                  if (!widgetsVisibility.google_widget) {
+                    toggleWidgetVisibility('google_widget');
+                  }
+                  const el = document.getElementById('google_widget');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
                 className="glass-panel rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm flex items-center justify-between gap-4 w-full h-full relative overflow-hidden cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all active:scale-[0.99]"
-                title="کلیک برای نمایش/پنهان‌سازی ویجت تقویم و کارهای گوگل"
+                title="کلیک برای مشاهده تقویم و رویدادهای گوگل"
             >
                 <div className="absolute top-0 right-0 p-1 opacity-10 group-hover:opacity-20 transition-opacity"><CalendarIcon size={40}/></div>
                 <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative z-10 group-hover:scale-105 transition-transform">
@@ -1793,7 +1799,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                     <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center justify-between gap-1">
                         <span>{shamsiDate.weekday}</span>
                         <span className="flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'} ${showGoogleWidget ? 'animate-pulse' : ''}`} title={currentUser?.googleLinkedEmail ? `متصل به: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
+                            <span className={`w-2 h-2 rounded-full ${currentUser?.googleLinkedEmail ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`} title={currentUser?.googleLinkedEmail ? `متصل به گوگل: ${currentUser.googleLinkedEmail}` : 'حساب گوگل متصل نیست'}></span>
                         </span>
                     </div>
                     <div className="flex items-baseline gap-1">
@@ -1802,8 +1808,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                     </div>
                     <div className="flex items-center justify-between text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-1">
                         <span>{shamsiDate.year} شمسی</span>
-                        <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                            {showGoogleWidget ? 'ویجت باز' : 'مشاهده رویدادها'}
+                        <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-medium">
+                            {widgetsVisibility.google_widget ? 'تقویم گوگل فعال' : 'مشاهده تقویم گوگل'}
                         </span>
                     </div>
                 </div>
@@ -2012,7 +2018,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
         )}
 
         {/* GOOGLE WORKSPACE WIDGET (CALENDAR & TASKS) */}
-        {widgetsVisibility.google_widget && showGoogleWidget && (
+        {widgetsVisibility.google_widget && (
           <ResizableWidget
             id="google_widget"
             title="تقویم و وظایف گوگل"
@@ -2038,7 +2044,11 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
             isDragging={draggedWidgetId === 'google_widget'}
             isDropTarget={dragOverWidgetId === 'google_widget'}
           >
-            <GoogleWorkspaceWidget currentUser={currentUser} />
+            <GoogleWorkspaceWidget 
+              currentUser={currentUser} 
+              onToggleDateCard={() => toggleWidgetVisibility('date_card')} 
+              isDateCardVisible={widgetsVisibility.date_card} 
+            />
           </ResizableWidget>
         )}
 

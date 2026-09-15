@@ -26,6 +26,9 @@ import { FileViewerModal } from './FileViewerModal';
 import { SendToChatModal } from './SendToChatModal';
 import { TradeDatePicker } from './TradeDatePicker';
 import { matchesTradeRecord, getTradeRecordMatchHighlights, normalizeSearchText } from '../utils/tradeSearch';
+import { extractAllClearancePayments, prepareRecordWithClearancePayments, getStageRecordedClearanceCost } from '../utils/tradeClearanceHelper';
+import GuaranteeAlertBanner from './trade/GuaranteeAlertBanner';
+import { checkAndNotifyGuaranteeDueDates, getGuaranteeDueStatus } from '../utils/guaranteeAlertUtils';
 
 interface TradeModuleProps {
     currentUser: User;
@@ -112,7 +115,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
     const [greenLeafForm, setGreenLeafForm] = useState<GreenLeafData>({ duties: [], guarantees: [], taxes: [], roadTolls: [] });
     const [newCustomsDuty, setNewCustomsDuty] = useState<Partial<GreenLeafCustomsDuty>>({ cottageNumber: '', part: '', amount: 0, paymentMethod: 'Bank', bank: '', date: '' });
-    const [newGuaranteeDetails, setNewGuaranteeDetails] = useState<Partial<GreenLeafGuarantee>>({ guaranteeNumber: '', sepamNumber: '', guaranteeBank: '', chequeNumber: '', chequeBank: '', chequeDate: '', cashAmount: 0, dutyCashAmount: 0, cashBank: '', cashDate: '', chequeAmount: 0 });
+    const [newGuaranteeDetails, setNewGuaranteeDetails] = useState<Partial<GreenLeafGuarantee>>({ guaranteeNumber: '', sepamNumber: '', guaranteeBank: '', chequeNumber: '', chequeBank: '', chequeDate: '', cashAmount: 0, dutyCashAmount: 0, cashBank: '', cashDate: '', chequeAmount: 0, dueDate: '' });
     const [selectedDutyForGuarantee, setSelectedDutyForGuarantee] = useState<string>('');
     const [newTax, setNewTax] = useState<Partial<GreenLeafTax>>({ part: '', amount: 0, bank: '', date: '' });
     const [newRoadToll, setNewRoadToll] = useState<Partial<GreenLeafRoadToll>>({ part: '', amount: 0, bank: '', date: '' });
@@ -436,62 +439,10 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 payments: isData.payments || []
             });
 
-            // Comprehensive extraction of agent payments from any possible structure (MERGED to prevent hiding old rows)
-            let extractedAgentPayments: AgentPayment[] = [];
-            const anyRec = selectedRecord as any;
-            
-            const seenSignatures = new Set<string>();
-            
-            const addPayments = (payments: any[]) => {
-                if (Array.isArray(payments)) {
-                    payments.forEach((p, idx) => {
-                        if (p) {
-                            const amt = p.amount !== undefined ? deformatNumberString(String(p.amount)) : (p.cost !== undefined ? deformatNumberString(String(p.cost)) : 0);
-                            const name = p.agentName || p.name || p.description || 'نامشخص';
-                            const signature = `${p.id || ''}-${amt}-${name}-${p.date || p.paymentDate || ''}`;
-                            
-                            if (seenSignatures.has(signature)) {
-                                return;
-                            }
-                            seenSignatures.add(signature);
-                            
-                            // Handle legacy structures which might use 'cost' instead of 'amount' or 'name' instead of 'agentName'
-                            const pId = p.id || p._id || `legacy-${idx}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-                            extractedAgentPayments.push({
-                                id: pId,
-                                agentName: name,
-                                amount: amt,
-                                bank: p.bank || '',
-                                date: p.date || p.paymentDate || '',
-                                part: p.part || '',
-                                description: p.description || ''
-                            });
-                        }
-                    });
-                }
-            };
-
-            if (selectedRecord.agentData && Array.isArray(selectedRecord.agentData.payments)) {
-                addPayments(selectedRecord.agentData.payments);
-            }
-            if (Array.isArray(selectedRecord.agentData)) {
-                addPayments(selectedRecord.agentData);
-            }
-            if (Array.isArray(anyRec.agentPayments)) {
-                addPayments(anyRec.agentPayments);
-            }
-            if (Array.isArray(anyRec.agentFees)) {
-                addPayments(anyRec.agentFees);
-            }
-            if (Array.isArray(anyRec.clearanceAgentPayments)) {
-                addPayments(anyRec.clearanceAgentPayments);
-            }
-            if (selectedRecord.stages?.[TradeStage.AGENT_FEES] && Array.isArray((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments)) {
-                addPayments((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments);
-            }
-
+            // Comprehensive extraction of agent payments from all sources, snapshots, and stage reconciliation
+            const clearanceExtraction = extractAllClearancePayments(selectedRecord, records);
             setAgentForm({
-                payments: extractedAgentPayments
+                payments: clearanceExtraction.payments
             });
 
             const curData = (selectedRecord.currencyPurchaseData || {}) as CurrencyPurchaseData;
@@ -569,6 +520,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 return changed ? { ...r, registrationDate: regDate, registrationExpiry: expDate } : r;
             });
             setRecords(sanitizedList); 
+            checkAndNotifyGuaranteeDueDates(sanitizedList, currentUser);
         } catch (e) {
             console.error("Error loading trade records", e);
             setRecords([]);
@@ -1344,7 +1296,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             cashAmount: g.cashAmount,
             cashBank: g.cashBank,
             cashDate: g.cashDate,
-            chequeAmount: g.chequeAmount
+            chequeAmount: g.chequeAmount,
+            dueDate: g.dueDate || g.chequeDate || g.cashDate || ''
         });
     };
     const handleCancelEditGuarantee = () => {
@@ -1363,7 +1316,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             cashAmount: 0, 
             cashBank: '', 
             cashDate: '', 
-            chequeAmount: 0 
+            chequeAmount: 0,
+            dueDate: ''
         });
     };
     const handleAddGuarantee = async () => { 
@@ -1391,6 +1345,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 cashAmount: rawCashAmt,
                 cashBank: newGuaranteeDetails.cashBank || '',
                 cashDate: newGuaranteeDetails.cashDate || '',
+                dueDate: newGuaranteeDetails.dueDate || newGuaranteeDetails.chequeDate || newGuaranteeDetails.cashDate || '',
                 part: duty?.part
             } : g);
         } else {
@@ -1411,6 +1366,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 cashAmount: rawCashAmt, 
                 cashBank: newGuaranteeDetails.cashBank || '', 
                 cashDate: newGuaranteeDetails.cashDate || '', 
+                dueDate: newGuaranteeDetails.dueDate || newGuaranteeDetails.chequeDate || newGuaranteeDetails.cashDate || '',
                 part: duty?.part 
             }; 
             updatedGuarantees.push(guarantee);
@@ -1588,29 +1544,71 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             }; 
             updatedPayments.push(payment);
         }
-        const totalPayments = updatedPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
         const updatedData = { ...agentForm, payments: updatedPayments }; 
         setAgentForm(updatedData); 
         setEditingAgentPaymentId(null);
         setNewAgentPayment({ agentName: '', amount: 0, bank: '', date: '', part: '', description: '' }); 
-        const updatedRecord = { ...selectedRecord, agentData: updatedData }; 
-        if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
-        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = totalPayments; 
-        updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0; 
+        const updatedRecord = prepareRecordWithClearancePayments(selectedRecord, updatedPayments, currentUser.fullName);
         await persistRecordUpdate(updatedRecord); 
     };
     const handleDeleteAgentPayment = async (id: string) => { 
         if (!selectedRecord) return; 
         if (editingAgentPaymentId === id) handleCancelEditAgentPayment();
         const updatedPayments = (agentForm.payments || []).filter(p => p.id !== id); 
-        const totalPayments = updatedPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
         const updatedData = { ...agentForm, payments: updatedPayments }; 
         setAgentForm(updatedData); 
-        const updatedRecord = { ...selectedRecord, agentData: updatedData }; 
-        if (!updatedRecord.stages[TradeStage.AGENT_FEES]) updatedRecord.stages[TradeStage.AGENT_FEES] = getStageData(updatedRecord, TradeStage.AGENT_FEES); 
-        updatedRecord.stages[TradeStage.AGENT_FEES].costRial = totalPayments; 
-        updatedRecord.stages[TradeStage.AGENT_FEES].isCompleted = updatedPayments.length > 0;
+        const updatedRecord = prepareRecordWithClearancePayments(selectedRecord, updatedPayments, currentUser.fullName);
         await persistRecordUpdate(updatedRecord); 
+    };
+
+    const handleRestoreClearanceBalance = async () => {
+        if (!selectedRecord) return;
+        const currentSum = (agentForm.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+        const stageCost = getStageRecordedClearanceCost(selectedRecord);
+        const diff = stageCost - currentSum;
+        if (diff <= 0) {
+            alert('مجموع ردیف‌های جدول در حال حاضر برابر یا بیشتر از مبلغ کل ثبت‌شده در پرونده است.');
+            return;
+        }
+        const newBalancePayment: AgentPayment = {
+            id: generateUUID(),
+            agentName: 'هزینه‌های قبلی و اولیه ترخیص (ثبت‌شده در پرونده)',
+            amount: diff,
+            bank: '',
+            date: selectedRecord.startDate || '',
+            part: 'تسویه قبلی',
+            description: 'مابه‌التفاوت هزینه‌های قبلی ثبت‌شده در پرونده و محاسبه نهایی (جهت تطابق کامل با محاسبه نهایی)'
+        };
+        const updatedPayments = [...(agentForm.payments || []), newBalancePayment];
+        setAgentForm({ payments: updatedPayments });
+        const updatedRecord = prepareRecordWithClearancePayments(selectedRecord, updatedPayments, currentUser.fullName);
+        await persistRecordUpdate(updatedRecord);
+    };
+
+    const handleDeepScanClearanceHistory = async () => {
+        if (!selectedRecord) return;
+        const scan = extractAllClearancePayments(selectedRecord, records);
+        if (scan.payments.length > (agentForm.payments?.length || 0)) {
+            setAgentForm({ payments: scan.payments });
+            const updatedRecord = prepareRecordWithClearancePayments(selectedRecord, scan.payments, currentUser.fullName);
+            await persistRecordUpdate(updatedRecord);
+            alert(`تعداد ${scan.payments.length - (agentForm.payments?.length || 0)} ردیف هزینه ترخیص از سوابق، پروفرم‌های قبلی و بایگانی پرونده بازیابی شد.`);
+        } else {
+            const currentSum = (agentForm.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+            if (scan.stageRecordedCost > currentSum) {
+                await handleRestoreClearanceBalance();
+            } else {
+                alert('تمام ردیف‌های ترخیص پرونده و سوابق در حال حاضر به صورت کامل بارگذاری شده‌اند.');
+            }
+        }
+    };
+
+    const handleSyncStageCostWithRows = async () => {
+        if (!selectedRecord) return;
+        const currentSum = (agentForm.payments || []).reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+        const updatedRecord = prepareRecordWithClearancePayments(selectedRecord, agentForm.payments || [], currentUser.fullName);
+        await persistRecordUpdate(updatedRecord);
+        alert(`مبلغ مرحله هزینه‌های ترخیص در محاسبه نهایی با مجموع ردیف‌های فعلی (${formatCurrency(currentSum)} ریال) همگام‌سازی شد.`);
     };
 
     const handleOpenEditAgentStage = () => {
@@ -2245,6 +2243,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     number: g.chequeNumber,
                     bank: g.bank,
                     amount: g.amount,
+                    dueDate: g.dueDate || '',
                     isDelivered: g.isDelivered,
                     toggleFunc: () => handleToggleCurrencyGuaranteeDelivery(idx)
                 });
@@ -2258,6 +2257,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     number: g.guaranteeNumber + (g.sepamNumber ? ` / سپام: ${g.sepamNumber}` : '') + (g.guaranteeType === 'credit' ? ' (حد اعتبار)' : (g.chequeNumber ? ` / چک: ${g.chequeNumber}` : '')),
                     bank: g.guaranteeBank || (g.guaranteeType === 'credit' ? 'حد اعتبار بانکی' : (g.chequeBank || 'مشخص‌نشده')),
                     amount: g.guaranteeAmount || g.chequeAmount || 0,
+                    dueDate: g.dueDate || g.chequeDate || g.cashDate || '',
                     isDelivered: g.isDelivered,
                     toggleFunc: () => handleToggleGuaranteeDelivery(g.id)
                 });
@@ -4500,13 +4500,27 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                         </div>
                                     </div>
 
-                                    {/* Cheque specific details (hidden if type is credit) */}
-                                    {(newGuaranteeDetails.guaranteeType || 'cheque') === 'cheque' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-white p-3 rounded border border-orange-200">
-                                            <div className="space-y-1"><label className="text-xs font-bold text-gray-600">شماره چک تضمین</label><input className="w-full border rounded p-1.5 text-xs dir-ltr" value={newGuaranteeDetails.chequeNumber || ''} onChange={e => setNewGuaranteeDetails({...newGuaranteeDetails, chequeNumber: e.target.value})} placeholder="شماره چک..." /></div>
-                                            <div className="space-y-1"><label className="text-xs font-bold text-gray-600">بانک صادرکننده چک</label><select className="w-full border rounded p-1.5 text-xs glass-panel" value={newGuaranteeDetails.chequeBank || ''} onChange={e => setNewGuaranteeDetails({...newGuaranteeDetails, chequeBank: e.target.value})}><option value="">انتخاب بانک</option>{companySpecificBanks.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
+                                    {/* Cheque specific details (hidden if type is credit) + Due Date */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white dark:bg-gray-800/80 p-3 rounded-xl border border-orange-200 dark:border-orange-900/40">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-orange-900 dark:text-orange-300 flex items-center gap-1">
+                                                <span>📅 تاریخ سررسید ضمانت‌نامه *</span>
+                                                <span className="text-[10px] text-amber-600 font-normal">(هشدار تامین موجودی ۲-۳ روز قبل)</span>
+                                            </label>
+                                            <TradeDatePicker
+                                                value={newGuaranteeDetails.dueDate || ''}
+                                                onChange={val => setNewGuaranteeDetails({...newGuaranteeDetails, dueDate: val})}
+                                                placeholder="انتخاب سررسید..."
+                                                className="w-full text-xs"
+                                            />
                                         </div>
-                                    )}
+                                        {(newGuaranteeDetails.guaranteeType || 'cheque') === 'cheque' && (
+                                            <>
+                                                <div className="space-y-1"><label className="text-xs font-bold text-gray-600 dark:text-gray-300">شماره چک تضمین</label><input className="w-full border border-gray-300 dark:border-gray-700 rounded p-1.5 text-xs dir-ltr bg-white dark:bg-gray-800" value={newGuaranteeDetails.chequeNumber || ''} onChange={e => setNewGuaranteeDetails({...newGuaranteeDetails, chequeNumber: e.target.value})} placeholder="شماره چک..." /></div>
+                                                <div className="space-y-1"><label className="text-xs font-bold text-gray-600 dark:text-gray-300">بانک صادرکننده چک</label><select className="w-full border border-gray-300 dark:border-gray-700 rounded p-1.5 text-xs glass-panel bg-white dark:bg-gray-800" value={newGuaranteeDetails.chequeBank || ''} onChange={e => setNewGuaranteeDetails({...newGuaranteeDetails, chequeBank: e.target.value})}><option value="">انتخاب بانک</option>{companySpecificBanks.map(b => <option key={b} value={b}>{b}</option>)}</select></div>
+                                            </>
+                                        )}
+                                    </div>
 
                                     {/* Real-time Validation Warning Indicator */}
                                     {selectedDutyForGuarantee && (() => {
@@ -4526,34 +4540,43 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     <div className="flex gap-2"><button type="button" onClick={handleAddGuarantee} className={`flex-1 ${editingGuaranteeId ? "bg-amber-600 hover:bg-amber-700" : "bg-orange-600 hover:bg-orange-700"} text-white p-2 rounded-lg font-bold flex items-center justify-center gap-1 shadow-sm transition-all`}>{editingGuaranteeId ? <><Save size={16}/><span>بروزرسانی ضمانت‌نامه</span></> : "ثبت ضمانت‌نامه"}</button>{editingGuaranteeId && (<button type="button" onClick={handleCancelEditGuarantee} className="bg-gray-200 text-gray-700 px-4 p-2 rounded-lg hover:bg-gray-300 text-xs font-bold transition-all" title="انصراف">انصراف</button>)}</div>
                                 </div>
                                 <div className="space-y-2">
-                                    {greenLeafForm.guarantees?.map(g => (
-                                        <div key={g.id} className="border p-3 rounded-lg bg-gray-50 flex justify-between items-center text-sm">
-                                            <div className="space-y-1">
-                                                <div className="font-bold text-gray-800 flex flex-wrap gap-x-4 items-center gap-y-1">
-                                                    <span>شماره ضمانت‌نامه: <span className="font-mono bg-orange-100 text-orange-800 px-2 py-0.5 rounded border border-orange-200">{g.guaranteeNumber}</span></span>
-                                                    {g.sepamNumber && <span className="text-xs text-blue-600 font-sans font-medium">(شناسه سپام: <span className="font-mono bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{g.sepamNumber}</span>)</span>}
-                                                    {g.guaranteeBank && <span className="text-xs text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 font-bold">بانک صادرکننده: {g.guaranteeBank}</span>}
+                                    {greenLeafForm.guarantees?.map(g => {
+                                        const effectiveDue = g.dueDate || g.chequeDate || g.cashDate || '';
+                                        const dueStatus = getGuaranteeDueStatus(effectiveDue, g.isDelivered);
+                                        return (
+                                        <div key={g.id} className={`border p-3.5 rounded-xl transition-all flex justify-between items-center text-sm ${dueStatus.bgClass} ${dueStatus.needsFundAlert && !g.isDelivered ? 'border-amber-300 dark:border-amber-700/60 shadow-sm' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40'}`}>
+                                            <div className="space-y-1.5">
+                                                <div className="font-bold text-gray-800 dark:text-gray-100 flex flex-wrap gap-x-3 items-center gap-y-1">
+                                                    <span>شماره ضمانت‌نامه: <span className="font-mono bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800">{g.guaranteeNumber}</span></span>
+                                                    {g.sepamNumber && <span className="text-xs text-blue-600 dark:text-blue-400 font-sans font-medium">(شناسه سپام: <span className="font-mono bg-blue-50 dark:bg-blue-950/50 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">{g.sepamNumber}</span>)</span>}
+                                                    {g.guaranteeBank && <span className="text-xs text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800 font-bold">بانک صادرکننده: {g.guaranteeBank}</span>}
+                                                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${dueStatus.badgeClass}`}>
+                                                        {dueStatus.statusLabel}
+                                                    </span>
                                                 </div>
-                                                <div className="text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
+                                                <div className="text-xs text-gray-600 dark:text-gray-400 flex flex-wrap gap-x-3 gap-y-1">
                                                     <span>نوع: {g.guaranteeType === 'credit' ? '💡 حد اعتبار بانکی' : '🎫 چک ضمانت‌نامه'}</span>
-                                                    {g.guaranteeAmount ? <span>مبلغ ضمانت: <span className="font-mono font-bold text-orange-700">{formatCurrency(g.guaranteeAmount)}</span></span> : null}
-                                                    {g.dutyCashAmount ? <span>نقدی گمرک: <span className="font-mono font-bold text-purple-700">{formatCurrency(g.dutyCashAmount)}</span></span> : null}
-                                                    {g.cashAmount && g.cashAmount > 0 ? <span>سپرده بانک: <span className="font-mono font-bold text-green-700">{formatCurrency(g.cashAmount)}</span></span> : null}
+                                                    {effectiveDue && <span>سررسید: <strong className="font-mono text-gray-800 dark:text-gray-200 dir-ltr">{effectiveDue}</strong></span>}
+                                                    {g.guaranteeAmount ? <span>مبلغ ضمانت: <span className="font-mono font-bold text-orange-700 dark:text-orange-400">{formatCurrency(g.guaranteeAmount)}</span></span> : null}
+                                                    {g.dutyCashAmount ? <span>نقدی گمرک: <span className="font-mono font-bold text-purple-700 dark:text-purple-400">{formatCurrency(g.dutyCashAmount)}</span></span> : null}
+                                                    {g.cashAmount && g.cashAmount > 0 ? <span>سپرده بانک: <span className="font-mono font-bold text-green-700 dark:text-green-400">{formatCurrency(g.cashAmount)}</span></span> : null}
                                                 </div>
                                                 {g.guaranteeType !== 'credit' && g.chequeNumber && (
-                                                    <div className="text-xs text-gray-500">شماره چک: {g.chequeNumber} {g.chequeBank ? `(${g.chequeBank})` : ''}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">شماره چک: {g.chequeNumber} {g.chequeBank ? `(${g.chequeBank})` : ''}</div>
                                                 )}
                                             </div>
-                                            <div className="flex gap-2 items-center">
-                                                <button type="button" onClick={() => handleToggleGuaranteeDelivery(g.id)} className={`text-xs px-2 py-1 rounded font-bold transition-colors ${g.isDelivered ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                    {g.isDelivered ? 'عودت شد' : 'نزد سازمان'}
+                                            <div className="flex gap-2 items-center shrink-0">
+                                                <button type="button" onClick={() => handleToggleGuaranteeDelivery(g.id)} className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-colors ${g.isDelivered ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}>
+                                                    {g.isDelivered ? '✓ عودت شد' : '⏳ نزد سازمان'}
                                                 </button>
-                                                <button type="button" onClick={()=>handleEditGuarantee(g)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش ضمانت‌نامه"><Edit size={16}/></button><button type="button" onClick={()=>handleDeleteGuarantee(g.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف">
+                                                <button type="button" onClick={()=>handleEditGuarantee(g)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded" title="ویرایش ضمانت‌نامه"><Edit size={16}/></button>
+                                                <button type="button" onClick={()=>handleDeleteGuarantee(g.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 dark:hover:bg-red-950/30 rounded" title="حذف">
                                                     <Trash2 size={16}/>
                                                 </button>
                                             </div>
                                         </div>
-                                    ))}
+                                    );
+                                    })}
                                 </div>
                             </div>
 
@@ -4630,31 +4653,129 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
                     {activeTab === 'agent_fees' && (() => {
                         const currentPaymentsTotal = agentForm.payments?.reduce((acc, p) => acc + (Number(p.amount) || 0), 0) || 0;
-                        const stageRegisteredCost = selectedRecord?.stages?.[TradeStage.AGENT_FEES]?.costRial || 0;
+                        const stageRegisteredCost = getStageRecordedClearanceCost(selectedRecord);
+                        const costDiff = stageRegisteredCost - currentPaymentsTotal;
 
                         return (
                             <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
                                 {/* Summary Overview Cards */}
-                                <div className="grid grid-cols-1 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="glass-panel p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/60 flex items-center justify-between">
                                         <div className="space-y-1">
-                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">جمع کل ردیف‌های پرداخت تفکیک‌شده:</span>
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">جمع کل ردیف‌های جدول هزینه‌های ترخیص:</span>
                                             <div className="flex items-baseline gap-2">
-                                                <span className="text-lg font-black font-mono text-gray-900 dark:text-gray-100">{formatCurrency(currentPaymentsTotal)}</span>
+                                                <span className="text-lg font-black font-mono text-teal-700 dark:text-teal-400">{formatCurrency(currentPaymentsTotal)}</span>
+                                                <span className="text-xs text-gray-500">ریال</span>
                                             </div>
-                                            <span className="text-[11px] text-gray-500 block">{agentForm.payments?.length || 0} ردیف پرداخت ثبت‌شده در این بخش (این مبلغ در محاسبه نهایی لحاظ می‌شود)</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-mono font-bold text-gray-600 dark:text-gray-400">{formatCurrency(Math.round(currentPaymentsTotal / 10))} تومان</span>
+                                                <span className="text-[11px] text-gray-400">• {agentForm.payments?.length || 0} ردیف ثبت‌شده</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="glass-panel p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/60 flex items-center justify-between">
+                                        <div className="space-y-1">
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">مبلغ ثبت‌شده در پرونده (محاسبه نهایی):</span>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-lg font-black font-mono text-gray-900 dark:text-gray-100">{formatCurrency(stageRegisteredCost)}</span>
+                                                <span className="text-xs text-gray-500">ریال</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-mono font-bold text-gray-600 dark:text-gray-400">{formatCurrency(Math.round(stageRegisteredCost / 10))} تومان</span>
+                                                {costDiff === 0 ? (
+                                                    <span className="text-[11px] bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                        <CheckCircle2 size={11} /> منطبق
+                                                    </span>
+                                                ) : costDiff > 0 ? (
+                                                    <span className="text-[11px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                        <AlertCircle size={11} /> {formatCurrency(Math.round(costDiff / 10))} تومان مابه‌التفاوت
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[11px] bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5 rounded-full font-bold">
+                                                        بروزرسانی جدید
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
+                                {/* Reconcile Alert Banner if Discrepancy Exists */}
+                                {costDiff > 0 && (
+                                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 text-amber-900 dark:text-amber-100">
+                                        <div className="flex items-start gap-3">
+                                            <AlertCircle size={22} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                            <div className="text-xs space-y-1">
+                                                <p className="font-bold text-sm">مابه‌التفاوت هزینه‌های قبلی با جدول تفکیکی:</p>
+                                                <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+                                                    مبلغ ثبت‌شده در پرونده و محاسبه نهایی (<span className="font-bold font-mono">{formatCurrency(stageRegisteredCost)}</span> ریال) بیشتر از ردیف‌های جدول است.
+                                                    مبلغ <span className="font-bold font-mono text-amber-950 dark:text-amber-100">{formatCurrency(costDiff)}</span> ریال ({formatCurrency(Math.round(costDiff / 10))} تومان) به عنوان هزینه‌های قبلی یا کلی ترخیص در سوابق پرونده موجود است.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 shrink-0 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={handleRestoreClearanceBalance}
+                                                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                            >
+                                                <Plus size={15} />
+                                                <span>بازیابی مابه‌التفاوت به جدول</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleDeepScanClearanceHistory}
+                                                className="px-3.5 py-2 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                                            >
+                                                <History size={15} />
+                                                <span>بررسی سوابق و آرشیو</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {costDiff < 0 && (
+                                    <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-700/60 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 text-blue-900 dark:text-blue-100">
+                                        <div className="flex items-start gap-3">
+                                            <Info size={22} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                            <div className="text-xs space-y-1">
+                                                <p className="font-bold text-sm">ردیف‌های جدید ثبت‌شده بیشتر از رقم قبلی پرونده است:</p>
+                                                <p className="text-blue-800 dark:text-blue-300">
+                                                    مجموع ردیف‌ها (<span className="font-bold font-mono">{formatCurrency(currentPaymentsTotal)}</span> ریال) نسبت به ثبت قبلی افزایش یافته است.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleSyncStageCostWithRows}
+                                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0"
+                                        >
+                                            <RefreshCw size={15} />
+                                            <span>همگام‌سازی محاسبه نهایی</span>
+                                        </button>
+                                    </div>
+                                )}
+
                                 <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
                                         <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                                             <UserCheck size={20} className="text-teal-600"/> ردیف‌های هزینه ترخیص
                                         </h3>
-                                        <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full font-mono font-bold">
-                                            تعداد ردیف: {agentForm.payments?.length || 0}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={handleDeepScanClearanceHistory}
+                                                className="text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                title="اسکن و بازیابی ردیف‌ها از سوابق و آرشیو"
+                                            >
+                                                <History size={14} className="text-teal-600" />
+                                                <span>بازیابی از سوابق</span>
+                                            </button>
+                                            <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg font-mono font-bold">
+                                                تعداد ردیف: {agentForm.payments?.length || 0}
+                                            </span>
+                                        </div>
                                     </div>
                                     
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-teal-50/70 dark:bg-teal-950/20 p-4 rounded-xl border border-teal-100 dark:border-teal-900/40">
@@ -4679,20 +4800,32 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-right">
-                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">معادل تومان</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
+                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">معادل تومان</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">عملیات</th></tr></thead>
                                             <tbody>
-                                                {agentForm.payments?.map((p) => (
-                                                    <tr key={p.id} className="border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                                        <td className="p-3 font-bold">{p.agentName}</td>
-                                                        <td className="p-3 font-mono font-bold text-gray-900 dark:text-gray-100">{formatCurrency(p.amount)}</td>
-                                                        <td className="p-3 font-mono text-xs text-gray-500">{formatCurrency(Math.round(p.amount / 10))} تومان</td>
-                                                        <td className="p-3">{p.bank || '---'}</td>
-                                                        <td className="p-3 font-mono text-xs">{p.date || '---'}</td>
-                                                        <td className="p-3">{p.part || '---'}</td>
-                                                        <td className="p-3 text-gray-500 text-xs max-w-xs truncate">{p.description || '---'}</td>
-                                                        <td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={() => handleEditAgentPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={() => handleDeleteAgentPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16}/></button></div></td>
-                                                    </tr>
-                                                ))}
+                                                {agentForm.payments?.map((p) => {
+                                                    const isReconciledBalance = p.id.startsWith('reconciled-clearance-balance-') || (p.agentName && p.agentName.includes('قبلی'));
+                                                    return (
+                                                        <tr key={p.id} className={`border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${isReconciledBalance ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
+                                                            <td className="p-3 font-bold">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span>{p.agentName}</span>
+                                                                    {isReconciledBalance && (
+                                                                        <span className="text-[10px] bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded font-normal">
+                                                                            بازیابی از سوابق پرونده
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-3 font-mono font-bold text-gray-900 dark:text-gray-100">{formatCurrency(p.amount)}</td>
+                                                            <td className="p-3 font-mono text-xs text-gray-500">{formatCurrency(Math.round(p.amount / 10))} تومان</td>
+                                                            <td className="p-3">{p.bank || '---'}</td>
+                                                            <td className="p-3 font-mono text-xs">{p.date || '---'}</td>
+                                                            <td className="p-3">{p.part || '---'}</td>
+                                                            <td className="p-3 text-gray-500 text-xs max-w-xs truncate">{p.description || '---'}</td>
+                                                            <td className="p-3 text-center"><div className="flex justify-center gap-2 items-center"><button type="button" onClick={() => handleEditAgentPayment(p)} className="text-amber-600 hover:text-amber-800 p-1 hover:bg-amber-50 rounded cursor-pointer" title="ویرایش"><Edit size={16}/></button><button type="button" onClick={() => handleDeleteAgentPayment(p.id)} className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded cursor-pointer" title="حذف"><Trash2 size={16}/></button></div></td>
+                                                        </tr>
+                                                    );
+                                                })}
                                                 {(!agentForm.payments || agentForm.payments.length === 0) && (
                                                     <tr>
                                                         <td colSpan={8} className="p-6 text-center text-gray-400 text-sm">
@@ -4863,24 +4996,30 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                     </div>
                                                 ) : (
                                                     <div className="space-y-3">
-                                                        {getAllGuarantees().map((g, i) => (
-                                                            <div key={i} className="p-3.5 bg-gray-50/80 hover:bg-white rounded-xl border border-gray-200/80 hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                        {getAllGuarantees().map((g, i) => {
+                                                            const dueStatus = getGuaranteeDueStatus(g.dueDate, g.isDelivered);
+                                                            return (
+                                                            <div key={i} className={`p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${dueStatus.bgClass} ${dueStatus.needsFundAlert && !g.isDelivered ? 'border-amber-300 dark:border-amber-700 shadow-sm' : 'border-gray-200/80 hover:bg-white bg-gray-50/80'}`}>
                                                                 <div className="space-y-1">
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
                                                                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${g.type === 'ارزی' ? 'bg-purple-100 text-purple-700' : 'bg-cyan-100 text-cyan-700'}`}>
                                                                             {g.type}
                                                                         </span>
-                                                                        <span className="text-xs font-bold text-gray-800 font-mono">
+                                                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-100 font-mono">
                                                                             {g.number}
                                                                         </span>
+                                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${dueStatus.badgeClass}`}>
+                                                                            {dueStatus.statusLabel}
+                                                                        </span>
                                                                     </div>
-                                                                    <div className="text-[11px] text-gray-500 flex items-center gap-2">
-                                                                        <span>بانک: <strong className="text-gray-700 font-medium">{g.bank}</strong></span>
+                                                                    <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-3 flex-wrap">
+                                                                        <span>بانک: <strong className="text-gray-700 dark:text-gray-200 font-medium">{g.bank}</strong></span>
+                                                                        {g.dueDate && <span>سررسید: <strong className="font-mono text-gray-700 dark:text-gray-200 dir-ltr">{g.dueDate}</strong></span>}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200/60">
                                                                     <div className="text-left">
-                                                                        <div className="text-xs font-bold text-gray-900 font-mono dir-ltr">{formatCurrency(g.amount)}</div>
+                                                                        <div className="text-xs font-bold text-gray-900 dark:text-gray-100 font-mono dir-ltr">{formatCurrency(g.amount)}</div>
                                                                         <div className="text-[9px] text-gray-400">ریال</div>
                                                                     </div>
                                                                     <button 
@@ -4892,7 +5031,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                                     </button>
                                                                 </div>
                                                             </div>
-                                                        ))}
+                                                        );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
@@ -5127,6 +5267,20 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     </button>
                 </div>
             </div>
+
+            {/* Guarantee Due Dates Alert Banner */}
+            <GuaranteeAlertBanner 
+                records={records} 
+                currentUser={currentUser} 
+                onNavigateToRecord={(recordId, tab) => {
+                    const target = records.find(r => r.id === recordId);
+                    if (target) {
+                        setSelectedRecord(target);
+                        setViewMode('details');
+                        if (tab) setActiveTab(tab as any);
+                    }
+                }}
+            />
 
             {/* Dashboard Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

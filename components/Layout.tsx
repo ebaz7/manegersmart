@@ -368,7 +368,7 @@ const Layout: React.FC<LayoutProps> = ({
   const [googleError, setGoogleError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (showProfileModal) {
+    const syncGoogleState = () => {
       setGoogleLinkedEmail(currentUser?.googleLinkedEmail || '');
       setGoogleError(null);
       getGoogleAccessToken(currentUser?.id).then(token => {
@@ -376,7 +376,30 @@ const Layout: React.FC<LayoutProps> = ({
           setGoogleLinkedEmail('');
         }
       });
-    }
+    };
+
+    syncGoogleState();
+
+    const handleAuthSync = (e: any) => {
+      if (e?.detail?.action === 'logout') {
+        setGoogleLinkedEmail('');
+      } else {
+        syncGoogleState();
+      }
+    };
+
+    const handleUserUpdate = (e: any) => {
+      if (e?.detail?.googleLinkedEmail !== undefined) {
+        setGoogleLinkedEmail(e.detail.googleLinkedEmail);
+      }
+    };
+
+    window.addEventListener('google-auth-sync', handleAuthSync);
+    window.addEventListener('current-user-updated', handleUserUpdate);
+    return () => {
+      window.removeEventListener('google-auth-sync', handleAuthSync);
+      window.removeEventListener('current-user-updated', handleUserUpdate);
+    };
   }, [showProfileModal, currentUser]);
 
   const handleLinkGoogleAccount = async () => {

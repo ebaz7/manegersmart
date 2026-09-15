@@ -162,6 +162,10 @@ export const storeGoogleTokenForUser = (token: string, userId?: string) => {
   try {
     const key = userId ? `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${userId}` : 'gw_access_token_global';
     localStorage.setItem(key, token);
+    localStorage.setItem('gw_access_token_global', token);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('google-auth-sync', { detail: { token, userId, action: 'login' } }));
+    }
   } catch {}
 };
 
@@ -171,6 +175,9 @@ export const removeGoogleTokenForUser = (userId?: string) => {
     const key = userId ? `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${userId}` : 'gw_access_token_global';
     localStorage.removeItem(key);
     localStorage.removeItem('gw_access_token_global');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('google-auth-sync', { detail: { token: null, userId, action: 'logout' } }));
+    }
   } catch {}
 };
 

@@ -13,6 +13,13 @@ export const saveUser = async (user: User): Promise<User[]> => {
 };
 
 export const updateUser = async (user: User): Promise<User[]> => {
+    const current = getCurrentUser();
+    if (current && String(current.id) === String(user.id)) {
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('current-user-updated', { detail: user }));
+        }
+    }
     return await apiCall<User[]>(`/users/${user.id}`, 'PUT', user);
 };
 

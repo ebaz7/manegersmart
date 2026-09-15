@@ -437,20 +437,32 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             });
 
             // Comprehensive extraction of agent payments from any possible structure (MERGED to prevent hiding old rows)
-            let extractedAgentPaymentsMap = new Map<string, AgentPayment>();
+            let extractedAgentPayments: AgentPayment[] = [];
             const anyRec = selectedRecord as any;
             
-            const addPaymentsToMap = (payments: any[]) => {
+            const seenSignatures = new Set<string>();
+            
+            const addPayments = (payments: any[]) => {
                 if (Array.isArray(payments)) {
-                    payments.forEach(p => {
-                        if (p && p.id) {
-                            // normalize legacy structures if needed
-                            extractedAgentPaymentsMap.set(p.id, {
-                                id: p.id,
-                                agentName: p.agentName || p.description || 'نامشخص',
-                                amount: Number(p.amount) || 0,
+                    payments.forEach((p, idx) => {
+                        if (p) {
+                            const amt = p.amount !== undefined ? deformatNumberString(String(p.amount)) : (p.cost !== undefined ? deformatNumberString(String(p.cost)) : 0);
+                            const name = p.agentName || p.name || p.description || 'نامشخص';
+                            const signature = `${p.id || ''}-${amt}-${name}-${p.date || p.paymentDate || ''}`;
+                            
+                            if (seenSignatures.has(signature)) {
+                                return;
+                            }
+                            seenSignatures.add(signature);
+                            
+                            // Handle legacy structures which might use 'cost' instead of 'amount' or 'name' instead of 'agentName'
+                            const pId = p.id || p._id || `legacy-${idx}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                            extractedAgentPayments.push({
+                                id: pId,
+                                agentName: name,
+                                amount: amt,
                                 bank: p.bank || '',
-                                date: p.date || '',
+                                date: p.date || p.paymentDate || '',
                                 part: p.part || '',
                                 description: p.description || ''
                             });
@@ -460,26 +472,26 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             };
 
             if (selectedRecord.agentData && Array.isArray(selectedRecord.agentData.payments)) {
-                addPaymentsToMap(selectedRecord.agentData.payments);
+                addPayments(selectedRecord.agentData.payments);
             }
             if (Array.isArray(selectedRecord.agentData)) {
-                addPaymentsToMap(selectedRecord.agentData);
+                addPayments(selectedRecord.agentData);
             }
             if (Array.isArray(anyRec.agentPayments)) {
-                addPaymentsToMap(anyRec.agentPayments);
+                addPayments(anyRec.agentPayments);
             }
             if (Array.isArray(anyRec.agentFees)) {
-                addPaymentsToMap(anyRec.agentFees);
+                addPayments(anyRec.agentFees);
             }
             if (Array.isArray(anyRec.clearanceAgentPayments)) {
-                addPaymentsToMap(anyRec.clearanceAgentPayments);
+                addPayments(anyRec.clearanceAgentPayments);
             }
             if (selectedRecord.stages?.[TradeStage.AGENT_FEES] && Array.isArray((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments)) {
-                addPaymentsToMap((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments);
+                addPayments((selectedRecord.stages[TradeStage.AGENT_FEES] as any).payments);
             }
 
             setAgentForm({
-                payments: Array.from(extractedAgentPaymentsMap.values())
+                payments: extractedAgentPayments
             });
 
             const curData = (selectedRecord.currencyPurchaseData || {}) as CurrencyPurchaseData;
@@ -501,6 +513,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 deliveredCurrencyType: curData.deliveredCurrencyType || ''
             });
             
+    useEffect(() => { if(selectedRecord) console.log("SELECTED_RECORD_DUMP_JSON:", JSON.stringify(selectedRecord)); }, [selectedRecord]);
             setCalcExchangeRate(selectedRecord.exchangeRate || 0);
             
             setNewLicenseTx({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' });
@@ -4623,33 +4636,14 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                         return (
                             <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
                                 {/* Summary Overview Cards */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="glass-panel p-4 rounded-2xl border border-teal-200 dark:border-teal-900 bg-teal-50/40 dark:bg-teal-950/20 flex items-center justify-between">
-                                        <div className="space-y-1">
-                                            <span className="text-xs font-bold text-teal-800 dark:text-teal-300">مبلغ کل هزینه ترخیص ثبت‌شده در پرونده:</span>
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-lg font-black font-mono text-teal-900 dark:text-teal-100">{formatCurrency(stageRegisteredCost)}</span>
-                                            </div>
-                                            <span className="text-[11px] text-gray-500 block">مبلغ اعمال‌شده در محاسبه نهایی و قیمت تمام‌شده</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleOpenEditAgentStage}
-                                            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1 shrink-0"
-                                            title="ویرایش کل مرحله"
-                                        >
-                                            <Edit size={14}/>
-                                            <span>ویرایش کل</span>
-                                        </button>
-                                    </div>
-
+                                <div className="grid grid-cols-1 gap-4">
                                     <div className="glass-panel p-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/60 flex items-center justify-between">
                                         <div className="space-y-1">
                                             <span className="text-xs font-bold text-gray-700 dark:text-gray-300">جمع کل ردیف‌های پرداخت تفکیک‌شده:</span>
                                             <div className="flex items-baseline gap-2">
                                                 <span className="text-lg font-black font-mono text-gray-900 dark:text-gray-100">{formatCurrency(currentPaymentsTotal)}</span>
                                             </div>
-                                            <span className="text-[11px] text-gray-500 block">{agentForm.payments?.length || 0} ردیف پرداخت ثبت‌شده در این بخش</span>
+                                            <span className="text-[11px] text-gray-500 block">{agentForm.payments?.length || 0} ردیف پرداخت ثبت‌شده در این بخش (این مبلغ در محاسبه نهایی لحاظ می‌شود)</span>
                                         </div>
                                     </div>
                                 </div>
@@ -4686,12 +4680,13 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-right">
-                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
+                                            <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"><tr><th className="p-3">محل هزینه یا نام هزینه</th><th className="p-3">مبلغ (ریال)</th><th className="p-3">معادل تومان</th><th className="p-3">بانک</th><th className="p-3">تاریخ</th><th className="p-3">پارت</th><th className="p-3">توضیحات</th><th className="p-3">حذف</th></tr></thead>
                                             <tbody>
                                                 {agentForm.payments?.map((p) => (
                                                     <tr key={p.id} className="border-b dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                                         <td className="p-3 font-bold">{p.agentName}</td>
                                                         <td className="p-3 font-mono font-bold text-gray-900 dark:text-gray-100">{formatCurrency(p.amount)}</td>
+                                                        <td className="p-3 font-mono text-xs text-gray-500">{formatCurrency(Math.round(p.amount / 10))} تومان</td>
                                                         <td className="p-3">{p.bank || '---'}</td>
                                                         <td className="p-3 font-mono text-xs">{p.date || '---'}</td>
                                                         <td className="p-3">{p.part || '---'}</td>
@@ -4701,14 +4696,15 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                 ))}
                                                 {(!agentForm.payments || agentForm.payments.length === 0) && (
                                                     <tr>
-                                                        <td colSpan={7} className="p-6 text-center text-gray-400 text-sm">
-                                                            هنوز ردیف تفکیک‌شده‌ای ثبت نشده است. (مبلغ کل هزینه ترخیص پرونده بر اساس رقم صورت کلی {formatCurrency(stageRegisteredCost)} ریال محاسبه می‌شود)
+                                                        <td colSpan={8} className="p-6 text-center text-gray-400 text-sm">
+                                                            هنوز ردیف تفکیک‌شده‌ای ثبت نشده است. (مبلغ کل هزینه ترخیص پرونده بر اساس رقم صورت کلی {formatCurrency(Math.round(stageRegisteredCost / 10))} تومان محاسبه می‌شود)
                                                         </td>
                                                     </tr>
                                                 )}
                                                 <tr className="bg-teal-50 dark:bg-teal-950/40 font-bold border-t-2 border-teal-200 dark:border-teal-800">
                                                     <td className="p-3">جمع کل ردیف‌های ثبت‌شده</td>
                                                     <td className="p-3 font-mono text-teal-700 dark:text-teal-400 text-base">{formatCurrency(currentPaymentsTotal)}</td>
+                                                    <td className="p-3 font-mono text-teal-700 dark:text-teal-400">{formatCurrency(Math.round(currentPaymentsTotal / 10))} تومان</td>
                                                     <td colSpan={5}></td>
                                                 </tr>
                                             </tbody>

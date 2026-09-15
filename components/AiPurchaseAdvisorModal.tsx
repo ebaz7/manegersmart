@@ -26,7 +26,10 @@ import {
     PhoneCall,
     Package,
     Layers,
-    AlertTriangle
+    AlertTriangle,
+    RefreshCw,
+    Trash2,
+    SlidersHorizontal
 } from 'lucide-react';
 import { searchSuppliersWithAi, sendRfqMessage, AiPurchaseSearchResult, SupplierResult } from '../services/purchaseAiService';
 import { PurchaseRequest, PurchaseItem, Part } from '../types';
@@ -107,6 +110,14 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
     const [searchLoading, setSearchLoading] = useState<boolean>(false);
     const [searchResult, setSearchResult] = useState<AiPurchaseSearchResult | null>(null);
     const [searchError, setSearchError] = useState<string | null>(null);
+
+    // Search More & Alternative sourcing state
+    const [searchMoreLoading, setSearchMoreLoading] = useState<boolean>(false);
+    const [searchMoreError, setSearchMoreError] = useState<string | null>(null);
+    const [searchMoreSuccessMsg, setSearchMoreSuccessMsg] = useState<string | null>(null);
+    const [customMoreQuery, setCustomMoreQuery] = useState<string>('');
+    const [removedSupplierNames, setRemovedSupplierNames] = useState<string[]>([]);
+    const [showDirectPortals, setShowDirectPortals] = useState<boolean>(false);
 
     // RFQ and messaging state
     const [rfqMode, setRfqMode] = useState<'single' | 'all'>(itemsList.length > 1 ? 'all' : 'single');
@@ -238,6 +249,117 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
         } finally {
             setSearchLoading(false);
         }
+    };
+
+    // Search More: Search for alternative, additional or deeper supplier results
+    const handleSearchMore = async (overrideQuery?: string) => {
+        if (!searchResult || searchMoreLoading) return;
+        setSearchMoreLoading(true);
+        setSearchMoreError(null);
+        setSearchMoreSuccessMsg(null);
+
+        try {
+            const itemToSearch = itemsList[selectedItemIndex] || itemsList[0];
+            const linkedPart = parts.find(p => 
+                (itemToSearch.partId && p.id === itemToSearch.partId) ||
+                (itemToSearch.itemCode && p.code === itemToSearch.itemCode) ||
+                (p.name && p.name.trim().toLowerCase() === itemToSearch.itemName?.trim().toLowerCase())
+            );
+
+            const combinedSpecs = [
+                itemToSearch.specifications,
+                linkedPart?.dimensions ? `ابعاد در شناسنامه: ${linkedPart.dimensions}` : '',
+                linkedPart?.category ? `گروه کالا: ${linkedPart.category}` : '',
+                linkedPart?.brand ? `برند متداول: ${linkedPart.brand}` : ''
+            ].filter(Boolean).join(' | ');
+
+            const itemPayload = {
+                itemName: itemToSearch.itemName,
+                specifications: combinedSpecs || itemToSearch.specifications || '',
+                itemCode: itemToSearch.itemCode || linkedPart?.code || '',
+                quantity: itemToSearch.quantity || request.quantity || 1,
+                unit: itemToSearch.unit || request.unit || 'عدد',
+                category: request.category || linkedPart?.category || ''
+            };
+
+            // Collect existing supplier names to exclude so AI searches for NEW and DIFFERENT ones
+            const currentSuppliers = searchResult.suppliers || [];
+            const existingNames = Array.from(new Set([
+                ...currentSuppliers.map(s => s.name),
+                ...removedSupplierNames
+            ])).filter(Boolean);
+
+            const queryToUse = overrideQuery || customMoreQuery.trim();
+
+            const result = await searchSuppliersWithAi({
+                item: itemPayload,
+                items: itemsList,
+                additionalNotes: additionalNotes.trim(),
+                excludeSuppliers: existingNames,
+                isDeepSearch: true,
+                customSearchQuery: queryToUse
+            });
+
+            if (result && result.success && result.suppliers && result.suppliers.length > 0) {
+                // Find newly found suppliers that aren't already in currentSuppliers
+                const incomingSuppliers = (result.suppliers || []).filter(newSup => 
+                    !currentSuppliers.some(cur => 
+                        cur.name.trim().toLowerCase() === newSup.name.trim().toLowerCase() ||
+                        (cur.website && newSup.website && cur.website === newSup.website)
+                    ) && !removedSupplierNames.includes(newSup.name)
+                ).map(s => ({
+                    ...s,
+                    itemIndex: selectedItemIndex,
+                    itemName: itemToSearch.itemName,
+                    isNew: true
+                }));
+
+                if (incomingSuppliers.length > 0) {
+                    const updatedSuppliers = [...currentSuppliers, ...incomingSuppliers];
+                    const updatedResult: AiPurchaseSearchResult = {
+                        ...searchResult,
+                        summary: result.summary || searchResult.summary,
+                        suppliers: updatedSuppliers,
+                        technicalTips: Array.from(new Set([...(searchResult.technicalTips || []), ...(result.technicalTips || [])]))
+                    };
+
+                    setItemResults(prev => ({
+                        ...prev,
+                        [selectedItemIndex]: updatedResult
+                    }));
+                    setSearchResult(updatedResult);
+                    setSearchMoreSuccessMsg(`تعداد ${incomingSuppliers.length} تامین‌کننده و گزینه جدید به لیست افزوده شد.`);
+                    if (queryToUse) {
+                        setCustomMoreQuery('');
+                    }
+                } else {
+                    setSearchMoreSuccessMsg('موتور هوش مصنوعی مورد جدیدی پیدا نکرد. لطفاً از میان‌برهای جستجوی مستقیم در ترب، ایمالز یا گوگل استفاده فرمایید.');
+                }
+            } else {
+                setSearchMoreError(result?.warning || 'تامین‌کننده جدید دیگری در وب یافت نشد. می‌توانید با کلیدواژه یا برند دیگر جستجو نمایید.');
+            }
+        } catch (err: any) {
+            console.error("AI Search More Error:", err);
+            setSearchMoreError(err.message || 'خطا در جستجوی موارد بیشتر. لطفاً اتصال اینترنت یا کلید API را بررسی فرمایید.');
+        } finally {
+            setSearchMoreLoading(false);
+        }
+    };
+
+    // Remove / Hide an unsuitable supplier from active results
+    const handleRemoveSupplier = (supplierName: string) => {
+        if (!searchResult) return;
+        setRemovedSupplierNames(prev => [...prev, supplierName]);
+        const updatedSuppliers = (searchResult.suppliers || []).filter(s => s.name !== supplierName);
+        const updatedResult: AiPurchaseSearchResult = {
+            ...searchResult,
+            suppliers: updatedSuppliers
+        };
+        setItemResults(prev => ({
+            ...prev,
+            [selectedItemIndex]: updatedResult
+        }));
+        setSearchResult(updatedResult);
     };
 
     // Item-by-item batch search: process all items sequentially
@@ -754,7 +876,7 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
 
                             {/* Discovered Suppliers & Direct Links */}
                             <div className="space-y-4">
-                                <div className="flex justify-between items-center">
+                                <div className="flex flex-wrap justify-between items-center gap-2">
                                     <h3 className="text-sm font-black text-gray-800 dark:text-gray-200 flex items-center gap-2">
                                         <Globe className="text-blue-600" size={18} />
                                         <span>تامین‌کنندگان یافته‌شده برای «{selectedItem.itemName}»</span>
@@ -762,6 +884,76 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
                                             {searchResult.suppliers.length} مورد
                                         </span>
                                     </h3>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSearchMore()}
+                                        disabled={searchMoreLoading}
+                                        className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                                        title="یافتن تامین‌کنندگان و گزینه‌های بیشتر بدون تکرار موارد بالا"
+                                    >
+                                        {searchMoreLoading ? (
+                                            <Loader2 size={13} className="animate-spin text-indigo-600" />
+                                        ) : (
+                                            <RefreshCw size={13} className="text-indigo-600" />
+                                        )}
+                                        <span>جستجوی موارد بیشتر</span>
+                                    </button>
+                                </div>
+
+                                {/* Verified Instant Sourcing Portals (100% active, live e-Namad sellers & real prices) */}
+                                <div className="p-3.5 bg-gradient-to-r from-blue-50/80 via-indigo-50/80 to-purple-50/80 dark:from-gray-850 dark:via-gray-850 dark:to-indigo-950/50 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 shadow-xs space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                                            <Sparkles size={14} className="text-amber-500 animate-pulse" />
+                                            <span>سامانه‌های زنده استعلام قیمت و فروشندگان معتبر ایران (دارای اینماد و تحویل فوری):</span>
+                                        </span>
+                                        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full hidden sm:inline">
+                                            ۱۰۰٪ فعال و تضمین باز شدن
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold">
+                                        <a 
+                                            href={`https://torob.com/search/?query=${encodeURIComponent(selectedItem.itemName)}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-rose-200 dark:border-rose-900 hover:border-rose-400 text-rose-700 dark:text-rose-300 flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                                            title="مشاهده موجودی و قیمت زنده در صدها فروشگاه ترب"
+                                        >
+                                            <ExternalLink size={12} />
+                                            <span>فروشندگان ترب (Torob)</span>
+                                        </a>
+                                        <a 
+                                            href={`https://emalls.ir/search/?query=${encodeURIComponent(selectedItem.itemName)}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-900 hover:border-blue-400 text-blue-700 dark:text-blue-300 flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                                            title="جستجوی قطعه و استعلام مستقیم از فروشگاه‌های ایمالز"
+                                        >
+                                            <ExternalLink size={12} />
+                                            <span>فروشگاه‌های ایمالز (Emalls)</span>
+                                        </a>
+                                        <a 
+                                            href={`https://www.digikala.com/search/?q=${encodeURIComponent(selectedItem.itemName)}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-900 hover:border-red-400 text-red-700 dark:text-red-300 flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                                            title="بررسی قطعات، ابزارآلات و تجهیزات در دیجی‌کالا"
+                                        >
+                                            <ExternalLink size={12} />
+                                            <span>دیجی‌کالا (Digikala)</span>
+                                        </a>
+                                        <a 
+                                            href={`https://www.google.com/search?q=${encodeURIComponent(selectedItem.itemName + ' خرید قیمت فروشگاه لاله زار شادآباد شماره تلفن')}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-emerald-200 dark:border-emerald-900 hover:border-emerald-400 text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                                            title="جستجوی فروشگاه‌ها و دفاتر بازرگانی لاله زار و شادآباد تهران"
+                                        >
+                                            <ExternalLink size={12} />
+                                            <span>بازار لاله زار و شادآباد</span>
+                                        </a>
+                                    </div>
                                 </div>
 
                                 {searchResult.suppliers.length === 0 ? (
@@ -778,27 +970,44 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
                                             return (
                                                 <div 
                                                     key={idx}
-                                                    className="glass-panel p-4 md:p-5 rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all flex flex-col justify-between space-y-4"
+                                                    className={`glass-panel p-4 md:p-5 rounded-3xl border ${sup.isNew ? 'border-amber-300 dark:border-amber-600 ring-2 ring-amber-400/20' : 'border-gray-200 dark:border-gray-800'} bg-white dark:bg-gray-900 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all flex flex-col justify-between space-y-4`}
                                                 >
                                                     <div className="space-y-2.5">
                                                         {/* Header: Name and Location/Status */}
                                                         <div className="flex justify-between items-start gap-2">
-                                                            <div>
-                                                                <h4 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                                                                    <Building2 size={16} className="text-indigo-600 shrink-0" />
-                                                                    <span>{sup.name}</span>
-                                                                </h4>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <h4 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                                                                        <Building2 size={16} className="text-indigo-600 shrink-0" />
+                                                                        <span>{sup.name}</span>
+                                                                    </h4>
+                                                                    {sup.isNew && (
+                                                                        <span className="bg-gradient-to-r from-amber-500 to-indigo-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                                                                            ✨ مورد جدید
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 {sup.title && sup.title !== sup.name && (
                                                                     <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium line-clamp-1 mt-0.5">
                                                                         {sup.title}
                                                                     </p>
                                                                 )}
                                                             </div>
-                                                            {sup.stockStatus && (
-                                                                <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
-                                                                    {sup.stockStatus}
-                                                                </span>
-                                                            )}
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                {sup.stockStatus && (
+                                                                    <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                                        {sup.stockStatus}
+                                                                    </span>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleRemoveSupplier(sup.name)}
+                                                                    title="حذف از پیشنهادات (مناسب نیست)"
+                                                                    className="p-1 text-gray-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                                                >
+                                                                    <X size={14} />
+                                                                </button>
+                                                            </div>
                                                         </div>
 
                                                         {/* Contact Numbers: Smart Mobile vs Landline Display */}
@@ -867,40 +1076,69 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
                                                     {/* Action Buttons */}
                                                     <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                                                         
-                                                        {/* Website External Link */}
-                                                        {sup.website && (
+                                                        {/* Website External Link & Google Profile Search */}
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                                            {sup.website ? (
+                                                                <a
+                                                                    href={sup.website}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="py-2 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                    title="باز کردن وب‌سایت یا صفحه فروش مستقیم"
+                                                                >
+                                                                    <ExternalLink size={13} />
+                                                                    <span className="truncate">ورود به وب‌سایت / صفحه کالا</span>
+                                                                </a>
+                                                            ) : (
+                                                                <div />
+                                                            )}
+
                                                             <a
-                                                                href={sup.website}
+                                                                href={`https://www.google.com/search?q=${encodeURIComponent(sup.name + ' ' + (sup.city || '') + ' تلفن آدرس ساعت کاری')}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="w-full py-2 px-3 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                                                                className="py-2 px-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                                title="بررسی آدرس فیزیکی، نقشه و تلفن‌های این فروشگاه در گوگل"
                                                             >
-                                                                <ExternalLink size={14} />
-                                                                <span>مشاهده وب‌سایت / صفحه محصول</span>
+                                                                <Search size={13} />
+                                                                <span>بررسی فروشگاه در گوگل</span>
                                                             </a>
-                                                        )}
+                                                        </div>
 
-                                                        {/* Messaging and Proforma Actions */}
+                                                        {/* Messaging, Phone and Proforma Actions */}
                                                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px]">
                                                             {/* WhatsApp Action */}
                                                             <button
                                                                 onClick={() => openSendDialog(sup, 'whatsapp')}
-                                                                className="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer"
-                                                                title={hasMobile ? 'ارسال استعلام قیمت به شماره همراه واتساپ' : 'ارسال استعلام به واتساپ (با وارد کردن شماره همراه)'}
+                                                                className={`py-2 px-2 text-white rounded-xl font-black flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer ${
+                                                                    hasMobile ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-emerald-700/80 hover:bg-emerald-700'
+                                                                }`}
+                                                                title={hasMobile ? 'ارسال استعلام قیمت به شماره همراه واتساپ تاییدشده' : 'ارسال استعلام به واتساپ (با وارد کردن شماره همراه فروشنده)'}
                                                             >
                                                                 <MessageSquare size={13} />
-                                                                <span>واتساپ {hasMobile ? '✔' : ''}</span>
+                                                                <span>{hasMobile ? 'واتساپ ✔' : 'استعلام واتساپ'}</span>
                                                             </button>
 
-                                                            {/* Bale Action */}
-                                                            <button
-                                                                onClick={() => openSendDialog(sup, 'bale')}
-                                                                className="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer"
-                                                                title="ارسال استعلام قیمت در پیام‌رسان بله"
-                                                            >
-                                                                <Send size={13} />
-                                                                <span>بله</span>
-                                                            </button>
+                                                            {/* Direct Phone Call or Bale Action */}
+                                                            {displayLandline ? (
+                                                                <a
+                                                                    href={`tel:${displayLandline.replace(/[^\d+]/g, '')}`}
+                                                                    className="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                                                    title={`تماس مستقیم تلفنی با دفتر فروش (${displayLandline})`}
+                                                                >
+                                                                    <PhoneCall size={13} />
+                                                                    <span>تماس با دفتر</span>
+                                                                </a>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => openSendDialog(sup, 'bale')}
+                                                                    className="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black flex items-center justify-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                                                    title="ارسال استعلام قیمت در پیام‌رسان بله"
+                                                                >
+                                                                    <Send size={13} />
+                                                                    <span>پیام‌رسان بله</span>
+                                                                </button>
+                                                            )}
 
                                                             {/* Apply to Proforma Action */}
                                                             {onApplyProforma && (
@@ -920,6 +1158,178 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
                                         })}
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Not satisfied with suggestions? Search more & show alternative options */}
+                            <div className="p-5 md:p-6 rounded-3xl border border-amber-200 dark:border-amber-900/60 bg-gradient-to-br from-amber-50/70 via-white to-indigo-50/50 dark:from-gray-900 dark:via-gray-900 dark:to-indigo-950/40 shadow-sm space-y-4">
+                                <div className="flex flex-wrap justify-between items-start gap-2">
+                                    <div className="space-y-1">
+                                        <h4 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                            <SlidersHorizontal size={18} className="text-amber-600 dark:text-amber-400" />
+                                            <span>پیشنهادات بالا به کارتان نمی‌آیند؟ جستجوی موارد بیشتر و گزینه‌های جایگزین</span>
+                                        </h4>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 max-w-2xl leading-relaxed">
+                                            می‌توانید با کلیک روی دکمه زیر، از هوش مصنوعی بخواهید بدون تکرار تامین‌کنندگان قبلی، دایرکتوری‌ها، بازارهای دیگر، یا کلیدواژه‌های خاص مدنظرتان را مجدداً جستجو کند یا از لینک‌های مستقیم سامانه‌های مرجع خرید استفاده نمایید.
+                                        </p>
+                                    </div>
+
+                                    {removedSupplierNames.length > 0 && (
+                                        <span className="bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 text-[11px] font-bold px-2.5 py-1 rounded-xl">
+                                            {removedSupplierNames.length} مورد نامناسب فیلتر شد
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Primary "Search More" Trigger & Custom Query Input */}
+                                <div className="space-y-3 pt-1">
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <input
+                                                type="text"
+                                                value={customMoreQuery}
+                                                onChange={(e) => setCustomMoreQuery(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleSearchMore(customMoreQuery);
+                                                    }
+                                                }}
+                                                placeholder="جستجو با مشخصات، برند یا کلمه کلیدی خاص (مثلاً: رله فیندر، بورس لاله زار، استوک، قیمت پایین‌تر...)"
+                                                className="w-full pl-3 pr-9 py-2.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-gray-800 dark:text-gray-200"
+                                            />
+                                            <Search size={15} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSearchMore(customMoreQuery)}
+                                            disabled={searchMoreLoading}
+                                            className="px-5 py-2.5 bg-gradient-to-r from-amber-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white font-black text-xs rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
+                                        >
+                                            {searchMoreLoading ? (
+                                                <>
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    <span>در حال جستجوی عمیق‌تر...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <RefreshCw size={14} />
+                                                    <span>جستجوی موارد بیشتر (بدون تکرار)</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* Quick Suggestion Chips for Alternative Sourcing */}
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                        <span className="text-[11px] text-gray-500 font-bold ml-1">شروط سریع برای موارد دیگر:</span>
+                                        {[
+                                            'تامین‌کنندگان بازار لاله‌زار و شادآباد',
+                                            'برندهای معادل و جایگزین صنعتی',
+                                            'فروشندگان عمده با قیمت ارزان‌تر',
+                                            'تامین‌کنندگان دارای موجودی فوری انبار',
+                                            'واردکنندگان دست اول و کارگاه‌ها'
+                                        ].map((condition, cIdx) => (
+                                            <button
+                                                key={cIdx}
+                                                type="button"
+                                                onClick={() => {
+                                                    setCustomMoreQuery(condition);
+                                                    handleSearchMore(condition);
+                                                }}
+                                                disabled={searchMoreLoading}
+                                                className="text-[11px] bg-white dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-amber-300 rounded-xl px-2.5 py-1 font-medium transition-colors cursor-pointer flex items-center gap-1 active:scale-95"
+                                            >
+                                                <span>+</span>
+                                                <span>{condition}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Feedback Messages */}
+                                    {searchMoreSuccessMsg && (
+                                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+                                            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                                            <span>{searchMoreSuccessMsg}</span>
+                                        </div>
+                                    )}
+
+                                    {searchMoreError && (
+                                        <div className="p-3 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-2xl text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 animate-in fade-in">
+                                            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                                            <span>{searchMoreError}</span>
+                                        </div>
+                                    )}
+
+                                    {/* 1-Click Direct Links to Iranian Industrial & General Marketplaces */}
+                                    <div className="pt-2 border-t border-amber-200/50 dark:border-gray-800">
+                                        <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                                <ExternalLink size={14} className="text-indigo-600" />
+                                                <span>جستجوی مستقیم «{selectedItem.itemName}» در سامانه‌ها و پورتال‌های مرجع بازار:</span>
+                                            </span>
+                                            <span className="text-[10px] text-gray-400">باز شدن با یک کلیک در تب جدید</span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                            {/* Torob */}
+                                            <a
+                                                href={`https://torob.com/search/?query=${encodeURIComponent(selectedItem.itemName)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 rounded-2xl font-black flex items-center justify-between transition-colors cursor-pointer"
+                                            >
+                                                <span className="flex items-center gap-1.5">
+                                                    <ShoppingBag size={14} className="text-rose-600" />
+                                                    <span>موتور ترب (Torob)</span>
+                                                </span>
+                                                <ExternalLink size={12} className="opacity-70" />
+                                            </a>
+
+                                            {/* Emalls */}
+                                            <a
+                                                href={`https://emalls.ir/Search.aspx?query=${encodeURIComponent(selectedItem.itemName)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50 rounded-2xl font-black flex items-center justify-between transition-colors cursor-pointer"
+                                            >
+                                                <span className="flex items-center gap-1.5">
+                                                    <Globe size={14} className="text-blue-600" />
+                                                    <span>سامانه ایمالز (Emalls)</span>
+                                                </span>
+                                                <ExternalLink size={12} className="opacity-70" />
+                                            </a>
+
+                                            {/* Google Web Search with commercial Iranian keywords */}
+                                            <a
+                                                href={`https://www.google.com/search?q=${encodeURIComponent(selectedItem.itemName + ' خرید قیمت فروش تامین کننده قطعه')}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 rounded-2xl font-black flex items-center justify-between transition-colors cursor-pointer"
+                                            >
+                                                <span className="flex items-center gap-1.5">
+                                                    <Search size={14} className="text-emerald-600" />
+                                                    <span>جستجوی وب در گوگل</span>
+                                                </span>
+                                                <ExternalLink size={12} className="opacity-70" />
+                                            </a>
+
+                                            {/* Digikala */}
+                                            <a
+                                                href={`https://www.digikala.com/search/?q=${encodeURIComponent(selectedItem.itemName)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50 rounded-2xl font-black flex items-center justify-between transition-colors cursor-pointer"
+                                            >
+                                                <span className="flex items-center gap-1.5">
+                                                    <Package size={14} className="text-red-600" />
+                                                    <span>دیجی‌کالا و ابزار</span>
+                                                </span>
+                                                <ExternalLink size={12} className="opacity-70" />
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Formal RFQ Template Box with Single vs Combined Toggle */}
@@ -1007,16 +1417,39 @@ export const AiPurchaseAdvisorModal: React.FC<AiPurchaseAdvisorModalProps> = ({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center shrink-0">
+                <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex flex-wrap justify-between items-center gap-3 shrink-0">
                     <span className="text-[11px] text-gray-400 font-medium">
                         پشتیبانی از تفکیک هوشمند شماره‌های همراه (واتساپ/بله) و خطوط ثابت کارخانه و دفاتر فروش
                     </span>
-                    <button
-                        onClick={onClose}
-                        className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                    >
-                        بستن
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {searchResult && (
+                            <button
+                                type="button"
+                                onClick={() => handleSearchMore()}
+                                disabled={searchMoreLoading || searchLoading}
+                                className="px-4 py-2 bg-gradient-to-r from-amber-600 via-indigo-600 to-purple-600 hover:opacity-95 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                            >
+                                {searchMoreLoading ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>در حال جستجوی موارد بیشتر...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <RefreshCw size={14} />
+                                        <span>جستجوی موارد بیشتر و گزینه‌های دیگر</span>
+                                    </>
+                                )}
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                        >
+                            بستن
+                        </button>
+                    </div>
                 </div>
             </div>
 

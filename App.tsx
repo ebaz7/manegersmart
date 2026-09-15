@@ -212,6 +212,70 @@ function App() {
     setMobileActiveSplitPane('secondary');
   };
 
+  const handleDropToSplitLeft = (tabId: string) => {
+    if (!tabId) return;
+    if (allowedNavItems.length > 0 && !allowedNavItems.some(i => i.id === tabId)) {
+      return;
+    }
+
+    if (tabId === activeTab) {
+      // User dragged current active tab into split pane
+      if (secondaryTab && secondaryTab !== tabId) {
+        // Swap primary and secondary
+        const oldActive = activeTab;
+        const oldSecondary = secondaryTab;
+        setActiveTab(oldSecondary);
+        setSecondaryTab(oldActive);
+        localStorage.setItem('app_secondary_tab', oldActive);
+        setMobileActiveSplitPane('secondary');
+      } else {
+        // Split with another open tab or allow selecting
+        const candidate = openWorkstationTabs.find(t => t !== tabId && allowedNavItems.some(i => i.id === t))
+          || allowedNavItems.find(i => i.id !== tabId)?.id;
+        if (candidate) {
+          setActiveTab(candidate);
+          setSecondaryTab(tabId);
+          localStorage.setItem('app_secondary_tab', tabId);
+          setOpenWorkstationTabs(prev => prev.includes(candidate) ? prev : [...prev, candidate]);
+          setMobileActiveSplitPane('secondary');
+        } else {
+          setIsSplitSelectorOpen(true);
+        }
+      }
+    } else {
+      handleSelectSecondaryTab(tabId);
+    }
+  };
+
+  const handleDropToSplitRight = (tabId: string) => {
+    if (!tabId) return;
+    if (allowedNavItems.length > 0 && !allowedNavItems.some(i => i.id === tabId)) {
+      return;
+    }
+
+    if (tabId === secondaryTab) {
+      // Secondary tab dragged to right (primary) -> swap
+      const oldActive = activeTab;
+      setActiveTab(tabId);
+      setSecondaryTab(oldActive);
+      localStorage.setItem('app_secondary_tab', oldActive);
+      setMobileActiveSplitPane('primary');
+    } else {
+      setActiveTab(tabId);
+      setOpenWorkstationTabs(prev => prev.includes(tabId) ? prev : [...prev, tabId]);
+      setMobileActiveSplitPane('primary');
+    }
+  };
+
+  const handleDropToFloat = (tabId: string) => {
+    if (!tabId) return;
+    if (allowedNavItems.length > 0 && !allowedNavItems.some(i => i.id === tabId)) return;
+    if (tabId === secondaryTab) {
+      handleCloseSecondaryTab();
+    }
+    handlePopOutFloating(tabId);
+  };
+
   // Security guard: Ensure activeTab, secondaryTab, floatingTab and open tabs are strictly permitted
   useEffect(() => {
     if (!currentUser || allowedNavItems.length === 0) return;
@@ -2101,16 +2165,11 @@ function App() {
             {/* Windows-style Drag & Snap Overlay for Split-View */}
             <SplitViewDragOverlay
               activeTab={activeTab}
-              onDropLeft={(tabId) => {
-                if (allowedNavItems.some(i => i.id === tabId)) {
-                  handleSelectSecondaryTab(tabId);
-                }
-              }}
-              onDropRight={(tabId) => {
-                if (allowedNavItems.some(i => i.id === tabId)) {
-                  setActiveTab(tabId);
-                }
-              }}
+              secondaryTab={secondaryTab}
+              allowedItems={allowedNavItems}
+              onDropLeft={handleDropToSplitLeft}
+              onDropRight={handleDropToSplitRight}
+              onDropFloat={handleDropToFloat}
             />
 
             {/* Windows-style Picture-in-Picture Floating Window */}

@@ -513,7 +513,6 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 deliveredCurrencyType: curData.deliveredCurrencyType || ''
             });
             
-    useEffect(() => { if(selectedRecord) console.log("SELECTED_RECORD_DUMP_JSON:", JSON.stringify(selectedRecord)); }, [selectedRecord]);
             setCalcExchangeRate(selectedRecord.exchangeRate || 0);
             
             setNewLicenseTx({ amount: 0, bank: '', date: '', description: 'هزینه ثبت سفارش' });

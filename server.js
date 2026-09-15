@@ -7410,7 +7410,7 @@ app.delete('/api/purchase-requests/:id', (req, res) => {
 // AI Purchase Advisor - Supplier Sourcing & Web Grounding
 app.post(['/api/purchase/ai-search-suppliers', '/api/api/purchase/ai-search-suppliers'], async (req, res) => {
     try {
-        const { item, items, additionalNotes, customKey } = req.body;
+        const { item, items, additionalNotes, customKey, excludeSuppliers, isDeepSearch, customSearchQuery } = req.body;
         const aiService = await safeImport('./backend/ai-service.js');
         if (!aiService || !aiService.searchSuppliersWithAi) {
             return res.status(500).json({ error: 'ماژول هوش مصنوعی لود نشد.' });
@@ -7420,7 +7420,10 @@ app.post(['/api/purchase/ai-search-suppliers', '/api/api/purchase/ai-search-supp
             item,
             items,
             additionalNotes,
-            customKey
+            customKey,
+            excludeSuppliers,
+            isDeepSearch,
+            customSearchQuery
         });
 
         res.json(result);

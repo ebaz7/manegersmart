@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Columns, X, Calculator, ChevronUp, ChevronDown, Monitor, Minus, Eye, EyeOff
 } from 'lucide-react';
@@ -57,6 +57,94 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
       return false;
     }
   });
+
+  const pointerDragRef = useRef<{
+    tabId: string;
+    startX: number;
+    startY: number;
+    isDraggingUp: boolean;
+  } | null>(null);
+
+  const handleTabPointerDown = (e: React.PointerEvent<HTMLDivElement>, tabId: string) => {
+    // Only primary button (left mouse click) or touch
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    // If target is close button, ignore
+    if ((e.target as HTMLElement).closest('button')) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    pointerDragRef.current = {
+      tabId,
+      startX,
+      startY,
+      isDraggingUp: false
+    };
+
+    const handlePointerMove = (moveEvt: PointerEvent) => {
+      if (!pointerDragRef.current) return;
+      const dy = startY - moveEvt.clientY; // positive = dragging UP
+      const dx = moveEvt.clientX - startX;
+
+      if (!pointerDragRef.current.isDraggingUp) {
+        // If dragged up by more than 12px or horizontally by more than 20px
+        if (dy > 12 || Math.abs(dx) > 20) {
+          pointerDragRef.current.isDraggingUp = true;
+          try {
+            window.dispatchEvent(new CustomEvent('workstation-tab-drag-start', {
+              detail: {
+                tabId,
+                clientX: moveEvt.clientX,
+                clientY: moveEvt.clientY,
+                isPointer: true
+              }
+            }));
+          } catch {}
+        }
+      } else {
+        try {
+          window.dispatchEvent(new CustomEvent('workstation-tab-drag-move', {
+            detail: {
+              tabId,
+              clientX: moveEvt.clientX,
+              clientY: moveEvt.clientY
+            }
+          }));
+        } catch {}
+      }
+    };
+
+    const handlePointerUp = (upEvt: PointerEvent) => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+
+      if (pointerDragRef.current?.isDraggingUp) {
+        try {
+          window.dispatchEvent(new CustomEvent('workstation-tab-drag-end', {
+            detail: {
+              tabId,
+              clientX: upEvt.clientX,
+              clientY: upEvt.clientY
+            }
+          }));
+        } catch {}
+
+        // Prevent click from selecting tab after drag
+        setTimeout(() => {
+          if (pointerDragRef.current) {
+            pointerDragRef.current = null;
+          }
+        }, 80);
+      } else {
+        pointerDragRef.current = null;
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+  };
 
   const handleToggleCollapse = () => {
     setIsCollapsed(prev => {
@@ -192,21 +280,30 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
               key={tabId}
               draggable
               data-tab-id={tabId}
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => handleTabPointerDown(e, tabId)}
               onDragStart={(e) => {
                 e.dataTransfer.setData('application/x-workstation-tab', tabId);
                 e.dataTransfer.setData('text/plain', tabId);
                 e.dataTransfer.effectAllowed = 'copyMove';
                 try {
-                  window.dispatchEvent(new CustomEvent('workstation-tab-drag-start', { detail: { tabId } }));
+                  window.dispatchEvent(new CustomEvent('workstation-tab-drag-start', { 
+                    detail: { tabId, clientX: e.clientX, clientY: e.clientY } 
+                  }));
                 } catch {}
               }}
-              onDragEnd={() => {
+              onDragEnd={(e) => {
                 try {
-                  window.dispatchEvent(new CustomEvent('workstation-tab-drag-end'));
+                  window.dispatchEvent(new CustomEvent('workstation-tab-drag-end', {
+                    detail: { tabId, clientX: e.clientX, clientY: e.clientY }
+                  }));
                 } catch {}
               }}
-              onClick={() => onSelectTab(tabId)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer select-none group relative ${
+              onClick={() => {
+                if (pointerDragRef.current?.isDraggingUp) return;
+                onSelectTab(tabId);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-grab active:cursor-grabbing select-none group relative ${
                 isPrimary
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-400/50'
                   : isSecondary
@@ -215,7 +312,7 @@ export const WorkstationDock: React.FC<WorkstationDockProps> = ({
                       ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60'
                       : 'bg-zinc-100/80 dark:bg-zinc-900/80 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/80 border border-transparent'
               }`}
-              title={`${label} ${isPrimary ? '(پنجره فعال)' : isSecondary ? '(پنجره اسپلیت)' : isFloating ? '(پنجره شناور)' : ''} - برای اسپلیت به چپ یا راست بکشید`}
+              title={`${label} ${isPrimary ? '(پنجره فعال)' : isSecondary ? '(پنجره اسپلیت)' : isFloating ? '(پنجره شناور)' : ''} - برای اسپلیت به سمت بالا بکشید`}
             >
               <Icon size={14} className={isActive ? 'text-white' : 'text-zinc-500 group-hover:text-blue-500'} />
               <span className="truncate max-w-[90px]">{label}</span>

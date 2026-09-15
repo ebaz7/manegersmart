@@ -20,7 +20,7 @@ import {
     Ruler, Layers, Tag, Upload, Info, FileUp, UploadCloud, Settings, Printer, FileDown, AlertCircle, X,
     GitFork, Clock, CornerUpLeft, UserCheck, FileCode, AlertTriangle, Check, ExternalLink, Paperclip, Wrench,
     FileSpreadsheet, Container, ArrowDownCircle, ArrowUpCircle, MessageSquare, Sparkles, Bot, ChevronUp, ChevronDown,
-    Crown, Briefcase, ShoppingBag
+    Crown, Briefcase, ShoppingBag, Lock, ShieldAlert
 } from 'lucide-react';
 import { shareElementToChat, openSendToChat } from '../services/chatShareService';
 import { formatDate, formatCurrency, generateUUID, getCurrentShamsiDate } from '../constants';
@@ -41,6 +41,99 @@ import { useCachedAsset } from '../hooks/useCachedAsset';
 const CachedImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({ src, alt, className, ...props }) => {
     const cachedSrc = useCachedAsset(src);
     return <img src={cachedSrc || src} alt={alt} className={className} {...props} />;
+};
+
+/**
+ * Access Control Rule for Proformas and Quotes in Purchase Requests:
+ * 1. Admin, Commercial Manager, CEO, and Financial Manager can view proformas for ALL requests.
+ * 2. In Factory/Zanjan purchases, Factory Manager and Factory Buyer can view proformas.
+ * 3. All other roles (requesters, shift leaders, technicians, warehouse keepers, etc.) cannot view proformas or financial quotes.
+ */
+export const canUserViewProformas = (
+    user: User | null | undefined,
+    request?: PurchaseRequest | null,
+    settings?: SystemSettings | null
+): boolean => {
+    if (!user) return false;
+
+    // Collect all active roles for the user (normalized to lowercase)
+    const roles: string[] = [];
+    if (user.role) roles.push(String(user.role).toLowerCase());
+    if (Array.isArray(user.roles)) {
+        user.roles.forEach(r => {
+            if (r) {
+                const normalized = String(r).toLowerCase();
+                if (!roles.includes(normalized)) roles.push(normalized);
+            }
+        });
+    }
+
+    const checkRole = (roleKey: string) => roles.includes(roleKey.toLowerCase());
+
+    // 1. Admin always has full access
+    if (checkRole(UserRole.ADMIN) || checkRole('admin') || checkRole('ادمین') || checkRole('مدیر سیستم')) {
+        return true;
+    }
+
+    // 2. Unconditional Senior Managers: Commercial Manager, CEO, Financial Manager
+    if (
+        checkRole(UserRole.COMMERCIAL) || checkRole('commercial') || checkRole('بازرگانی') || checkRole('مدیر بازرگانی') ||
+        checkRole(UserRole.CEO) || checkRole('ceo') || checkRole('مدیرعامل') ||
+        checkRole(UserRole.FINANCIAL) || checkRole('financial') || checkRole('مدیر مالی') || checkRole('مالی')
+    ) {
+        return true;
+    }
+
+    // Check custom permissions in settings for senior management
+    for (const r of roles) {
+        const perms = (settings?.purchaseRolePermissions as any)?.[r] || {};
+        if (perms.canApproveCEO || perms.canApproveCommercialManager || perms.canCommercialFinalize) {
+            return true;
+        }
+    }
+
+    // 3. Factory Purchase condition:
+    // Factory Manager and Factory Buyer can view proformas ONLY if the purchase is in Factory/Zanjan scope
+    const isFactoryScope = !request || 
+        request.location === 'Factory' || 
+        request.location === 'Zanjan' || 
+        (typeof request.status === 'string' && (
+            request.status.includes('FACTORY') || 
+            request.status.includes('ZANJAN')
+        ));
+
+    if (isFactoryScope) {
+        // Factory Manager
+        if (
+            checkRole(UserRole.FACTORY_MANAGER) || 
+            checkRole('factory_manager') || 
+            checkRole('مدیر کارخانه')
+        ) {
+            return true;
+        }
+
+        // Factory Buyer / Purchasing Officer
+        if (
+            checkRole('factory_purchasing') || 
+            checkRole('purchasing') || 
+            checkRole('مسئول خرید') || 
+            checkRole('کارپرداز') ||
+            checkRole('خرید کارخانه')
+        ) {
+            return true;
+        }
+
+        // Check if role has canManageProformas or canApproveFactory in settings
+        for (const r of roles) {
+            const perms = (settings?.purchaseRolePermissions as any)?.[r] || {};
+            if (perms.canManageProformas || perms.canApproveFactory) {
+                return true;
+            }
+        }
+    }
+
+    // All others: strictly restricted
+    return false;
 };
 
 const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
@@ -1790,7 +1883,45 @@ const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () =
     );
 };
 
-const ViewProformaDetailsModal = ({ proforma, onClose, setPreviewFile }: { proforma: PurchaseProforma, onClose: () => void, setPreviewFile: (file: { url: string; fileName: string } | null) => void }) => {
+const ViewProformaDetailsModal = ({ 
+    proforma, 
+    onClose, 
+    setPreviewFile,
+    currentUser,
+    request,
+    settings
+}: { 
+    proforma: PurchaseProforma; 
+    onClose: () => void; 
+    setPreviewFile: (file: { url: string; fileName: string } | null) => void;
+    currentUser?: User;
+    request?: PurchaseRequest;
+    settings?: SystemSettings;
+}) => {
+    const isAllowed = currentUser ? canUserViewProformas(currentUser, request, settings) : true;
+    if (!isAllowed) {
+        return createPortal(
+            <div className="fixed inset-0 z-[100000008] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl border border-amber-200 dark:border-amber-900">
+                    <div className="p-3 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded-full w-14 h-14 mx-auto flex items-center justify-center">
+                        <ShieldAlert size={28} />
+                    </div>
+                    <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">دسترسی به پیش‌فاکتور مسدود است</h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                        مشاهده پیش‌فاکتورها، فایل‌های استعلام و مبالغ خرید منحصراً در اختیار مدیریت (مدیر بازرگانی، مدیرعامل و مدیر مالی) و در خریدهای کارخانه در اختیار مسئول خرید و مدیر کارخانه است.
+                    </p>
+                    <button 
+                        onClick={onClose} 
+                        className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                        متوجه شدم
+                    </button>
+                </div>
+            </div>,
+            document.body
+        );
+    }
+
     return createPortal(
         <div className="fixed inset-0 z-[100000008] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
             <div className="bg-white dark:bg-gray-900 rounded-[2rem] w-full max-w-3xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col max-h-[90vh]">
@@ -2305,6 +2436,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     };
 
     const isAdmin = isRole(UserRole.ADMIN);
+    const canViewProformas = canUserViewProformas(currentUser, request, settings);
 
     const hasPurchasePerm = (perm: string) => {
         if (isAdmin) return true;
@@ -2703,6 +2835,29 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                             </div>
 
                             {/* Proformas */}
+                            {!canViewProformas ? (
+                                <div className="glass-panel p-6 rounded-3xl border border-amber-200/80 dark:border-amber-900/60 bg-gradient-to-br from-amber-50/60 via-white to-gray-50/50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-850 shadow-sm overflow-hidden relative">
+                                    <div className="flex items-start sm:items-center gap-3.5 text-right" dir="rtl">
+                                        <div className="p-3 bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 rounded-2xl shrink-0 border border-amber-200/50 dark:border-amber-900/50">
+                                            <ShieldAlert size={26} />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="text-sm font-black text-amber-900 dark:text-amber-200">
+                                                    محدودیت دسترسی به پیش‌فاکتورها و مبالغ استعلام
+                                                </h4>
+                                                <span className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                                                    <Lock size={10} />
+                                                    محرمانه
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-amber-800/80 dark:text-amber-400/80 mt-1.5 leading-relaxed">
+                                                مشاهده پیش‌فاکتورها، فایل‌های استعلام قیمت و مبالغ خرید منحصراً در اختیار مدیریت (مدیر بازرگانی، مدیرعامل و مدیر مالی) و در خریدهای کارخانه در اختیار مسئول خرید و مدیر کارخانه است.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
                             <div className="glass-panel p-6 rounded-3xl border border-indigo-100 bg-white shadow-sm overflow-hidden relative">
                                 <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
                                     <h3 className="text-sm font-black text-gray-800 flex items-center gap-2"><FileText className="text-indigo-500" size={18}/> پیش‌فاکتورها و استعلام‌ها</h3>
@@ -2818,6 +2973,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             {/* Arrival & QC Details */}
                             {(request.entryQuantity || request.qcResult) && (
@@ -3183,7 +3339,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         <span>چاپ برچسب بارکد (Barcode)</span>
                                         <Tag size={13} className="text-indigo-600"/>
                                     </button>
-                                    {request.proformas.find(p => p.isChosen) && (
+                                    {request.proformas.find(p => p.isChosen) && canViewProformas && (
                                         <button 
                                             onClick={() => { 
                                                 setIsPrintDropdownOpen(false);
@@ -3251,7 +3407,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         <span>ارسال فرم درخواست (A5)</span>
                                         <MessageSquare size={13} className="text-emerald-600"/>
                                     </button>
-                                    {request.proformas.find(p => p.isChosen) && (
+                                    {request.proformas.find(p => p.isChosen) && canViewProformas && (
                                         <button 
                                             onClick={() => {
                                                 setIsShareDropdownOpen(false);
@@ -3493,6 +3649,9 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         proforma={viewingProformaDetails} 
                         onClose={() => setViewingProformaDetails(null)} 
                         setPreviewFile={setPreviewFile}
+                        currentUser={currentUser}
+                        request={request}
+                        settings={settings}
                     />
                 )}
 

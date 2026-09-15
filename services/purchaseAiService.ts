@@ -17,6 +17,7 @@ export interface SupplierResult {
     pros?: string;
     itemIndex?: number;
     itemName?: string;
+    isNew?: boolean;
 }
 
 export interface AiPurchaseSearchResult {
@@ -72,6 +73,9 @@ export const searchSuppliersWithAi = async (params: {
     items?: any[];
     additionalNotes?: string;
     customKey?: string;
+    excludeSuppliers?: string[];
+    isDeepSearch?: boolean;
+    customSearchQuery?: string;
 }): Promise<AiPurchaseSearchResult> => {
     return await apiCall<AiPurchaseSearchResult>('/purchase/ai-search-suppliers', 'POST', params);
 };

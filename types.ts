@@ -1144,6 +1144,9 @@ export interface ShippingDocument {
     portOfLoading?: string;
     portOfDischarge?: string;
     description?: string;
+    shippingCompany?: string;
+    cartonCount?: number;
+    containerCount?: number;
 }
 
 export interface InspectionCertificate {

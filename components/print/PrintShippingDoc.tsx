@@ -404,16 +404,22 @@ const PrintShippingDoc: React.FC<PrintShippingDocProps> = ({ record, doc, settin
       }
 
       case 'Bill of Lading': {
-        const netW = doc.netWeight || record.items?.reduce((s, i) => s + i.weight, 0) || 0;
-        const grossW = doc.grossWeight || netW * 1.05 || 0;
-        const packages = doc.packagesCount || 1;
+        const netW = doc.netWeight !== undefined && doc.netWeight !== null && doc.netWeight > 0 
+          ? doc.netWeight 
+          : (record.items?.reduce((s, i) => s + (i.weight || 0), 0) || 0);
+        const grossW = doc.grossWeight !== undefined && doc.grossWeight !== null && doc.grossWeight > 0 
+          ? doc.grossWeight 
+          : (record.items?.reduce((s, i) => s + ((i.grossWeight !== undefined && i.grossWeight !== null && i.grossWeight > 0) ? i.grossWeight : (i.weight || 0)), 0) || (netW > 0 ? netW * 1.05 : 0));
+        const cartonCount = doc.cartonCount !== undefined ? doc.cartonCount : doc.packagesCount;
+        const containerCount = doc.containerCount;
+        const carrier = doc.shippingCompany;
 
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-start border-b-2 border-black pb-4">
               <div>
                 <h1 className="text-2xl font-black mb-1">Bill of Lading</h1>
-                <p className="text-xs text-gray-500">Ocean / Air Transport Document</p>
+                <p className="text-xs text-gray-500">Ocean / Air / Road Transport Document</p>
               </div>
               <div className="text-left">
                 <h2 className="text-xl font-bold text-gray-800">بارنامه حمل کالا</h2>
@@ -421,6 +427,7 @@ const PrintShippingDoc: React.FC<PrintShippingDocProps> = ({ record, doc, settin
                   <div><span className="font-bold">شماره بارنامه (B/L No):</span> {doc.documentNumber}</div>
                   <div><span className="font-bold">تاریخ صدور بارنامه:</span> {doc.documentDate}</div>
                   <div><span className="font-bold">شماره پرونده:</span> {record.fileNumber}</div>
+                  {carrier && <div><span className="font-bold">شرکت حمل:</span> {carrier}</div>}
                 </div>
               </div>
             </div>
@@ -448,8 +455,8 @@ const PrintShippingDoc: React.FC<PrintShippingDocProps> = ({ record, doc, settin
                   <div>تلفن: {company?.phone || '---'}</div>
                 </div>
                 <div className="p-3 text-right">
-                  <div className="font-bold text-gray-500 mb-1">Vessel / Voyage (نام کشتی/پرواز):</div>
-                  <div className="font-mono font-bold text-blue-700">{doc.vesselName || '---'}</div>
+                  <div className="font-bold text-gray-500 mb-1">Carrier / Vessel (شرکت حمل / نام کشتی):</div>
+                  <div className="font-bold text-blue-700">{carrier ? `${carrier} ${doc.vesselName ? `/ ${doc.vesselName}` : ''}` : (doc.vesselName || '---')}</div>
                 </div>
               </div>
 
@@ -471,18 +478,23 @@ const PrintShippingDoc: React.FC<PrintShippingDocProps> = ({ record, doc, settin
                 {doc.description && <p className="text-xs text-gray-600 mt-1">توضیحات تکمیلی: {doc.description}</p>}
               </div>
 
-              <div className="grid grid-cols-3 divide-x divide-black text-center p-3 font-mono">
+              {/* Quantities & Weights Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-black text-center p-3 font-mono">
                 <div>
-                  <div className="font-bold text-gray-500 mb-1">Gross Weight (kg)</div>
-                  <div className="font-bold text-sm">{formatNumberString(grossW)} kg</div>
+                  <div className="font-bold text-gray-500 mb-1">Gross Weight (وزن ناخالص)</div>
+                  <div className="font-bold text-sm text-indigo-900">{formatNumberString(grossW)} kg</div>
                 </div>
                 <div>
-                  <div className="font-bold text-gray-500 mb-1">Net Weight (kg)</div>
+                  <div className="font-bold text-gray-500 mb-1">Net Weight (وزن خالص)</div>
                   <div className="font-bold text-sm">{formatNumberString(netW)} kg</div>
                 </div>
                 <div>
-                  <div className="font-bold text-gray-500 mb-1">Total Packages</div>
-                  <div className="font-bold text-sm">{packages} PKG</div>
+                  <div className="font-bold text-gray-500 mb-1">Cartons (تعداد کارتن)</div>
+                  <div className="font-bold text-sm">{cartonCount !== undefined ? `${formatNumberString(cartonCount)} CTN` : '---'}</div>
+                </div>
+                <div>
+                  <div className="font-bold text-gray-500 mb-1">Containers (تعداد کانتینر)</div>
+                  <div className="font-bold text-sm">{containerCount !== undefined ? `${containerCount} CTR` : '---'}</div>
                 </div>
               </div>
             </div>
@@ -490,7 +502,7 @@ const PrintShippingDoc: React.FC<PrintShippingDocProps> = ({ record, doc, settin
             {/* Stamp and Carrier Signatures */}
             <div className="grid grid-cols-2 gap-8 text-center text-xs pt-12">
               <div className="border-t border-black pt-2">
-                <p className="font-bold mb-10">مهر شرکت حمل و نقل (Carrier Stamp & Signature)</p>
+                <p className="font-bold mb-10">مهر شرکت حمل و نقل ({carrier || 'Carrier Stamp & Signature'})</p>
                 <p className="text-gray-400">محل مهر و امضای نماینده شرکت حمل</p>
               </div>
               <div className="border-t border-black pt-2">

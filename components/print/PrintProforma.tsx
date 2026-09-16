@@ -24,7 +24,7 @@ const PrintProforma: React.FC<PrintProformaProps> = ({
 }) => {
   const [processing, setProcessing] = useState(false);
   const totalWeight = record.items?.reduce((sum, item) => sum + (item.weight || 0), 0) || 0;
-  const totalGrossWeight = record.items?.reduce((sum, item) => sum + (item.grossWeight || item.weight || 0), 0) || 0;
+  const totalGrossWeight = record.items?.reduce((sum, item) => sum + (item.grossWeight !== undefined && item.grossWeight !== null && item.grossWeight > 0 ? item.grossWeight : 0), 0) || 0;
   const totalFobAmount = record.items?.reduce((sum, item) => sum + (item.totalPrice || (item.weight * item.unitPrice) || 0), 0) || 0;
   const freightCost = Number(record.freightCost) || 0;
   const totalGrandProforma = totalFobAmount + freightCost;
@@ -295,7 +295,7 @@ const PrintProforma: React.FC<PrintProformaProps> = ({
               <td className="p-2 border-r border-black">{item.name}</td>
               <td className="p-2 border-r border-black text-center font-mono">{item.hsCode || '---'}</td>
               <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(item.weight)}</td>
-              <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(item.grossWeight || item.weight)}</td>
+              <td className="p-2 border-r border-black text-center font-mono">{item.grossWeight !== undefined && item.grossWeight !== null && item.grossWeight > 0 ? formatNumberString(item.grossWeight) : '---'}</td>
               <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(item.unitPrice)}</td>
               <td className="p-2 text-center font-mono font-bold">{formatNumberString(item.totalPrice || (item.weight * item.unitPrice))}</td>
             </tr>
@@ -304,7 +304,7 @@ const PrintProforma: React.FC<PrintProformaProps> = ({
           <tr className="bg-gray-50 border-t-2 border-black font-bold">
             <td colSpan={3} className="p-2 border-r border-black text-left pl-4">جمع اقلام (FOB):</td>
             <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(totalWeight)}</td>
-            <td className="p-2 border-r border-black text-center font-mono">{formatNumberString(totalGrossWeight)}</td>
+            <td className="p-2 border-r border-black text-center font-mono">{totalGrossWeight > 0 ? formatNumberString(totalGrossWeight) : '---'}</td>
             <td className="p-2 border-r border-black text-center">-</td>
             <td className="p-2 text-center font-mono text-sm">{formatNumberString(totalFobAmount)} {currencyStr}</td>
           </tr>

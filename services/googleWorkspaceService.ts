@@ -492,25 +492,62 @@ export interface CustomCalendarItem {
 }
 
 export const getCustomCalendarItems = (userId?: string | number): CustomCalendarItem[] => {
-  if (!userId) return [];
-  const uid = String(userId);
+  const uid = userId ? String(userId) : '';
+  const result: CustomCalendarItem[] = [];
+  const seenIds = new Set<string>();
+
   try {
-    const key = `gw_custom_events_${uid}`;
-    const saved = localStorage.getItem(key);
-    if (saved) return JSON.parse(saved);
-  } catch {}
-  
-  return [];
+    // 1. Check user-isolated key
+    if (uid) {
+      const userRaw = localStorage.getItem(`gw_custom_events_${uid}`);
+      if (userRaw) {
+        const parsed = JSON.parse(userRaw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(item => {
+            if (item && item.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              result.push(item);
+            }
+          });
+        }
+      }
+    }
+
+    // 2. Fallback to legacy/shared key so previously saved events, loans, and notes are preserved
+    const legacyRaw = localStorage.getItem('gw_custom_events');
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(item => {
+          if (item && item.id && !seenIds.has(item.id)) {
+            // Include if not claimed by a different user
+            if (!item.userId || item.userId === uid || !uid) {
+              seenIds.add(item.id);
+              result.push({ ...item, userId: uid || item.userId });
+            }
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Failed to get custom calendar items', err);
+  }
+
+  return result;
 };
 
 export const saveCustomCalendarItems = (items: CustomCalendarItem[], userId?: string | number) => {
-  if (!userId) return;
-  const uid = String(userId);
+  const uid = userId ? String(userId) : '';
   try {
-    const key = `gw_custom_events_${uid}`;
-    localStorage.setItem(key, JSON.stringify(items));
+    if (uid) {
+      localStorage.setItem(`gw_custom_events_${uid}`, JSON.stringify(items));
+    }
+    // Also update legacy/shared storage with items tagged by userId for safety
+    localStorage.setItem('gw_custom_events', JSON.stringify(items));
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('custom-calendar-events-updated', { detail: { items, userId: uid } }));
     }
-  } catch {}
+  } catch (err) {
+    console.error('Failed to save custom calendar items', err);
+  }
 };

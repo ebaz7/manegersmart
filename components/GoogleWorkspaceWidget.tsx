@@ -465,10 +465,28 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     setCurrentDate(new Date());
   };
 
+  // Helper to normalize any date string (Gregorian or Shamsi) to standard YYYY-MM-DD
+  const normalizeToIsoDate = (dStr?: string): string => {
+    if (!dStr) return '';
+    const clean = dStr.split('T')[0].trim().replace(/\//g, '-');
+    const parts = clean.split('-').map(Number);
+    if (parts.length === 3) {
+      // Check if Shamsi year (1300 to 1500)
+      if (parts[0] >= 1300 && parts[0] <= 1500) {
+        try {
+          const g = jalaali.toGregorian(parts[0], parts[1], parts[2]);
+          return `${g.gy}-${String(g.gm).padStart(2, '0')}-${String(g.gd).padStart(2, '0')}`;
+        } catch {}
+      }
+      return `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`;
+    }
+    return clean;
+  };
+
   // Combined Active Events & Notes
   const allEventsForWeek = useMemo(() => {
     const enabledCategories = new Set(calendarFilters.filter(f => f.enabled).map(f => f.category));
-    const isPrimaryEnabled = calendarFilters.find(f => f.id === 'primary')?.enabled ?? true;
+    const isGoogleEnabled = calendarFilters.some(f => (f.category === 'personal' || f.id === 'primary' || f.id.includes('@')) && f.enabled);
 
     const list: Array<{
       id: string;
@@ -483,24 +501,32 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       googleLink?: string;
     }> = [];
 
-    // 1. Custom items
+    // 1. Custom items (loans, reminders, tasks, notes, etc.)
     customItems.forEach(item => {
-      if (enabledCategories.has(item.category)) {
+      const cat = item.category || 'reminders';
+      const isEnabled = enabledCategories.has(cat) || 
+        (cat === 'english' && enabledCategories.has('reminders')) ||
+        (cat === 'personal' && isGoogleEnabled) ||
+        (cat === 'loans' && enabledCategories.has('loans')) ||
+        enabledCategories.has('reminders');
+
+      if (isEnabled) {
+        const iso = normalizeToIsoDate(item.startDate);
         list.push({
           id: item.id,
           title: item.title,
-          isoDate: item.startDate,
-          startHour: item.startHour,
-          durationHours: item.durationHours,
-          color: item.color,
-          category: item.category,
+          isoDate: iso,
+          startHour: item.startHour ?? 9,
+          durationHours: item.durationHours ?? 1,
+          color: item.color || (cat === 'loans' ? '#1d4ed8' : '#3b82f6'),
+          category: cat,
           description: item.description
         });
       }
     });
 
     // 2. Google Calendar items
-    if (isPrimaryEnabled && googleEvents.length > 0) {
+    if (isGoogleEnabled && googleEvents.length > 0) {
       googleEvents.forEach(ev => {
         const startRaw = ev.start.dateTime || ev.start.date;
         if (!startRaw) return;
@@ -529,8 +555,27 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       });
     }
 
+    // 3. Google Tasks (when tasks category is enabled)
+    if (enabledCategories.has('tasks') && googleTasks.length > 0) {
+      googleTasks.forEach((task, idx) => {
+        if (!task.due) return;
+        const iso = normalizeToIsoDate(task.due);
+        list.push({
+          id: `gtask_${task.id || idx}`,
+          title: `✔ ${task.title || 'وظیفه گوگل'}`,
+          isoDate: iso,
+          startHour: 9 + (idx % 5),
+          durationHours: 1,
+          color: '#eab308',
+          category: 'tasks',
+          description: task.notes || 'وظیفه ثبت شده در Google Tasks',
+          isGoogle: true
+        });
+      });
+    }
+
     return list;
-  }, [customItems, googleEvents, calendarFilters]);
+  }, [customItems, googleEvents, googleTasks, calendarFilters]);
 
   // Open Quick Add Modal
   const openQuickAdd = (isoDate?: string, startHour?: number) => {
@@ -1100,17 +1145,17 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       {/* 3. QUICK ADD EVENT / LOAN INSTALLMENT MODAL */}
       {showAddModal && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+          className="fixed inset-0 z-[99999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex justify-center items-start sm:items-center animate-fadeIn"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowAddModal(false);
           }}
         >
           <div 
-            className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+            className="relative bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 w-full max-w-lg shadow-2xl flex flex-col my-auto max-h-[85vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             
-            <div className="px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-gray-50/70 dark:bg-zinc-900">
+            <div className="sticky top-0 z-10 px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-white dark:bg-zinc-900">
               <h3 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <Plus size={17} className="text-blue-600" />
                 <span>ثبت رویداد، یادداشت یا قسط وام</span>
@@ -1118,14 +1163,14 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
               <button 
                 type="button"
                 onClick={() => setShowAddModal(false)} 
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
               >
                 <X size={17} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEvent} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+            <form onSubmit={handleSaveEvent} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs overscroll-contain min-h-0">
                 {/* Title */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
@@ -1190,7 +1235,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-1">
                     <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                      تاریخ میلادی
+                      تاریخ
                     </label>
                     <input
                       type="date"
@@ -1198,6 +1243,21 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
                       onChange={(e) => setModalDate(e.target.value)}
                       className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
                     />
+                    {modalDate && (() => {
+                      try {
+                        const [y, m, d] = modalDate.split('-').map(Number);
+                        if (y && m && d) {
+                          const j = jalaali.toJalaali(y, m, d);
+                          const dayOfWeek = new Date(y, m - 1, d).getDay();
+                          return (
+                            <div className="mt-1 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                              📅 {PERSIAN_DAYS_FULL[dayOfWeek]} {j.jd} {PERSIAN_MONTH_NAMES[j.jm - 1]} {j.jy}
+                            </div>
+                          );
+                        }
+                      } catch {}
+                      return null;
+                    })()}
                   </div>
 
                   <div>
@@ -1263,7 +1323,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
               </div>
 
               {/* Modal Buttons */}
-              <div className="px-5 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center justify-end gap-2 shrink-0 bg-gray-50/50 dark:bg-zinc-900/50">
+              <div className="sticky bottom-0 z-10 px-5 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center justify-end gap-2 shrink-0 bg-gray-50 dark:bg-zinc-900">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}

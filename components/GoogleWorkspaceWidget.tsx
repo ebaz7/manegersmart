@@ -10,7 +10,7 @@ import {
 import * as jalaali from 'jalaali-js';
 import { 
   signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken,
-  fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem,
+  fetchGoogleCalendarEvents, fetchGoogleTasks, fetchGoogleCalendarList, GoogleCalendarEvent, GoogleTaskItem,
   createGoogleCalendarEvent, getCustomCalendarItems, saveCustomCalendarItems,
   CustomCalendarItem, removeGoogleTokenForUser 
 } from '../services/googleWorkspaceService';
@@ -51,15 +51,11 @@ interface CalendarFilter {
 }
 
 const getDefaultCalendarFilters = (primaryName: string): CalendarFilter[] => [
-  { id: 'primary', name: primaryName, color: '#039be5', enabled: true, category: 'personal' },
-  { id: 'english', name: 'یادگیری لغات انگلیسی', color: '#84cc16', enabled: true, category: 'english' },
+  { id: 'primary', name: primaryName || 'تقویم شخصی من', color: '#039be5', enabled: true, category: 'personal' },
+  { id: 'tasks', name: 'وظایف گوگل و سیستم (Tasks)', color: '#eab308', enabled: true, category: 'tasks' },
   { id: 'loans', name: 'اقساط وام و چک‌ها', color: '#1d4ed8', enabled: true, category: 'loans' },
-  { id: 'birthdays', name: 'Birthdays (تولدها)', color: '#10b981', enabled: true, category: 'reminders' },
-  { id: 'tasks', name: 'Tasks (وظایف گوگل)', color: '#eab308', enabled: true, category: 'tasks' },
-  { id: 'holidays', name: 'Holidays in Iran (تعطیلات)', color: '#059669', enabled: true, category: 'holidays', isOther: true },
-  { id: 'lepan', name: 'lepan baft', color: '#06b6d4', enabled: true, category: 'other', isOther: true },
-  { id: 'hengam', name: 'هنگام', color: '#dc2626', enabled: true, category: 'other', isOther: true },
-  { id: 'lian', name: 'لیان', color: '#8b5cf6', enabled: false, category: 'other', isOther: true }
+  { id: 'reminders', name: 'رویدادها و یادداشت‌ها', color: '#10b981', enabled: true, category: 'reminders' },
+  { id: 'holidays', name: 'تعطیلات رسمی ایران (Holidays)', color: '#059669', enabled: true, category: 'holidays', isOther: true },
 ];
 
 export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ 
@@ -140,7 +136,13 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((f: CalendarFilter) => f.id === 'primary' ? { ...f, name: primaryCalendarName } : f);
+            // If legacy mock filters exist (lepan, hengam, lian), purge them
+            const hasLegacy = parsed.some((f: any) => f.id === 'lepan' || f.id === 'hengam' || f.id === 'lian' || f.id === 'english');
+            if (hasLegacy) {
+              localStorage.removeItem(`gw_filters_${currentUserId}`);
+            } else {
+              return parsed.map((f: CalendarFilter) => f.id === 'primary' ? { ...f, name: primaryCalendarName } : f);
+            }
           }
         }
       } catch {}
@@ -196,7 +198,12 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            userFilters = parsed.map((f: CalendarFilter) => f.id === 'primary' ? { ...f, name: primaryCalendarName } : f);
+            const hasLegacy = parsed.some((f: any) => f.id === 'lepan' || f.id === 'hengam' || f.id === 'lian' || f.id === 'english');
+            if (hasLegacy) {
+              localStorage.removeItem(`gw_filters_${currentUserId}`);
+            } else {
+              userFilters = parsed.map((f: CalendarFilter) => f.id === 'primary' ? { ...f, name: primaryCalendarName } : f);
+            }
           }
         }
       } catch {}
@@ -254,9 +261,10 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      const [calEvents, taskItems] = await Promise.allSettled([
+      const [calEvents, taskItems, calList] = await Promise.allSettled([
         fetchGoogleCalendarEvents(tok),
-        fetchGoogleTasks(tok)
+        fetchGoogleTasks(tok),
+        fetchGoogleCalendarList(tok)
       ]);
 
       let isExpired = false;
@@ -274,6 +282,31 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
         setGoogleTasks(taskItems.value);
       }
 
+      // If user has real Google Calendars, dynamically map them to sidebar filters
+      if (calList.status === 'fulfilled' && calList.value && calList.value.length > 0) {
+        const dynamicFilters: CalendarFilter[] = calList.value.map((cal, idx) => ({
+          id: cal.id,
+          name: cal.summary || (cal.primary ? primaryCalendarName : `تقویم ${idx + 1}`),
+          color: cal.backgroundColor || (cal.primary ? '#039be5' : '#8b5cf6'),
+          enabled: true,
+          category: cal.primary ? 'personal' : 'other',
+          isOther: !cal.primary
+        }));
+
+        dynamicFilters.push(
+          { id: 'tasks', name: 'وظایف گوگل و سیستم (Tasks)', color: '#eab308', enabled: true, category: 'tasks' },
+          { id: 'loans', name: 'اقساط وام و چک‌ها', color: '#1d4ed8', enabled: true, category: 'loans' },
+          { id: 'reminders', name: 'رویدادها و یادداشت‌ها', color: '#10b981', enabled: true, category: 'reminders' }
+        );
+
+        setCalendarFilters(dynamicFilters);
+        if (currentUserId) {
+          try {
+            localStorage.setItem(`gw_filters_${currentUserId}`, JSON.stringify(dynamicFilters));
+          } catch {}
+        }
+      }
+
       if (isExpired) {
         setToken(null);
         removeGoogleTokenForUser(currentUserId);
@@ -286,11 +319,11 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     }
   };
 
-  const handleConnect = async () => {
+  const handleConnect = async (forceAccountSelection: boolean = true) => {
     setIsSigningIn(true);
     setError(null);
     try {
-      const result = await signInWithGoogleWorkspace(currentUserId);
+      const result = await signInWithGoogleWorkspace(currentUserId, { forceAccountSelection });
       if (result?.accessToken) {
         setToken(result.accessToken);
         await loadGoogleData(result.accessToken, currentUserId);
@@ -319,6 +352,13 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     setToken(null);
     setGoogleEvents([]);
     setGoogleTasks([]);
+    const defaultFilters = getDefaultCalendarFilters(userDisplayName);
+    setCalendarFilters(defaultFilters);
+    if (currentUserId) {
+      try {
+        localStorage.removeItem(`gw_filters_${currentUserId}`);
+      } catch {}
+    }
     if (currentUser) {
       try {
         await updateUser({
@@ -684,34 +724,42 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
           {/* Google Sync Status / Button */}
           {!token ? (
             <button
-              onClick={handleConnect}
+              onClick={() => handleConnect(true)}
               disabled={isSigningIn}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors cursor-pointer"
-              title={`اتصال حساب گوگل مختص کاربر: ${userDisplayName}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all cursor-pointer shadow-2xs"
+              title={`اتصال حساب گوگل مجزا برای کاربر: ${userDisplayName}`}
             >
               <RefreshCw size={13} className={isSigningIn ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">{isSigningIn ? 'در حال اتصال...' : 'اتصال به گوگل'}</span>
+              <span>{isSigningIn ? 'در حال اتصال...' : 'اتصال به حساب گوگل'}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 pl-1 pr-2 py-0.5 rounded-lg">
+            <div className="flex items-center gap-1.5 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 pl-1 pr-2.5 py-1 rounded-xl">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span 
-                className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 max-w-[120px] truncate dir-ltr" 
-                title={`حساب گوگل متصل: ${currentUser?.googleLinkedEmail || userDisplayName}`}
+                className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 max-w-[130px] truncate dir-ltr" 
+                title={`حساب گوگل متصل برای ${userDisplayName}: ${currentUser?.googleLinkedEmail || userDisplayName}`}
               >
                 {currentUser?.googleLinkedEmail ? currentUser.googleLinkedEmail.split('@')[0] : 'گوگل متصل'}
               </span>
               <button
+                onClick={() => handleConnect(true)}
+                disabled={isSigningIn}
+                className="px-2 py-0.5 rounded-lg bg-white/80 dark:bg-zinc-800 text-[10px] font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors cursor-pointer border border-gray-200 dark:border-zinc-700 shrink-0"
+                title="تغییر یا اتصال حساب دیگر گوگل برای این کاربر"
+              >
+                تغییر حساب
+              </button>
+              <button
                 onClick={() => loadGoogleData(token, currentUserId)}
                 disabled={isLoading}
-                className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
+                className="p-1 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
                 title="بروزرسانی تقویم گوگل"
               >
                 <RefreshCw size={12} className={isLoading ? 'animate-spin text-emerald-600' : ''} />
               </button>
               <button
                 onClick={handleDisconnect}
-                className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-500 transition-colors cursor-pointer"
+                className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-500 transition-colors cursor-pointer"
                 title="قطع اتصال حساب گوگل این کاربر"
               >
                 <LogOut size={12} />

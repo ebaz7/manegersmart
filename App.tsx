@@ -40,6 +40,7 @@ import { FloatingCalculator } from './components/FloatingCalculator';
 import { AppNavItem, getAppNavItems, getSidebarLabel } from './utils/navigationItems';
 import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
+import { logoutGoogleWorkspace } from './services/googleWorkspaceService';
 import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage, SystemAnnouncement, ChatGroup, TaskGroup, GroupTask } from './types';
 import { Loader2, Bell, X, MessageSquare, AlertTriangle, FileWarning, CreditCard, BellRing, Columns, Maximize2, Minimize2, ArrowRightLeft, Minus, ExternalLink, Calculator, Monitor } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
@@ -882,6 +883,9 @@ function App() {
       const endpoint = localStorage.getItem('push_endpoint');
       const user = currentUser;
       
+      // Clear Google OAuth active session so the next user doesn't inherit it
+      logoutGoogleWorkspace(user?.id).catch(console.error);
+
       // 1. Clear local user session state immediately
       authLogout(); 
       setCurrentUser(null); 

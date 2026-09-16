@@ -88,18 +88,29 @@ const loadGsiScript = (): Promise<void> => {
   });
 };
 
-export const signInWithGsi = async (clientId: string): Promise<{ email: string; name: string; accessToken: string }> => {
+export const signInWithGsi = async (
+  clientId: string,
+  options?: { loginHint?: string; forceAccountSelection?: boolean }
+): Promise<{ email: string; name: string; accessToken: string }> => {
   await loadGsiScript();
   const google = (window as any).google;
   if (!google?.accounts?.oauth2) {
     throw new Error('Google Identity Services not loaded');
   }
 
+  // Disable auto-select so Google doesn't silently auto-pick the browser's active Google account
+  try {
+    google.accounts.id?.disableAutoSelect?.();
+  } catch {}
+
+  const promptValue = options?.forceAccountSelection !== false ? 'select_account consent' : 'select_account';
+
   return new Promise((resolve, reject) => {
     try {
-      const client = google.accounts.oauth2.initTokenClient({
+      const clientConfig: any = {
         client_id: clientId,
         scope: GOOGLE_WORKSPACE_SCOPES.join(' ') + ' https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+        prompt: promptValue,
         callback: async (tokenResponse: any) => {
           if (tokenResponse.error) {
             return reject(new Error(`خطای گوگل: ${tokenResponse.error_description || tokenResponse.error}`));
@@ -130,9 +141,18 @@ export const signInWithGsi = async (clientId: string): Promise<{ email: string; 
         error_callback: (err: any) => {
           reject(err);
         }
-      });
+      };
 
-      client.requestAccessToken({ prompt: 'select_account' });
+      if (options?.loginHint) {
+        clientConfig.login_hint = options.loginHint;
+      }
+
+      const client = google.accounts.oauth2.initTokenClient(clientConfig);
+
+      client.requestAccessToken({
+        prompt: promptValue,
+        ...(options?.loginHint ? { hint: options.loginHint } : {})
+      });
     } catch (e) {
       reject(e);
     }
@@ -213,14 +233,27 @@ export const initGoogleAuth = (
   });
 };
 
-export const signInWithGoogleWorkspace = async (userId?: string | number): Promise<{ user: { email?: string | null; displayName?: string | null; uid?: string }; accessToken: string } | null> => {
+export const signInWithGoogleWorkspace = async (
+  userId?: string | number,
+  options?: { loginHint?: string; forceAccountSelection?: boolean }
+): Promise<{ user: { email?: string | null; displayName?: string | null; uid?: string }; accessToken: string } | null> => {
   isSigningIn = true;
   const clientId = (firebaseConfig as any)?.oAuthClientId;
+
+  // Clear previous Firebase session first to guarantee isolation across users
+  try {
+    await auth.signOut();
+  } catch {}
+
+  try {
+    const google = (typeof window !== 'undefined' && (window as any).google);
+    google?.accounts?.id?.disableAutoSelect?.();
+  } catch {}
 
   // 1. Try Google Identity Services (GIS) first for iframe-safe OAuth
   if (clientId) {
     try {
-      const gsiRes = await signInWithGsi(clientId);
+      const gsiRes = await signInWithGsi(clientId, options);
       if (userId) {
         storeGoogleTokenForUser(gsiRes.accessToken, userId);
       }
@@ -239,7 +272,14 @@ export const signInWithGoogleWorkspace = async (userId?: string | number): Promi
 
   // 2. Fallback to Firebase signInWithPopup
   try {
-    const result = await signInWithPopup(auth, provider);
+    const customProvider = new GoogleAuthProvider();
+    GOOGLE_WORKSPACE_SCOPES.forEach(scope => customProvider.addScope(scope));
+    customProvider.setCustomParameters({
+      prompt: options?.forceAccountSelection !== false ? 'select_account consent' : 'select_account',
+      ...(options?.loginHint ? { login_hint: options.loginHint } : {})
+    });
+
+    const result = await signInWithPopup(auth, customProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('Failed to get access token from Google');
@@ -266,9 +306,20 @@ export const getGoogleAccessToken = async (userId?: string | number): Promise<st
 };
 
 export const logoutGoogleWorkspace = async (userId?: string | number) => {
+  const currentToken = userId ? getStoredGoogleTokenForUser(userId) : null;
+  
   try {
     await auth.signOut();
   } catch {}
+
+  try {
+    const google = (typeof window !== 'undefined' && (window as any).google);
+    google?.accounts?.id?.disableAutoSelect?.();
+    if (currentToken && google?.accounts?.oauth2?.revoke) {
+      google.accounts.oauth2.revoke(currentToken, () => {});
+    }
+  } catch {}
+
   removeGoogleTokenForUser(userId);
 };
 
@@ -369,6 +420,33 @@ export const fetchGoogleTasks = async (token: string): Promise<GoogleTaskItem[]>
   return allTasks;
 };
 
+// Google Calendar List Interface
+export interface GoogleCalendarItem {
+  id: string;
+  summary: string;
+  description?: string;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  primary?: boolean;
+}
+
+// Fetch all Google Calendars of the connected user
+export const fetchGoogleCalendarList = async (token: string): Promise<GoogleCalendarItem[]> => {
+  try {
+    const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      return [];
+    }
+    const data = await res.json();
+    return data.items || [];
+  } catch (e) {
+    console.warn('Failed to fetch calendar list from Google', e);
+    return [];
+  }
+};
+
 // Create a new event on user's Google Calendar
 export const createGoogleCalendarEvent = async (
   token: string,
@@ -378,9 +456,10 @@ export const createGoogleCalendarEvent = async (
     start: { dateTime?: string; date?: string; timeZone?: string };
     end: { dateTime?: string; date?: string; timeZone?: string };
     location?: string;
-  }
+  },
+  calendarId: string = 'primary'
 ): Promise<GoogleCalendarEvent> => {
-  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -419,117 +498,8 @@ export const getCustomCalendarItems = (userId?: string | number): CustomCalendar
     const key = `gw_custom_events_${uid}`;
     const saved = localStorage.getItem(key);
     if (saved) return JSON.parse(saved);
-
-    // If admin or initial user (1), check if legacy global items exist and migrate them
-    if (uid === '1' || uid === 'admin') {
-      const globalSaved = localStorage.getItem('gw_custom_events_global');
-      if (globalSaved) {
-        localStorage.setItem(key, globalSaved);
-        localStorage.removeItem('gw_custom_events_global');
-        return JSON.parse(globalSaved);
-      }
-    }
   } catch {}
   
-  // Only for admin or user 1 on initial setup, provide default sample items
-  if (uid === '1' || uid === 'admin') {
-    return [
-      {
-        id: 'item_sample_loan_1',
-        title: 'قسط 25/60 وام صنعت و معدن 71,965,251',
-        category: 'loans',
-        color: '#3b82f6', // blue
-        startDate: '2026-09-15',
-        startHour: 8,
-        durationHours: 1,
-        description: 'سررسید قسط وام بانک صنعت و معدن'
-      },
-      {
-        id: 'item_sample_loan_2',
-        title: 'قسط 53/54 وام صنعت و معدن 107,121,981',
-        category: 'loans',
-        color: '#1d4ed8', // dark blue
-        startDate: '2026-09-18',
-        startHour: 8,
-        durationHours: 1,
-        description: 'سررسید قسط دوم وام صنعت و معدن'
-      },
-      {
-        id: 'item_sample_loan_3',
-        title: 'صنعت و معدن 1,511',
-        category: 'loans',
-        color: '#2563eb',
-        startDate: '2026-09-18',
-        startHour: 9,
-        durationHours: 1
-      },
-      {
-        id: 'item_sample_eng_sun',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16', // lime green
-        startDate: '2026-09-13',
-        startHour: 9,
-        durationHours: 0.8
-      },
-      {
-        id: 'item_sample_eng_mon',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16',
-        startDate: '2026-09-14',
-        startHour: 9,
-        durationHours: 0.8
-      },
-      {
-        id: 'item_sample_eng_tue',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16',
-        startDate: '2026-09-15',
-        startHour: 9,
-        durationHours: 0.8
-      },
-      {
-        id: 'item_sample_eng_wed',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16',
-        startDate: '2026-09-16',
-        startHour: 9,
-        durationHours: 0.8
-      },
-      {
-        id: 'item_sample_eng_thu',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16',
-        startDate: '2026-09-17',
-        startHour: 9,
-        durationHours: 0.8
-      },
-      {
-        id: 'item_sample_eng_fri',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16',
-        startDate: '2026-09-18',
-        startHour: 9,
-        durationHours: 0.8
-      },
-      {
-        id: 'item_sample_eng_sat',
-        title: 'یادگیری لغات انگلیسی، 9am',
-        category: 'english',
-        color: '#84cc16',
-        startDate: '2026-09-19',
-        startHour: 9,
-        durationHours: 0.8
-      }
-    ];
-  }
-
-  // Any other user begins with a clean, isolated personal calendar
   return [];
 };
 

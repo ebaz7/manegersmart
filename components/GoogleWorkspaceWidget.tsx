@@ -3,13 +3,15 @@ import {
   Calendar as CalendarIcon, CheckSquare, RefreshCw, LogIn, LogOut, 
   ExternalLink, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Link2,
   Settings, Eye, EyeOff, LayoutGrid, ListFilter, Globe, CalendarDays, Maximize2,
-  ChevronRight, ChevronLeft, MapPin, Plus, Check, CalendarCheck
+  ChevronRight, ChevronLeft, MapPin, Plus, Check, CalendarCheck, X, Trash2, Edit3,
+  Search, Bell, FileText, DollarSign, BookOpen, Layers
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { 
   signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken,
   fetchGoogleCalendarEvents, fetchGoogleTasks, GoogleCalendarEvent, GoogleTaskItem,
-  isRunningInIframe, openInStandaloneTab, removeGoogleTokenForUser 
+  createGoogleCalendarEvent, getCustomCalendarItems, saveCustomCalendarItems,
+  CustomCalendarItem, removeGoogleTokenForUser 
 } from '../services/googleWorkspaceService';
 import { updateUser } from '../services/authService';
 import { User } from '../types';
@@ -22,27 +24,30 @@ interface GoogleWorkspaceWidgetProps {
   isDateCardVisible?: boolean;
 }
 
-export interface GoogleCalendarSettings {
-  defaultMode: 'MONTH' | 'WEEK' | 'AGENDA';
-  calendarId: string;
-  timeZone: string;
-  showNav: boolean;
-  showDate: boolean;
-  showPrint: boolean;
-  showTabs: boolean;
-  showCalendars: boolean;
-  showTz: boolean;
-  hideTopDateCard: boolean;
-  calendarHeight?: number;
-}
-
 const PERSIAN_MONTH_NAMES = [
   'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
   'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
 ];
 
-const WEEK_DAYS = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
-const FULL_WEEK_DAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'];
+const GREGORIAN_MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const GREGORIAN_DAYS_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const PERSIAN_DAYS_FULL = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
+
+// Standard working hours 7 AM to 10 PM
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 7); // 7 to 22
+
+interface CalendarFilter {
+  id: string;
+  name: string;
+  color: string;
+  enabled: boolean;
+  category: string;
+  isOther?: boolean;
+}
 
 export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ 
   currentUser, 
@@ -53,48 +58,55 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 }) => {
   const [token, setToken] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const [activeTab, setActiveTab] = useState<'persian_calendar' | 'embed_calendar' | 'agenda_events' | 'tasks'>('persian_calendar');
-  const [events, setEvents] = useState<GoogleCalendarEvent[]>([]);
-  const [tasks, setTasks] = useState<GoogleTaskItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
-
-  // Persian Calendar State
-  const today = useMemo(() => new Date(), []);
-  const todayJalaali = useMemo(() => {
-    return jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
-  }, [today]);
-
-  const [currentJYear, setCurrentJYear] = useState(todayJalaali.jy);
-  const [currentJMonth, setCurrentJMonth] = useState(todayJalaali.jm);
-  const [selectedDay, setSelectedDay] = useState<number>(todayJalaali.jd);
-
-  // User storage key for settings
-  const userStorageKey = currentUser?.id ? String(currentUser.id) : (currentUser?.username || 'default');
-
-  // Widget settings
-  const [calSettings, setCalSettings] = useState<GoogleCalendarSettings>(() => {
-    try {
-      const saved = localStorage.getItem(`gw_cal_settings_${userStorageKey}`);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      defaultMode: 'MONTH',
-      calendarId: currentUser?.googleLinkedEmail || '',
-      timeZone: 'Asia/Tehran',
-      showNav: true,
-      showDate: true,
-      showPrint: false,
-      showTabs: true,
-      showCalendars: false,
-      showTz: false,
-      hideTopDateCard: false,
-      calendarHeight: 460
-    };
+  const [currentView, setCurrentView] = useState<'week' | 'month' | 'day' | 'agenda'>('week');
+  
+  // Real Google Calendar events & Tasks
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [googleTasks, setGoogleTasks] = useState<GoogleTaskItem[]>([]);
+  
+  // Custom user items (notes, loan installments, reminders) matching the user screenshot
+  const [customItems, setCustomItems] = useState<CustomCalendarItem[]>(() => {
+    return getCustomCalendarItems(currentUser?.id ? String(currentUser.id) : undefined);
   });
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [currentTimeMinutes, setCurrentTimeMinutes] = useState(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  });
+
+  // Active viewing date (defaults to current date e.g. Sep 16, 2026)
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
+
+  // Quick Event/Note Modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalDate, setModalDate] = useState('');
+  const [modalStartHour, setModalStartHour] = useState(9);
+  const [modalDuration, setModalDuration] = useState(1);
+  const [modalCategory, setModalCategory] = useState<'personal' | 'tasks' | 'loans' | 'reminders' | 'english' | 'holidays' | 'other'>('loans');
+  const [modalColor, setModalColor] = useState('#3b82f6');
+  const [modalDescription, setModalDescription] = useState('');
+  const [syncToGoogle, setSyncToGoogle] = useState(true);
+  const [isSavingEvent, setIsSavingEvent] = useState(false);
+
+  // Selected event popover
+  const [selectedItem, setSelectedItem] = useState<{
+    id: string;
+    title: string;
+    timeStr: string;
+    dateStr: string;
+    shamsiDateStr: string;
+    color: string;
+    category?: string;
+    description?: string;
+    isGoogle?: boolean;
+    googleLink?: string;
+  } | null>(null);
+
+  // Collapsed state
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('gw_widget_collapsed') === 'true';
@@ -103,28 +115,44 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     }
   });
 
-  // Save settings helper
-  const handleUpdateSettings = (newSettings: Partial<GoogleCalendarSettings>) => {
-    setCalSettings(prev => {
-      const updated = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem(`gw_cal_settings_${userStorageKey}`, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-    setIframeKey(prev => prev + 1);
+  // Calendar Category Toggles (My Calendars & Other Calendars matching the image)
+  const [calendarFilters, setCalendarFilters] = useState<CalendarFilter[]>([
+    { id: 'primary', name: currentUser?.googleLinkedEmail || currentUser?.fullName || 'محمد ابراهیم حیدری', color: '#039be5', enabled: true, category: 'personal' },
+    { id: 'english', name: 'یادگیری لغات انگلیسی', color: '#84cc16', enabled: true, category: 'english' },
+    { id: 'loans', name: 'اقساط وام و چک‌ها', color: '#1d4ed8', enabled: true, category: 'loans' },
+    { id: 'birthdays', name: 'Birthdays (تولدها)', color: '#10b981', enabled: true, category: 'reminders' },
+    { id: 'tasks', name: 'Tasks (وظایف گوگل)', color: '#eab308', enabled: true, category: 'tasks' },
+    { id: 'holidays', name: 'Holidays in Iran (تعطیلات)', color: '#059669', enabled: true, category: 'holidays', isOther: true },
+    { id: 'lepan', name: 'lepan baft', color: '#06b6d4', enabled: true, category: 'other', isOther: true },
+    { id: 'hengam', name: 'هنگام', color: '#dc2626', enabled: true, category: 'other', isOther: true },
+    { id: 'lian', name: 'لیان', color: '#8b5cf6', enabled: false, category: 'other', isOther: true }
+  ]);
+
+  // Update current time tick every minute
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTimeMinutes(now.getHours() * 60 + now.getMinutes());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Save custom items when changed
+  const handleSaveCustomItems = (items: CustomCalendarItem[]) => {
+    setCustomItems(items);
+    saveCustomCalendarItems(items, currentUser?.id ? String(currentUser.id) : undefined);
   };
 
-  // Sync token state on mount, user change, or external events
+  // Sync token state on mount & user change
   const checkTokenAndLoad = async () => {
     const cached = await getGoogleAccessToken(currentUser?.id);
     if (cached) {
       setToken(cached);
-      loadData(cached);
+      loadGoogleData(cached);
     } else {
       setToken(null);
-      setEvents([]);
-      setTasks([]);
+      setGoogleEvents([]);
+      setGoogleTasks([]);
     }
   };
 
@@ -134,38 +162,32 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     const handleAuthSync = (e: any) => {
       if (e?.detail?.token) {
         setToken(e.detail.token);
-        loadData(e.detail.token);
+        loadGoogleData(e.detail.token);
       } else if (e?.detail?.action === 'logout') {
         setToken(null);
-        setEvents([]);
-        setTasks([]);
+        setGoogleEvents([]);
+        setGoogleTasks([]);
       } else {
         checkTokenAndLoad();
       }
     };
 
-    const handleUserUpdate = () => {
-      checkTokenAndLoad();
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key?.startsWith('gw_access_token') || e.key === 'app_current_user') {
-        checkTokenAndLoad();
+    const handleCustomUpdate = (e: any) => {
+      if (e?.detail?.items) {
+        setCustomItems(e.detail.items);
       }
     };
 
     window.addEventListener('google-auth-sync', handleAuthSync);
-    window.addEventListener('current-user-updated', handleUserUpdate);
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('custom-calendar-events-updated', handleCustomUpdate);
 
     return () => {
       window.removeEventListener('google-auth-sync', handleAuthSync);
-      window.removeEventListener('current-user-updated', handleUserUpdate);
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('custom-calendar-events-updated', handleCustomUpdate);
     };
-  }, [currentUser?.id, currentUser?.googleLinkedEmail]);
+  }, [currentUser?.id]);
 
-  const loadData = async (tok: string) => {
+  const loadGoogleData = async (tok: string) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -175,44 +197,27 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       ]);
 
       let isExpired = false;
-      let hasError = false;
-
       if (calEvents.status === 'fulfilled') {
-        setEvents(calEvents.value);
+        setGoogleEvents(calEvents.value);
         if (onEventCountChange) onEventCountChange(calEvents.value.length);
       } else {
         const reason = calEvents.reason?.message || String(calEvents.reason);
-        console.warn('Calendar fetch error:', reason);
-        if (reason.includes('401') || reason.includes('403') || reason.includes('Unauthorized') || reason.includes('invalid_grant')) {
+        if (reason.includes('401') || reason.includes('403') || reason.includes('Unauthorized')) {
           isExpired = true;
-        } else {
-          hasError = true;
         }
       }
 
       if (taskItems.status === 'fulfilled') {
-        setTasks(taskItems.value);
-      } else {
-        const reason = taskItems.reason?.message || String(taskItems.reason);
-        console.warn('Tasks fetch error:', reason);
-        if (reason.includes('401') || reason.includes('403') || reason.includes('Unauthorized') || reason.includes('invalid_grant')) {
-          isExpired = true;
-        } else {
-          hasError = true;
-        }
+        setGoogleTasks(taskItems.value);
       }
 
       if (isExpired) {
         setToken(null);
         removeGoogleTokenForUser(currentUser?.id);
-        setEvents([]);
-        setTasks([]);
-        setError('نشست حساب گوگل منقضی شده است. جهت مشاهده رویدادها، دکمه اتصال مجدد را لمس فرمایید.');
-      } else if (hasError) {
-        setError('خطا در همگام‌سازی بخشی از داده‌های گوگل. لطفاً اتصال را مجدداً بررسی فرمایید.');
+        setError('نشست حساب گوگل منقضی شده است. جهت اتصال مجدد کلیک کنید.');
       }
     } catch (err: any) {
-      setError(err?.message || 'خطا در ارتباط با سرویس گوگل');
+      setError(err?.message || 'خطا در بارگیری اطلاعات تقویم گوگل');
     } finally {
       setIsLoading(false);
     }
@@ -225,20 +230,16 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       const result = await signInWithGoogleWorkspace(currentUser?.id);
       if (result?.accessToken) {
         setToken(result.accessToken);
-        await loadData(result.accessToken);
+        await loadGoogleData(result.accessToken);
         if (currentUser && result.user?.email) {
           try {
-            const updated = {
+            await updateUser({
               ...currentUser,
               googleLinkedEmail: result.user.email,
               googleLinkedAt: Date.now()
-            };
-            await updateUser(updated);
-            if (!calSettings.calendarId) {
-              handleUpdateSettings({ calendarId: result.user.email });
-            }
+            });
           } catch (e) {
-            console.debug('Failed to update user profile with google info', e);
+            console.debug('Failed to update user profile', e);
           }
         }
       }
@@ -253,19 +254,8 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     if (!confirm('آیا از قطع اتصال حساب گوگل اطمینان دارید؟')) return;
     await logoutGoogleWorkspace(currentUser?.id);
     setToken(null);
-    setEvents([]);
-    setTasks([]);
-    if (currentUser?.googleLinkedEmail) {
-      try {
-        await updateUser({
-          ...currentUser,
-          googleLinkedEmail: '',
-          googleLinkedAt: undefined
-        });
-      } catch (e) {
-        console.debug('Failed to clear google info on user profile', e);
-      }
-    }
+    setGoogleEvents([]);
+    setGoogleTasks([]);
   };
 
   const toggleCollapse = () => {
@@ -276,784 +266,939 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     });
   };
 
-  // Today's Date Strings
-  const persianDateFull = useMemo(() => {
-    try {
-      const formatter = new Intl.DateTimeFormat('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      return formatter.format(today);
-    } catch {
-      return `${todayJalaali.jy}/${todayJalaali.jm}/${todayJalaali.jd}`;
-    }
-  }, [today, todayJalaali]);
-
-  const gregorianDateFull = useMemo(() => {
-    try {
-      return today.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return '';
-    }
-  }, [today]);
-
-  const weekdayName = useMemo(() => {
-    try {
-      return new Intl.DateTimeFormat('fa-IR', { weekday: 'long' }).format(today);
-    } catch {
-      return 'امروز';
-    }
-  }, [today]);
-
-  // Filter Today's Events
-  const todayEvents = useMemo(() => {
-    const startOfToday = new Date(today);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(today);
-    endOfToday.setHours(23, 59, 59, 999);
-
-    return events.filter(ev => {
-      const evDate = ev.start.dateTime ? new Date(ev.start.dateTime) : ev.start.date ? new Date(ev.start.date) : null;
-      if (!evDate) return false;
-      return evDate >= startOfToday && evDate <= endOfToday;
-    });
-  }, [events, today]);
-
-  // Upcoming Next Event
-  const nextEvent = useMemo(() => {
-    if (todayEvents.length > 0) return todayEvents[0];
-    const now = new Date();
-    return events.find(ev => {
-      const evDate = ev.start.dateTime ? new Date(ev.start.dateTime) : ev.start.date ? new Date(ev.start.date) : null;
-      return evDate && evDate >= now;
-    }) || events[0] || null;
-  }, [todayEvents, events]);
-
-  // Persian Calendar Grid Days Calculation
-  const calendarDays = useMemo(() => {
-    const daysInMonth = jalaali.jalaaliMonthLength(currentJYear, currentJMonth);
-    // Find the starting weekday of the 1st of current Jalaali month
-    const gStart = jalaali.toGregorian(currentJYear, currentJMonth, 1);
-    const firstDayDate = new Date(gStart.gy, gStart.gm - 1, gStart.gd);
-    // JS getDay(): 0 is Sunday, 1 is Monday... 6 is Saturday
-    // In Persian week: Saturday is index 0, Sunday is 1, ..., Friday is 6
-    const jsDay = firstDayDate.getDay();
-    const startOffset = (jsDay + 1) % 7; // Saturday(6) -> 0, Sunday(0) -> 1, ..., Friday(5) -> 6
-
-    const days: {
-      day: number;
-      isCurrentMonth: boolean;
-      isToday: boolean;
-      hasEvents: boolean;
-      eventsCount: number;
-      gDate: Date;
-    }[] = [];
-
-    // Empty slots before month starts
-    for (let i = 0; i < startOffset; i++) {
-      days.push({
-        day: 0,
-        isCurrentMonth: false,
-        isToday: false,
-        hasEvents: false,
-        eventsCount: 0,
-        gDate: new Date()
-      });
-    }
-
-    // Days of current month
-    for (let d = 1; d <= daysInMonth; d++) {
-      const g = jalaali.toGregorian(currentJYear, currentJMonth, d);
-      const gDate = new Date(g.gy, g.gm - 1, g.gd);
-      const isToday = currentJYear === todayJalaali.jy && currentJMonth === todayJalaali.jm && d === todayJalaali.jd;
-
-      // Count events matching this day
-      const dayStart = new Date(g.gy, g.gm - 1, g.gd, 0, 0, 0);
-      const dayEnd = new Date(g.gy, g.gm - 1, g.gd, 23, 59, 59);
-
-      const matchedEvents = events.filter(ev => {
-        const evDate = ev.start.dateTime ? new Date(ev.start.dateTime) : ev.start.date ? new Date(ev.start.date) : null;
-        return evDate && evDate >= dayStart && evDate <= dayEnd;
-      });
-
-      days.push({
-        day: d,
-        isCurrentMonth: true,
-        isToday,
-        hasEvents: matchedEvents.length > 0,
-        eventsCount: matchedEvents.length,
-        gDate
-      });
-    }
-
-    return days;
-  }, [currentJYear, currentJMonth, todayJalaali, events]);
-
-  // Selected Day Events
-  const selectedDayEvents = useMemo(() => {
-    if (!selectedDay) return [];
-    const g = jalaali.toGregorian(currentJYear, currentJMonth, selectedDay);
-    const dayStart = new Date(g.gy, g.gm - 1, g.gd, 0, 0, 0);
-    const dayEnd = new Date(g.gy, g.gm - 1, g.gd, 23, 59, 59);
-
-    return events.filter(ev => {
-      const evDate = ev.start.dateTime ? new Date(ev.start.dateTime) : ev.start.date ? new Date(ev.start.date) : null;
-      return evDate && evDate >= dayStart && evDate <= dayEnd;
-    });
-  }, [currentJYear, currentJMonth, selectedDay, events]);
-
-  // Month navigation
-  const handlePrevMonth = () => {
-    if (currentJMonth === 1) {
-      setCurrentJYear(y => y - 1);
-      setCurrentJMonth(12);
-    } else {
-      setCurrentJMonth(m => m - 1);
-    }
-  };
-
-  const handleNextMonth = () => {
-    if (currentJMonth === 12) {
-      setCurrentJYear(y => y + 1);
-      setCurrentJMonth(1);
-    } else {
-      setCurrentJMonth(m => m + 1);
-    }
-  };
-
-  const handleGoToToday = () => {
-    setCurrentJYear(todayJalaali.jy);
-    setCurrentJMonth(todayJalaali.jm);
-    setSelectedDay(todayJalaali.jd);
-  };
-
-  // Build clean Google Calendar Embed URL based on user settings
-  const embedUrl = useMemo(() => {
-    const calId = calSettings.calendarId || currentUser?.googleLinkedEmail || '';
-    const mode = calSettings.defaultMode || 'MONTH';
-    const ctz = calSettings.timeZone || 'Asia/Tehran';
+  // Helper: Get Sunday-to-Saturday days for the week containing `currentDate`
+  const weekDays = useMemo(() => {
+    const d = new Date(currentDate);
+    const dayOfWeek = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
     
-    const params = new URLSearchParams();
-    if (calId) {
-      params.append('src', calId);
-    }
-    params.append('ctz', ctz);
-    params.append('hl', 'fa');
-    params.append('mode', mode);
-    params.append('showTitle', '0');
-    params.append('showNav', calSettings.showNav ? '1' : '0');
-    params.append('showDate', calSettings.showDate ? '1' : '0');
-    params.append('showPrint', calSettings.showPrint ? '1' : '0');
-    params.append('showTabs', calSettings.showTabs ? '1' : '0');
-    params.append('showCalendars', calSettings.showCalendars ? '1' : '0');
-    params.append('showTz', calSettings.showTz ? '1' : '0');
-    params.append('wkst', '7');
+    // Start on Sunday
+    const sunday = new Date(d);
+    sunday.setDate(d.getDate() - dayOfWeek);
+    sunday.setHours(0, 0, 0, 0);
 
-    return `https://calendar.google.com/calendar/embed?${params.toString()}`;
-  }, [calSettings, currentUser?.googleLinkedEmail]);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(sunday);
+      date.setDate(sunday.getDate() + i);
+
+      const j = jalaali.toJalaali(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      const isToday = (
+        date.getFullYear() === new Date().getFullYear() &&
+        date.getMonth() === new Date().getMonth() &&
+        date.getDate() === new Date().getDate()
+      );
+
+      const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      
+      // Formatted Shamsi date string like in user image: "یکشنبه ۲۲ شهریور ۱۴۰۵"
+      const shamsiRibbonText = `${PERSIAN_DAYS_FULL[i]} ${j.jd} ${PERSIAN_MONTH_NAMES[j.jm - 1]} ${j.jy}`;
+
+      days.push({
+        date,
+        isoDate,
+        dayNumber: date.getDate(),
+        dayNameShort: GREGORIAN_DAYS_SHORT[i],
+        jalaali: j,
+        shamsiRibbonText,
+        isToday,
+        dayIndex: i
+      });
+    }
+    return days;
+  }, [currentDate]);
+
+  // Current header title (e.g. "September 2026 / شهریور ۱۴۰۵")
+  const currentHeaderTitle = useMemo(() => {
+    const gMonth = GREGORIAN_MONTH_NAMES[currentDate.getMonth()];
+    const gYear = currentDate.getFullYear();
+    const j = jalaali.toJalaali(currentDate.getFullYear(), currentDate.getMonth() + 1, currentDate.getDate());
+    return {
+      gregorian: `${gMonth} ${gYear}`,
+      shamsi: `${PERSIAN_MONTH_NAMES[j.jm - 1]} ${j.jy}`
+    };
+  }, [currentDate]);
+
+  // Navigation handlers
+  const handlePrev = () => {
+    const d = new Date(currentDate);
+    if (currentView === 'week') d.setDate(d.getDate() - 7);
+    else if (currentView === 'month') d.setMonth(d.getMonth() - 1);
+    else if (currentView === 'day') d.setDate(d.getDate() - 1);
+    setCurrentDate(d);
+  };
+
+  const handleNext = () => {
+    const d = new Date(currentDate);
+    if (currentView === 'week') d.setDate(d.getDate() + 7);
+    else if (currentView === 'month') d.setMonth(d.getMonth() + 1);
+    else if (currentView === 'day') d.setDate(d.getDate() + 1);
+    setCurrentDate(d);
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  // Toggle calendar filter
+  const toggleCalendarFilter = (id: string) => {
+    setCalendarFilters(prev => prev.map(f => f.id === id ? { ...f, enabled: !f.enabled } : f));
+  };
+
+  // Combined Active Events & Notes
+  const allEventsForWeek = useMemo(() => {
+    const enabledCategories = new Set(calendarFilters.filter(f => f.enabled).map(f => f.category));
+    const isPrimaryEnabled = calendarFilters.find(f => f.id === 'primary')?.enabled ?? true;
+
+    const list: Array<{
+      id: string;
+      title: string;
+      isoDate: string;
+      startHour: number;
+      durationHours: number;
+      color: string;
+      category: string;
+      description?: string;
+      isGoogle?: boolean;
+      googleLink?: string;
+    }> = [];
+
+    // 1. Custom items
+    customItems.forEach(item => {
+      if (enabledCategories.has(item.category)) {
+        list.push({
+          id: item.id,
+          title: item.title,
+          isoDate: item.startDate,
+          startHour: item.startHour,
+          durationHours: item.durationHours,
+          color: item.color,
+          category: item.category,
+          description: item.description
+        });
+      }
+    });
+
+    // 2. Google Calendar items
+    if (isPrimaryEnabled && googleEvents.length > 0) {
+      googleEvents.forEach(ev => {
+        const startRaw = ev.start.dateTime || ev.start.date;
+        if (!startRaw) return;
+        const d = new Date(startRaw);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const startHour = ev.start.dateTime ? (d.getHours() + d.getMinutes() / 60) : 8;
+        
+        let duration = 1;
+        if (ev.end?.dateTime && ev.start?.dateTime) {
+          const endD = new Date(ev.end.dateTime);
+          duration = Math.max(0.5, (endD.getTime() - d.getTime()) / (1000 * 60 * 60));
+        }
+
+        list.push({
+          id: `g_${ev.id}`,
+          title: ev.summary || 'بدون عنوان',
+          isoDate: iso,
+          startHour,
+          durationHours: duration,
+          color: '#0284c7', // Sky blue for Google events
+          category: 'personal',
+          description: ev.description || ev.location,
+          isGoogle: true,
+          googleLink: ev.htmlLink
+        });
+      });
+    }
+
+    return list;
+  }, [customItems, googleEvents, calendarFilters]);
+
+  // Open Quick Add Modal
+  const openQuickAdd = (isoDate?: string, startHour?: number) => {
+    const targetDate = isoDate || weekDays[3].isoDate;
+    setModalDate(targetDate);
+    setModalStartHour(startHour ?? 9);
+    setModalDuration(1);
+    setModalTitle('');
+    setModalDescription('');
+    setModalCategory('loans');
+    setModalColor('#3b82f6');
+    setShowAddModal(true);
+  };
+
+  // Submit Quick Add Event / Note / Loan Installment
+  const handleSaveEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalTitle.trim()) return;
+
+    setIsSavingEvent(true);
+    try {
+      const newItem: CustomCalendarItem = {
+        id: `item_${Date.now()}`,
+        title: modalTitle.trim(),
+        category: modalCategory,
+        color: modalColor,
+        startDate: modalDate,
+        startHour: Number(modalStartHour),
+        durationHours: Number(modalDuration),
+        description: modalDescription.trim()
+      };
+
+      // If user enabled sync with Google Calendar and token exists
+      if (syncToGoogle && token) {
+        try {
+          const [y, m, d] = modalDate.split('-').map(Number);
+          const startD = new Date(y, m - 1, d, Math.floor(modalStartHour), (modalStartHour % 1) * 60);
+          const endD = new Date(startD.getTime() + modalDuration * 60 * 60 * 1000);
+
+          const gRes = await createGoogleCalendarEvent(token, {
+            summary: modalTitle.trim(),
+            description: modalDescription.trim(),
+            start: { dateTime: startD.toISOString(), timeZone: 'Asia/Tehran' },
+            end: { dateTime: endD.toISOString(), timeZone: 'Asia/Tehran' }
+          });
+          newItem.googleEventId = gRes.id;
+          newItem.syncedWithGoogle = true;
+          // Refresh Google events
+          loadGoogleData(token);
+        } catch (gErr) {
+          console.warn('Could not sync to Google Calendar API directly', gErr);
+        }
+      }
+
+      handleSaveCustomItems([newItem, ...customItems]);
+      setShowAddModal(false);
+      setModalTitle('');
+    } catch (err: any) {
+      alert('خطا در ذخیره‌سازی رویداد: ' + err?.message);
+    } finally {
+      setIsSavingEvent(false);
+    }
+  };
+
+  // Delete an item
+  const handleDeleteItem = (id: string) => {
+    if (!confirm('آیا از حذف این یادداشت/رویداد اطمینان دارید؟')) return;
+    const filtered = customItems.filter(item => item.id !== id);
+    handleSaveCustomItems(filtered);
+    setSelectedItem(null);
+  };
+
+  // Today summary for collapsed banner
+  const todayShamsi = useMemo(() => {
+    const now = new Date();
+    const j = jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    const dayOfWeek = now.getDay();
+    return `${PERSIAN_DAYS_FULL[dayOfWeek]} ${j.jd} ${PERSIAN_MONTH_NAMES[j.jm - 1]} ${j.jy}`;
+  }, []);
+
+  const todayNotesCount = useMemo(() => {
+    const todayIso = new Date().toISOString().split('T')[0];
+    return allEventsForWeek.filter(e => e.isoDate === todayIso).length;
+  }, [allEventsForWeek]);
 
   return (
-    <div className="glass-panel rounded-2xl border border-indigo-100/90 dark:border-indigo-900/40 p-3.5 sm:p-4 shadow-sm relative overflow-hidden transition-all bg-gradient-to-br from-white via-indigo-50/20 to-blue-50/25 dark:from-zinc-900 dark:to-zinc-950">
+    <div className="glass-panel rounded-2xl border border-gray-200/90 dark:border-zinc-800 p-2.5 sm:p-4 shadow-md relative overflow-hidden transition-all bg-white dark:bg-zinc-950 font-sans">
       
-      {/* 1. Header Bar: Full Responsive Design with Integrated Live Date & Event Info */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-            <CalendarIcon size={18} />
+      {/* 1. TOP HEADER (GOOGLE CALENDAR TOOLBAR) */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 pb-3 border-b border-gray-200 dark:border-zinc-800">
+        
+        {/* Left Side: Logo, Today Button, Arrows, Title */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
+          
+          {/* Calendar App Brand */}
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-sm shadow-blue-500/30">
+              <span>16</span>
+            </div>
+            <h2 className="text-sm sm:text-base font-black text-gray-900 dark:text-gray-100 tracking-tight flex items-center gap-1.5">
+              <span>Calendar</span>
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-900">
+                تقویم گوگل و یادداشت‌ها
+              </span>
+            </h2>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs sm:text-sm font-black text-gray-800 dark:text-gray-100 flex items-center gap-1.5">
-                تقویم، رویدادها و وظایف (Workspace)
-              </h3>
-              {(token || currentUser?.googleLinkedEmail) ? (
-                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200/50">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  همگام با {currentUser?.googleLinkedEmail || 'حساب گوگل'}
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200/50">
-                  تقویم محلی شمسی
-                </span>
-              )}
+
+          <div className="h-5 w-px bg-gray-300 dark:bg-zinc-700 hidden sm:block" />
+
+          {/* Today Button & Navigation */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleToday}
+              className="px-3 py-1 rounded-lg border border-gray-300 dark:border-zinc-700 hover:bg-gray-100 dark:hover:bg-zinc-800 text-xs font-bold text-gray-700 dark:text-gray-200 transition-colors cursor-pointer shadow-2xs"
+            >
+              Today (امروز)
+            </button>
+
+            <div className="flex items-center">
+              <button
+                onClick={handlePrev}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 transition-colors cursor-pointer"
+                title="قبلی"
+              >
+                <ChevronRight size={17} />
+              </button>
+              <button
+                onClick={handleNext}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 transition-colors cursor-pointer"
+                title="بعدی"
+              >
+                <ChevronLeft size={17} />
+              </button>
             </div>
 
-            {/* In Collapsed State: Display Rich Persian Date & Today's Events */}
-            {isCollapsed ? (
-              <div className="flex items-center gap-2.5 text-[11px] text-gray-700 dark:text-gray-200 mt-1 font-medium flex-wrap">
-                <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold px-2.5 py-0.5 rounded-lg border border-indigo-200/60 flex items-center gap-1 shadow-2xs">
-                  <span>📅</span>
-                  <span>{persianDateFull}</span>
-                  <span className="text-[9px] text-indigo-400 font-mono hidden md:inline">({gregorianDateFull})</span>
-                </span>
-
-                {todayEvents.length > 0 ? (
-                  <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-200/60 flex items-center gap-1 truncate max-w-[280px] sm:max-w-md">
-                    <span>🔔</span>
-                    <span>رویداد امروز: {todayEvents[0].summary || 'جلسه/رویداد'}</span>
-                    {todayEvents[0].start?.dateTime && (
-                      <span className="text-[10px] font-mono text-emerald-600">
-                        (ساعت {new Date(todayEvents[0].start.dateTime).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })})
-                      </span>
-                    )}
-                  </span>
-                ) : nextEvent ? (
-                  <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-medium px-2 py-0.5 rounded-lg border border-blue-200/60 flex items-center gap-1 truncate max-w-[260px]">
-                    <span>⏳</span>
-                    <span>رویداد بعدی: {nextEvent.summary || 'بدون عنوان'}</span>
-                  </span>
-                ) : (
-                  <span className="text-gray-400 dark:text-gray-500 text-[10px]">
-                    امروز رویداد ثبت‌شده‌ای ندارید
-                  </span>
-                )}
-
-                {tasks.filter(t => t.status !== 'completed').length > 0 && (
-                  <span className="bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-amber-200/60">
-                    ✓ {tasks.filter(t => t.status !== 'completed').length} تسک
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">{persianDateFull}</span>
-                <span>•</span>
-                <span>{gregorianDateFull}</span>
-              </div>
-            )}
+            {/* Month & Year Title Display */}
+            <div className="flex items-center gap-1.5 font-black text-xs sm:text-sm text-gray-800 dark:text-gray-100 mr-1">
+              <span>{currentHeaderTitle.gregorian}</span>
+              <span className="text-gray-400 font-normal">/</span>
+              <span className="text-indigo-600 dark:text-indigo-400 font-bold">{currentHeaderTitle.shamsi}</span>
+            </div>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
-          {onToggleDateCard && (
-            <button
-              onClick={onToggleDateCard}
-              className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border ${
-                isDateCardVisible 
-                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' 
-                  : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-gray-400 border-gray-200 dark:border-zinc-700'
-              }`}
-              title={isDateCardVisible ? 'مخفی‌سازی کارت تاریخ ساده بالای صفحه' : 'نمایش مجدد کارت تاریخ ساده بالای صفحه'}
-            >
-              {isDateCardVisible ? <EyeOff size={13} /> : <Eye size={13} />}
-              <span className="hidden xl:inline text-[10px]">
-                {isDateCardVisible ? 'حذف تقویم بالا' : 'نمایش تقویم بالا'}
-              </span>
-            </button>
-          )}
-
+        {/* Right Side: View Selector, Search, Google Connect & Action Controls */}
+        <div className="flex items-center gap-2 self-end md:self-center flex-wrap shrink-0">
+          
+          {/* Create Button */}
           <button
-            onClick={() => setShowSettings(prev => !prev)}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              showSettings 
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' 
-                : 'hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500'
-            }`}
-            title="تنظیمات نمای تقویم"
+            onClick={() => openQuickAdd()}
+            className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
           >
-            <Settings size={15} />
+            <Plus size={15} />
+            <span>ثبت رویداد / قسط وام</span>
           </button>
 
-          {token && (
-            <>
+          {/* View Dropdown */}
+          <div className="flex items-center bg-gray-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-gray-200 dark:border-zinc-700">
+            <button
+              onClick={() => setCurrentView('week')}
+              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+                currentView === 'week'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              Week (هفتگی)
+            </button>
+            <button
+              onClick={() => setCurrentView('month')}
+              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+                currentView === 'month'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              Month (ماهانه)
+            </button>
+            <button
+              onClick={() => setCurrentView('agenda')}
+              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+                currentView === 'agenda'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+              }`}
+            >
+              Agenda (یادداشت‌ها)
+            </button>
+          </div>
+
+          {/* Google Sync Status / Button */}
+          {!token ? (
+            <button
+              onClick={handleConnect}
+              disabled={isSigningIn}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+              title="اتصال به حساب گوگل جهت همگام‌سازی دوطرفه"
+            >
+              <RefreshCw size={13} className={isSigningIn ? 'animate-spin' : ''} />
+              <span className="hidden lg:inline">{isSigningIn ? 'اتصال...' : 'اتصال به گوگل'}</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => {
-                  loadData(token);
-                  setIframeKey(prev => prev + 1);
-                }}
+                onClick={() => loadGoogleData(token)}
                 disabled={isLoading}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
-                title="همگام‌سازی و بروزرسانی رویدادها"
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 transition-colors"
+                title="بروزرسانی داده‌های گوگل"
               >
                 <RefreshCw size={14} className={isLoading ? 'animate-spin text-blue-600' : ''} />
               </button>
               <button
                 onClick={handleDisconnect}
-                className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 transition-colors"
                 title="قطع اتصال حساب گوگل"
               >
                 <LogOut size={14} />
               </button>
-            </>
+            </div>
           )}
 
+          {/* Toggle Top Simple Date Card in Dashboard */}
+          {onToggleDateCard && (
+            <button
+              onClick={onToggleDateCard}
+              className={`p-1.5 rounded-lg text-xs font-bold transition-all border ${
+                isDateCardVisible 
+                  ? 'bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-300 border-gray-200 dark:border-zinc-700' 
+                  : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-200'
+              }`}
+              title={isDateCardVisible ? 'مخفی‌سازی کارت تقویم ساده بالای صفحه' : 'نمایش کارت تقویم ساده بالای صفحه'}
+            >
+              {isDateCardVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          )}
+
+          {/* Minimize / Expand Widget */}
           <button
             onClick={toggleCollapse}
-            className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-bold text-xs"
-            title={isCollapsed ? 'باز کردن و مشاهده تقویم' : 'بستن / کوچک کردن'}
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 rounded-lg transition-colors cursor-pointer"
+            title={isCollapsed ? 'بزرگ‌نمایی تقویم' : 'کوچک‌نمایی'}
           >
-            {isCollapsed ? (
-              <>
-                <span className="text-[10px] hidden sm:inline">باز کردن</span>
-                <ChevronDown size={16} />
-              </>
-            ) : (
-              <>
-                <span className="text-[10px] hidden sm:inline">کوچک کردن</span>
-                <ChevronUp size={16} />
-              </>
-            )}
+            {isCollapsed ? <ChevronDown size={17} /> : <ChevronUp size={17} />}
           </button>
         </div>
       </div>
 
-      {/* Settings Panel */}
-      {!isCollapsed && showSettings && (
-        <div className="mt-3 p-3.5 bg-blue-50/50 dark:bg-zinc-900/90 rounded-xl border border-blue-100 dark:border-zinc-800 space-y-3 animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-blue-100/80 dark:border-zinc-800 pb-2">
-            <span className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
-              <Settings size={14} className="text-blue-600" />
-              تنظیمات نمایش تقویم گوگل و رویدادها
+      {/* COLLAPSED SUMMARY VIEW */}
+      {isCollapsed ? (
+        <div className="py-2 flex items-center justify-between gap-3 text-xs flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="bg-red-600 text-white font-black px-3 py-1 rounded-lg text-xs shadow-sm">
+              {todayShamsi}
             </span>
-            <button 
-              onClick={() => setShowSettings(false)}
-              className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            <span className="text-gray-500 dark:text-gray-400 font-mono text-[11px]">
+              ({new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-gray-700 dark:text-gray-300 font-bold">
+              {todayNotesCount > 0 ? `🔔 ${todayNotesCount} رویداد و یادداشت برای امروز ثبت شده است` : 'امروز رویداد خاصی ثبت نشده است'}
+            </span>
+            <button
+              onClick={toggleCollapse}
+              className="text-blue-600 hover:underline font-bold text-xs mr-2"
             >
-              بستن
+              مشاهده کامل تقویم هفتگی
             </button>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-            <div>
-              <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                حالت پیش‌فرض نمایش تقویم
-              </label>
-              <select
-                value={calSettings.defaultMode}
-                onChange={e => handleUpdateSettings({ defaultMode: e.target.value as any })}
-                className="w-full p-1.5 rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
-              >
-                <option value="MONTH">ماهانه (Month View)</option>
-                <option value="WEEK">هفتگی (Week View)</option>
-                <option value="AGENDA">برنامه زمانی روزها (Agenda)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                شناسه تقویم / ایمیل گوگل
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: example@gmail.com"
-                value={calSettings.calendarId}
-                onChange={e => handleUpdateSettings({ calendarId: e.target.value })}
-                className="w-full p-1.5 rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono dir-ltr"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                منطقه زمانی (Timezone)
-              </label>
-              <select
-                value={calSettings.timeZone}
-                onChange={e => handleUpdateSettings({ timeZone: e.target.value })}
-                className="w-full p-1.5 rounded-lg border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
-              >
-                <option value="Asia/Tehran">تهران (Asia/Tehran - IRST/IRDT)</option>
-                <option value="UTC">جهانی (UTC)</option>
-                <option value="Asia/Dubai">دبی (Asia/Dubai)</option>
-                <option value="Europe/London">لندن (Europe/London)</option>
-              </select>
-            </div>
-          </div>
         </div>
-      )}
-
-      {/* 2. Main Expanded Content */}
-      {!isCollapsed && (
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-zinc-800">
+      ) : (
+        
+        /* 2. MAIN EXPANDED GOOGLE CALENDAR LAYOUT */
+        <div className="mt-3 flex flex-col lg:flex-row gap-3">
           
-          {/* Navigation Tabs */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-1 bg-gray-100 dark:bg-zinc-800/80 p-1 rounded-xl">
-              <button
-                onClick={() => setActiveTab('persian_calendar')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'persian_calendar'
-                    ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                }`}
-              >
-                <CalendarDays size={13} />
-                <span>تقویم هوشمند شمسی</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('embed_calendar')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'embed_calendar'
-                    ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                }`}
-              >
-                <Globe size={13} />
-                <span>تقویم وب گوگل</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('agenda_events')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'agenda_events'
-                    ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                }`}
-              >
-                <Clock size={13} />
-                <span>رویدادها</span>
-                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 px-1.5 rounded-full font-mono">
-                  {events.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('tasks')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'tasks'
-                    ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
-                }`}
-              >
-                <CheckSquare size={13} />
-                <span>تسک‌ها</span>
-                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 px-1.5 rounded-full font-mono">
-                  {tasks.filter(t => t.status !== 'completed').length}
-                </span>
-              </button>
-            </div>
-
-            {/* Quick Actions / Google Connect Status */}
-            <div className="flex items-center gap-2">
-              {!token ? (
-                <button
-                  type="button"
-                  onClick={handleConnect}
-                  disabled={isSigningIn}
-                  className="inline-flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-bold px-2.5 py-1 rounded-lg text-xs transition-all active:scale-95 cursor-pointer disabled:opacity-60"
-                >
-                  <RefreshCw size={11} className={isSigningIn ? 'animate-spin' : ''} />
-                  <span>{isSigningIn ? 'ارتباط...' : 'اتصال به گوگل جهت دریافت رویدادها'}</span>
-                </button>
-              ) : (
-                <a
-                  href="https://calendar.google.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-bold"
-                >
-                  <span>تقویم در گوگل</span>
-                  <ExternalLink size={12} />
-                </a>
-              )}
-            </div>
-          </div>
-
-          {/* TAB 1: SMART PERSIAN CALENDAR (تقویم تعاملی کامل شمسی با روزها و رویدادها) */}
-          {activeTab === 'persian_calendar' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* LEFT SIDEBAR: Mini Month Picker & Calendar Filters (Matching Google Calendar Image) */}
+          {showSidebar && (
+            <div className="w-full lg:w-60 xl:w-64 shrink-0 space-y-4 border-b lg:border-b-0 lg:border-l border-gray-200 dark:border-zinc-800 pl-0 lg:pl-3 pb-3 lg:pb-0">
               
-              {/* Calendar Grid & Month Picker */}
-              <div className="lg:col-span-8 bg-white dark:bg-zinc-900 rounded-xl p-3.5 border border-gray-200 dark:border-zinc-800 shadow-2xs">
-                
-                {/* Month Navigator Header */}
-                <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-gray-100 dark:border-zinc-800">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handlePrevMonth}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
-                      title="ماه قبل"
-                    >
-                      <ChevronRight size={18} />
+              {/* Mini Calendar Month Picker */}
+              <div className="bg-gray-50/80 dark:bg-zinc-900/80 rounded-xl p-3 border border-gray-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black text-gray-800 dark:text-gray-200">
+                    {currentHeaderTitle.gregorian}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={handlePrev} className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded">
+                      <ChevronRight size={14} />
                     </button>
-                    <span className="text-sm font-black text-gray-800 dark:text-gray-100 min-w-[120px] text-center">
-                      {PERSIAN_MONTH_NAMES[currentJMonth - 1]} {currentJYear}
-                    </span>
-                    <button
-                      onClick={handleNextMonth}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-600 dark:text-gray-300 transition-colors"
-                      title="ماه بعد"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={handleGoToToday}
-                      className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold transition-colors border border-indigo-200/50"
-                    >
-                      امروز ({todayJalaali.jd} {PERSIAN_MONTH_NAMES[todayJalaali.jm - 1]})
+                    <button onClick={handleNext} className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded">
+                      <ChevronLeft size={14} />
                     </button>
                   </div>
                 </div>
 
-                {/* Weekday Names */}
-                <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5">
-                  {WEEK_DAYS.map((w, idx) => (
-                    <div key={idx} className={`py-1 ${idx === 6 ? 'text-rose-500 font-black' : ''}`}>
-                      {w}
-                    </div>
+                {/* Weekday abbreviations */}
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-gray-400 mb-1">
+                  <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                </div>
+
+                {/* Days of Current Week Highlighted */}
+                <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                  {weekDays.map(d => (
+                    <button
+                      key={d.isoDate}
+                      onClick={() => setCurrentDate(d.date)}
+                      className={`h-7 rounded-lg font-bold transition-all ${
+                        d.isToday
+                          ? 'bg-blue-600 text-white shadow-2xs font-black'
+                          : 'hover:bg-gray-200 dark:hover:bg-zinc-800 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {d.dayNumber}
+                    </button>
                   ))}
                 </div>
+              </div>
 
-                {/* Days Grid */}
-                <div className="grid grid-cols-7 gap-1">
-                  {calendarDays.map((item, idx) => {
-                    if (!item.isCurrentMonth) {
-                      return <div key={`empty-${idx}`} className="h-10 sm:h-12 rounded-lg bg-gray-50/40 dark:bg-zinc-900/30" />;
-                    }
+              {/* Search People / Events */}
+              <div className="relative">
+                <Search size={14} className="absolute right-3 top-2.5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="جستجو در رویدادها..."
+                  className="w-full pr-8 pl-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 text-xs font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
 
-                    const isSelected = selectedDay === item.day;
-                    const isFriday = idx % 7 === 6;
-
-                    return (
-                      <button
-                        key={`day-${item.day}`}
-                        onClick={() => setSelectedDay(item.day)}
-                        className={`h-10 sm:h-12 rounded-xl flex flex-col items-center justify-center relative transition-all cursor-pointer border ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-[1.02] z-10'
-                            : item.isToday
-                            ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 font-black'
-                            : isFriday
-                            ? 'bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-950/40 hover:bg-rose-100/50'
-                            : 'bg-white dark:bg-zinc-800/80 text-gray-700 dark:text-gray-200 border-gray-100 dark:border-zinc-800 hover:border-indigo-200 dark:hover:border-zinc-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-white' : ''}`}>
-                          {item.day}
-                        </span>
-
-                        {/* Event Dot Indicator */}
-                        {item.hasEvents && (
-                          <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
-                            isSelected ? 'bg-amber-300' : 'bg-indigo-600 dark:bg-indigo-400 animate-pulse'
-                          }`} />
-                        )}
-                      </button>
-                    );
-                  })}
+              {/* MY CALENDARS (تقویم‌های من) */}
+              <div>
+                <h4 className="text-xs font-black text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
+                  <span>تقویم‌های من (My calendars)</span>
+                  <ChevronDown size={14} className="text-gray-400" />
+                </h4>
+                <div className="space-y-1.5 text-xs">
+                  {calendarFilters.filter(f => !f.isOther).map(filter => (
+                    <label key={filter.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-900/60 p-1 rounded-md transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={filter.enabled}
+                        onChange={() => toggleCalendarFilter(filter.id)}
+                        className="rounded text-blue-600 focus:ring-0 cursor-pointer"
+                        style={{ accentColor: filter.color }}
+                      />
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: filter.color }} />
+                      <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{filter.name}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
 
-              {/* Day Details & Agenda for Selected Day */}
-              <div className="lg:col-span-4 bg-white dark:bg-zinc-900 rounded-xl p-3.5 border border-gray-200 dark:border-zinc-800 flex flex-col shadow-2xs">
-                <div className="pb-2 border-b border-gray-100 dark:border-zinc-800 mb-2">
-                  <span className="text-[10px] font-bold text-gray-400">مشخصات و رویدادهای روز:</span>
-                  <h4 className="text-xs sm:text-sm font-black text-gray-800 dark:text-gray-100 mt-0.5">
-                    {selectedDay} {PERSIAN_MONTH_NAMES[currentJMonth - 1]} {currentJYear}
-                  </h4>
+              {/* OTHER CALENDARS (سایر تقویم‌ها) */}
+              <div>
+                <h4 className="text-xs font-black text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
+                  <span>سایر تقویم‌ها (Other calendars)</span>
+                  <Plus size={14} className="text-gray-400 cursor-pointer" onClick={() => openQuickAdd()} />
+                </h4>
+                <div className="space-y-1.5 text-xs">
+                  {calendarFilters.filter(f => f.isOther).map(filter => (
+                    <label key={filter.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-900/60 p-1 rounded-md transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={filter.enabled}
+                        onChange={() => toggleCalendarFilter(filter.id)}
+                        className="rounded text-blue-600 focus:ring-0 cursor-pointer"
+                        style={{ accentColor: filter.color }}
+                      />
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: filter.color }} />
+                      <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{filter.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* MAIN WEEK TIME GRID (دقیقاً مطابق با تصویر با روبان‌های قرمز شمسی و ساعت‌ها) */}
+          <div className="flex-1 min-w-0 overflow-x-auto bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-inner">
+            
+            {/* 2.1 WEEK HEADER (Day Names + Day Numbers + RED SHAMSI EXTENSION BANNER) */}
+            <div className="min-w-[760px]">
+              
+              {/* Top Row: Timezone Label & 7 Day Headers */}
+              <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-gray-200 dark:border-zinc-800 bg-gray-50/90 dark:bg-zinc-900/90 sticky top-0 z-20">
+                
+                {/* Timezone label */}
+                <div className="p-2 text-[10px] font-bold text-gray-400 border-l border-gray-200 dark:border-zinc-800 flex items-end justify-center pb-1.5">
+                  GMT+03:30
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-2 max-h-60 custom-scrollbar pr-1">
-                  {selectedDayEvents.length === 0 ? (
-                    <div className="text-center py-6 text-xs text-gray-400 dark:text-gray-500 border border-dashed rounded-xl border-gray-200 dark:border-zinc-800 flex flex-col items-center justify-center gap-1.5">
-                      <CalendarCheck size={20} className="text-gray-300 dark:text-gray-600" />
-                      <span>برای این روز رویدادی ثبت نشده است.</span>
-                    </div>
-                  ) : (
-                    selectedDayEvents.map(ev => {
-                      const startDate = ev.start.dateTime ? new Date(ev.start.dateTime) : ev.start.date ? new Date(ev.start.date) : null;
-                      const timeStr = startDate ? startDate.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : '';
-                      return (
-                        <div
-                          key={ev.id}
-                          className="p-2.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 text-xs"
-                        >
-                          <div className="font-bold text-gray-800 dark:text-gray-100 flex items-center justify-between gap-1">
-                            <span className="truncate">{ev.summary || 'بدون عنوان'}</span>
-                            {timeStr && <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 shrink-0">{timeStr}</span>}
-                          </div>
-                          {ev.location && (
-                            <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-1 truncate">
-                              <MapPin size={11} className="text-gray-400" />
-                              <span>{ev.location}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Direct Google Calendar Link */}
-                <div className="mt-3 pt-2 border-t border-gray-100 dark:border-zinc-800">
-                  <a
-                    href="https://calendar.google.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-1.5 px-3 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                {/* 7 Columns: SUN 13, MON 14, TUE 15, WED 16, THU 17, FRI 18, SAT 19 */}
+                {weekDays.map((col, idx) => (
+                  <div 
+                    key={col.isoDate} 
+                    className={`border-l border-gray-200 dark:border-zinc-800 p-1.5 flex flex-col items-center justify-between text-center transition-colors ${
+                      col.isToday ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
+                    }`}
                   >
-                    <Plus size={13} />
-                    <span>ثبت رویداد جدید در تقویم گوگل</span>
-                  </a>
-                </div>
+                    {/* Day Name (SUN, MON, ...) */}
+                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400">
+                      {col.dayNameShort}
+                    </span>
+
+                    {/* Day Number (13, 14, 15, 16 with blue badge if today) */}
+                    <div className="my-0.5">
+                      {col.isToday ? (
+                        <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-black text-sm flex items-center justify-center shadow-sm">
+                          {col.dayNumber}
+                        </div>
+                      ) : (
+                        <span className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                          {col.dayNumber}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* RED SHAMSI BANNER (افزونه تقویم شمسی دقیقاً مانند عکس کاربر) */}
+                    <div className="w-full mt-1">
+                      <div className="w-full bg-red-600 hover:bg-red-700 text-white text-[10px] sm:text-[11px] font-black py-0.5 px-1 rounded-md text-center shadow-xs truncate tracking-tight transition-colors">
+                        {col.shamsiRibbonText}
+                      </div>
+                    </div>
+
+                  </div>
+                ))}
               </div>
 
-            </div>
-          )}
+              {/* 2.2 HOURLY TIME GRID (7 AM to 10 PM) */}
+              <div className="relative min-h-[560px]">
+                
+                {/* Hourly Horizontal Background Lines */}
+                {HOURS.map((hour) => {
+                  const hourLabel = hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+                  return (
+                    <div 
+                      key={hour} 
+                      className="grid grid-cols-[64px_repeat(7,1fr)] h-12 border-b border-gray-100 dark:border-zinc-800/80 group"
+                    >
+                      {/* Time Label Column */}
+                      <div className="text-[10px] font-mono text-gray-400 dark:text-gray-500 text-center -translate-y-2.5 pr-1 select-none">
+                        {hourLabel}
+                      </div>
 
-          {/* TAB 2: LIVE GOOGLE CALENDAR EMBED */}
-          {activeTab === 'embed_calendar' && (
-            <div 
-              className="relative w-full rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-inner group"
-              style={{ height: `${calSettings.calendarHeight || 460}px` }}
-            >
-              <iframe
-                key={iframeKey}
-                src={embedUrl}
-                title="Google Calendar"
-                className="w-full h-full border-0"
-                loading="lazy"
-              />
-              <div 
-                className="absolute bottom-0 left-0 right-0 h-4 bg-gray-100/80 dark:bg-zinc-800/80 hover:bg-gray-200 dark:hover:bg-zinc-700 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center backdrop-blur-sm z-10"
-                title="کشیدن برای تغییر ارتفاع تقویم"
-                onMouseDown={(e) => {
-                  const startY = e.clientY;
-                  const startHeight = calSettings.calendarHeight || 460;
-                  
-                  const onMouseMove = (moveEvent: MouseEvent) => {
-                    let newHeight = startHeight + (moveEvent.clientY - startY);
-                    if (newHeight < 250) newHeight = 250;
-                    if (newHeight > 1200) newHeight = 1200;
-                    setCalSettings(prev => ({ ...prev, calendarHeight: newHeight }));
-                  };
-                  
-                  const onMouseUp = () => {
-                    window.removeEventListener('mousemove', onMouseMove);
-                    window.removeEventListener('mouseup', onMouseUp);
-                    setCalSettings(prev => {
-                      try {
-                        localStorage.setItem(`gw_cal_settings_${userStorageKey}`, JSON.stringify(prev));
-                      } catch {}
-                      return prev;
-                    });
-                  };
-                  
-                  window.addEventListener('mousemove', onMouseMove);
-                  window.addEventListener('mouseup', onMouseUp);
-                }}
-              >
-                <div className="w-12 h-1 rounded-full bg-gray-400 dark:bg-gray-500" />
-              </div>
-            </div>
-          )}
+                      {/* 7 Day Slot Cells */}
+                      {weekDays.map((col) => (
+                        <div
+                          key={`${col.isoDate}-${hour}`}
+                          onClick={() => openQuickAdd(col.isoDate, hour)}
+                          className="border-l border-gray-100 dark:border-zinc-800/80 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 transition-colors cursor-pointer relative"
+                          title={`کلیک برای ثبت رویداد در ${col.shamsiRibbonText} ساعت ${hour}:00`}
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
 
-          {/* TAB 3: UPCOMING AGENDA EVENTS */}
-          {activeTab === 'agenda_events' && (
-            <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-1">
-              {events.length === 0 ? (
-                <div className="text-center py-8 text-xs text-gray-400 dark:text-gray-500 border border-dashed rounded-xl border-gray-200 dark:border-zinc-800">
-                  رویدادی برای بازه پیش رو در تقویم شما ثبت نشده است. برای همگام‌سازی، مطمئن شوید به حساب گوگل متصل هستید.
-                </div>
-              ) : (
-                events.map((ev) => {
-                  const startDate = ev.start.dateTime ? new Date(ev.start.dateTime) : ev.start.date ? new Date(ev.start.date) : null;
-                  const timeStr = startDate ? startDate.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : '';
-                  const dateStr = startDate ? startDate.toLocaleDateString('fa-IR', { month: 'short', day: 'numeric', weekday: 'short' }) : '';
+                {/* LIVE CURRENT TIME RED INDICATOR (خط قرمز ساعت جاری دقیقاً مانند عکس) */}
+                {currentTimeMinutes >= 7 * 60 && currentTimeMinutes <= 22 * 60 && (
+                  (() => {
+                    const topPixels = ((currentTimeMinutes - 7 * 60) / 60) * 48; // 48px per hour
+                    return (
+                      <div 
+                        className="absolute left-0 right-0 z-10 pointer-events-none flex items-center"
+                        style={{ top: `${topPixels}px` }}
+                      >
+                        {/* Left red dot */}
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-600 shadow-sm -ml-1 border-2 border-white dark:border-zinc-900" />
+                        {/* Red Line across all columns */}
+                        <div className="flex-1 h-[2px] bg-red-600 shadow-xs" />
+                      </div>
+                    );
+                  })()
+                )}
+
+                {/* RENDERED EVENT PILLS / LOANS / NOTES (جایگذاری دقیق روی ساعت و روز) */}
+                {allEventsForWeek.map((ev) => {
+                  const colIndex = weekDays.findIndex(d => d.isoDate === ev.isoDate);
+                  if (colIndex === -1) return null;
+
+                  // Vertical bounds calculation
+                  const clampedStart = Math.max(7, Math.min(22, ev.startHour));
+                  const topPos = (clampedStart - 7) * 48;
+                  const heightPos = Math.max(24, ev.durationHours * 48 - 4);
+                  
+                  // Left position: column width is (100% - 64px) / 7
+                  const leftPercentage = `calc(64px + (${colIndex} * ((100% - 64px) / 7)))`;
+                  const widthPercentage = `calc((100% - 64px) / 7 - 6px)`;
+
+                  const isLoan = ev.category === 'loans';
+                  const isEnglish = ev.category === 'english';
 
                   return (
                     <div
                       key={ev.id}
-                      className="flex items-center justify-between p-3 rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-indigo-50 dark:border-zinc-800 hover:border-indigo-200 dark:hover:border-zinc-700 transition-colors shadow-2xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedItem({
+                          id: ev.id,
+                          title: ev.title,
+                          timeStr: `ساعت ${Math.floor(ev.startHour)}:${(ev.startHour % 1) * 60 === 0 ? '00' : '30'}`,
+                          dateStr: ev.isoDate,
+                          shamsiDateStr: weekDays[colIndex]?.shamsiRibbonText || '',
+                          color: ev.color,
+                          category: ev.category,
+                          description: ev.description,
+                          isGoogle: ev.isGoogle,
+                          googleLink: ev.googleLink
+                        });
+                      }}
+                      className="absolute z-10 rounded-lg px-2 py-1 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-start text-white overflow-hidden group border border-white/20 active:scale-[0.98]"
+                      style={{
+                        top: `${topPos}px`,
+                        height: `${heightPos}px`,
+                        left: leftPercentage,
+                        width: widthPercentage,
+                        backgroundColor: ev.color
+                      }}
+                      title={`${ev.title} (${ev.startHour}:00)`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-2xs">
-                          <Clock size={16} />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-xs font-bold text-gray-800 dark:text-gray-100 truncate">
-                            {ev.summary || 'رویداد بدون عنوان'}
-                          </h4>
-                          <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-0.5 flex-wrap">
-                            <span>{dateStr}</span>
-                            {timeStr && <span>• ساعت {timeStr}</span>}
-                            {ev.location && <span className="truncate max-w-[150px]">• {ev.location}</span>}
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-1 min-w-0">
+                        {isEnglish ? (
+                          <div className="w-2 h-2 rounded-full bg-white shrink-0" />
+                        ) : isLoan ? (
+                          <DollarSign size={11} className="shrink-0 text-white/90" />
+                        ) : (
+                          <Clock size={11} className="shrink-0 text-white/90" />
+                        )}
+                        <span className="font-bold text-[11px] truncate leading-tight">
+                          {ev.title}
+                        </span>
                       </div>
-                      {ev.htmlLink && (
-                        <a
-                          href={ev.htmlLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"
-                          title="مشاهده رویداد در تقویم گوگل"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
+
+                      {heightPos > 32 && (
+                        <span className="text-[9px] text-white/80 font-mono mt-0.5">
+                          {Math.floor(ev.startHour)}:00 - {Math.floor(ev.startHour + ev.durationHours)}:00
+                        </span>
                       )}
                     </div>
                   );
-                })
-              )}
-            </div>
-          )}
+                })}
 
-          {/* TAB 4: GOOGLE TASKS */}
-          {activeTab === 'tasks' && (
-            <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-1">
-              {tasks.length === 0 ? (
-                <div className="text-center py-8 text-xs text-gray-400 dark:text-gray-500 border border-dashed rounded-xl border-gray-200 dark:border-zinc-800">
-                  هیچ وظیفه‌ای در Google Tasks شما ثبت نشده است.
-                </div>
-              ) : (
-                tasks.map((task) => {
-                  const isDone = task.status === 'completed';
-                  return (
-                    <div
-                      key={task.id}
-                      className={`flex items-start gap-2.5 p-3 rounded-xl border transition-colors shadow-2xs ${
-                        isDone 
-                          ? 'bg-gray-50/50 dark:bg-zinc-900/40 border-gray-200/50 dark:border-zinc-800/40 opacity-60' 
-                          : 'bg-white/90 dark:bg-zinc-900/90 border-emerald-50 dark:border-zinc-800/80 hover:border-emerald-200'
-                      }`}
-                    >
-                      <div className="mt-0.5">
-                        {isDone ? (
-                          <CheckCircle2 size={16} className="text-emerald-500" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-md border-2 border-gray-300 dark:border-zinc-600" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className={`text-xs font-bold text-gray-800 dark:text-gray-100 ${isDone ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
-                          {task.title || 'وظیفه بدون عنوان'}
-                        </h4>
-                        {task.notes && (
-                          <p className="text-[10px] text-gray-400 line-clamp-2 mt-0.5">{task.notes}</p>
-                        )}
-                        {task.due && (
-                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium mt-1 inline-block">
-                            موعد: {new Date(task.due).toLocaleDateString('fa-IR')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {error && (
-            <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <AlertCircle size={15} className="shrink-0 text-rose-500" />
-                <span>{error}</span>
               </div>
-              <button
-                type="button"
-                onClick={handleConnect}
-                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer self-end sm:self-auto shrink-0"
-              >
-                <RefreshCw size={11} />
-                <span>تلاش مجدد</span>
-              </button>
             </div>
-          )}
+
+          </div>
+
         </div>
       )}
+
+      {/* 3. QUICK ADD EVENT / LOAN INSTALLMENT MODAL */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-4 sm:p-5 w-full max-w-md shadow-2xl space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-zinc-800 pb-2.5">
+              <h3 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Plus size={16} className="text-blue-600" />
+                <span>ثبت رویداد، یادداشت یا قسط وام</span>
+              </h3>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEvent} className="space-y-3 text-xs">
+              
+              {/* Title */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  عنوان رویداد یا یادداشت *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: قسط وام صنعت و معدن، یادگیری لغات، جلسه..."
+                  value={modalTitle}
+                  onChange={(e) => setModalTitle(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              {/* Category & Color */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    دسته‌بندی تقویم
+                  </label>
+                  <select
+                    value={modalCategory}
+                    onChange={(e) => {
+                      const cat = e.target.value as any;
+                      setModalCategory(cat);
+                      if (cat === 'loans') setModalColor('#1d4ed8');
+                      else if (cat === 'english') setModalColor('#84cc16');
+                      else if (cat === 'tasks') setModalColor('#eab308');
+                      else if (cat === 'personal') setModalColor('#039be5');
+                      else setModalColor('#dc2626');
+                    }}
+                    className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
+                  >
+                    <option value="loans">اقساط وام و چک‌ها (آبی تیره)</option>
+                    <option value="english">یادگیری لغات انگلیسی (سبز زیتونی)</option>
+                    <option value="tasks">وظایف و تسک‌ها (زرد)</option>
+                    <option value="personal">تقویم شخصی (آبی)</option>
+                    <option value="reminders">یادآور / تولدها (سبز زمردی)</option>
+                    <option value="other">سایر (قرمز/بنفش)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    رنگ برچسب
+                  </label>
+                  <input
+                    type="color"
+                    value={modalColor}
+                    onChange={(e) => setModalColor(e.target.value)}
+                    className="w-full h-8 rounded-xl border border-gray-300 dark:border-zinc-700 cursor-pointer p-0.5"
+                  />
+                </div>
+              </div>
+
+              {/* Date & Time */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-1">
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    تاریخ میلادی
+                  </label>
+                  <input
+                    type="date"
+                    value={modalDate}
+                    onChange={(e) => setModalDate(e.target.value)}
+                    className="w-full p-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    ساعت شروع
+                  </label>
+                  <select
+                    value={modalStartHour}
+                    onChange={(e) => setModalStartHour(Number(e.target.value))}
+                    className="w-full p-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                  >
+                    {HOURS.map(h => (
+                      <option key={h} value={h}>{h}:00</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    مدت (ساعت)
+                  </label>
+                  <select
+                    value={modalDuration}
+                    onChange={(e) => setModalDuration(Number(e.target.value))}
+                    className="w-full p-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                  >
+                    <option value={0.5}>۳۰ دقیقه</option>
+                    <option value={1}>۱ ساعت</option>
+                    <option value={2}>۲ ساعت</option>
+                    <option value={3}>۳ ساعت</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  توضیحات یا مبلغ و شماره حساب
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="یادداشت، شماره چک، جزئیات قسط..."
+                  value={modalDescription}
+                  onChange={(e) => setModalDescription(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs"
+                />
+              </div>
+
+              {/* Google Sync Checkbox */}
+              {token && (
+                <label className="flex items-center gap-2 p-2 bg-blue-50/50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={syncToGoogle}
+                    onChange={(e) => setSyncToGoogle(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-0"
+                  />
+                  <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                    همگام‌سازی و ارسال مستقیم به تقویم گوگل (Google Calendar)
+                  </span>
+                </label>
+              )}
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-3 py-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEvent}
+                  className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20 disabled:opacity-50"
+                >
+                  {isSavingEvent ? 'در حال ذخیره...' : 'ذخیره در تقویم'}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. EVENT DETAILS POPOVER */}
+      {selectedItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-4 w-full max-w-sm shadow-2xl space-y-3">
+            
+            <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-zinc-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-md shrink-0" style={{ backgroundColor: selectedItem.color }} />
+                <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">
+                  {selectedItem.title}
+                </h3>
+              </div>
+              <button onClick={() => setSelectedItem(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+              <div className="flex items-center gap-1.5 font-bold text-red-600 dark:text-red-400">
+                <span>📅 {selectedItem.shamsiDateStr}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-500 font-mono text-[11px]">
+                <span>{selectedItem.dateStr}</span>
+                <span>•</span>
+                <span>{selectedItem.timeStr}</span>
+              </div>
+              {selectedItem.description && (
+                <div className="mt-2 p-2 bg-gray-50 dark:bg-zinc-800 rounded-lg text-xs">
+                  {selectedItem.description}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-zinc-800">
+              {!selectedItem.isGoogle ? (
+                <button
+                  onClick={() => handleDeleteItem(selectedItem.id)}
+                  className="flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50"
+                >
+                  <Trash2 size={13} />
+                  <span>حذف یادداشت</span>
+                </button>
+              ) : (
+                <a
+                  href={selectedItem.googleLink || 'https://calendar.google.com'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline"
+                >
+                  <span>مشاهده در سایت گوگل</span>
+                  <ExternalLink size={13} />
+                </a>
+              )}
+
+              <button
+                onClick={() => setSelectedItem(null)}
+                className="px-3 py-1 bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold"
+              >
+                بستن
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

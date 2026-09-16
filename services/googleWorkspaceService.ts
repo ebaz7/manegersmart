@@ -347,3 +347,160 @@ export const fetchGoogleTasks = async (token: string): Promise<GoogleTaskItem[]>
 
   return allTasks;
 };
+
+// Create a new event on user's Google Calendar
+export const createGoogleCalendarEvent = async (
+  token: string,
+  event: {
+    summary: string;
+    description?: string;
+    start: { dateTime?: string; date?: string; timeZone?: string };
+    end: { dateTime?: string; date?: string; timeZone?: string };
+    location?: string;
+  }
+): Promise<GoogleCalendarEvent> => {
+  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(event)
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Google Calendar Create Error (${res.status}): ${errorText}`);
+  }
+
+  return await res.json();
+};
+
+// Local storage key for persistent custom calendar events/notes/loan reminders
+export interface CustomCalendarItem {
+  id: string;
+  title: string;
+  category: 'personal' | 'tasks' | 'loans' | 'reminders' | 'english' | 'holidays' | 'other';
+  color: string;
+  startDate: string; // YYYY-MM-DD
+  startHour: number; // e.g. 8 (8:00 AM) or 8.5 (8:30 AM)
+  durationHours: number; // e.g. 1
+  description?: string;
+  googleEventId?: string;
+  syncedWithGoogle?: boolean;
+}
+
+export const getCustomCalendarItems = (userId?: string): CustomCalendarItem[] => {
+  try {
+    const key = `gw_custom_events_${userId || 'global'}`;
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  
+  // Default sample items matching user's image if none exists
+  return [
+    {
+      id: 'item_sample_loan_1',
+      title: 'قسط 25/60 وام صنعت و معدن 71,965,251',
+      category: 'loans',
+      color: '#3b82f6', // blue
+      startDate: '2026-09-15',
+      startHour: 8,
+      durationHours: 1,
+      description: 'سررسید قسط وام بانک صنعت و معدن'
+    },
+    {
+      id: 'item_sample_loan_2',
+      title: 'قسط 53/54 وام صنعت و معدن 107,121,981',
+      category: 'loans',
+      color: '#1d4ed8', // dark blue
+      startDate: '2026-09-18',
+      startHour: 8,
+      durationHours: 1,
+      description: 'سررسید قسط دوم وام صنعت و معدن'
+    },
+    {
+      id: 'item_sample_loan_3',
+      title: 'صنعت و معدن 1,511',
+      category: 'loans',
+      color: '#2563eb',
+      startDate: '2026-09-18',
+      startHour: 9,
+      durationHours: 1
+    },
+    {
+      id: 'item_sample_eng_sun',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16', // lime green
+      startDate: '2026-09-13',
+      startHour: 9,
+      durationHours: 0.8
+    },
+    {
+      id: 'item_sample_eng_mon',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16',
+      startDate: '2026-09-14',
+      startHour: 9,
+      durationHours: 0.8
+    },
+    {
+      id: 'item_sample_eng_tue',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16',
+      startDate: '2026-09-15',
+      startHour: 9,
+      durationHours: 0.8
+    },
+    {
+      id: 'item_sample_eng_wed',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16',
+      startDate: '2026-09-16',
+      startHour: 9,
+      durationHours: 0.8
+    },
+    {
+      id: 'item_sample_eng_thu',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16',
+      startDate: '2026-09-17',
+      startHour: 9,
+      durationHours: 0.8
+    },
+    {
+      id: 'item_sample_eng_fri',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16',
+      startDate: '2026-09-18',
+      startHour: 9,
+      durationHours: 0.8
+    },
+    {
+      id: 'item_sample_eng_sat',
+      title: 'یادگیری لغات انگلیسی، 9am',
+      category: 'english',
+      color: '#84cc16',
+      startDate: '2026-09-19',
+      startHour: 9,
+      durationHours: 0.8
+    }
+  ];
+};
+
+export const saveCustomCalendarItems = (items: CustomCalendarItem[], userId?: string) => {
+  try {
+    const key = `gw_custom_events_${userId || 'global'}`;
+    localStorage.setItem(key, JSON.stringify(items));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('custom-calendar-events-updated', { detail: { items } }));
+    }
+  } catch {}
+};

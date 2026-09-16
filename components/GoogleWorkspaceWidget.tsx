@@ -31,6 +31,7 @@ export interface GoogleCalendarSettings {
   showCalendars: boolean;
   showTz: boolean;
   hideTopDateCard: boolean;
+  calendarHeight?: number;
 }
 
 export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ 
@@ -69,7 +70,8 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       showTabs: true,
       showCalendars: false,
       showTz: false,
-      hideTopDateCard: false
+      hideTopDateCard: false,
+      calendarHeight: 460
     };
   });
 
@@ -560,15 +562,74 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 
               {/* Tab 1: Live Interactive Google Calendar Embed */}
               {activeTab === 'embed_calendar' && (
-                <div className="relative w-full rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-inner">
-                  <div className="w-full h-[460px] md:h-[540px]">
-                    <iframe
-                      key={iframeKey}
-                      src={embedUrl}
-                      title="Google Calendar"
-                      className="w-full h-full border-0"
-                      loading="lazy"
-                    />
+                <div 
+                  className="relative w-full rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-inner group"
+                  style={{ height: `${calSettings.calendarHeight || 460}px` }}
+                >
+                  <iframe
+                    key={iframeKey}
+                    src={embedUrl}
+                    title="Google Calendar"
+                    className="w-full h-full border-0"
+                    loading="lazy"
+                  />
+                  {/* Resize Handle */}
+                  <div 
+                    className="absolute bottom-0 left-0 right-0 h-4 bg-gray-100/80 dark:bg-zinc-800/80 hover:bg-gray-200 dark:hover:bg-zinc-700 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center backdrop-blur-sm z-10"
+                    title="کشیدن برای تغییر ارتفاع تقویم"
+                    onMouseDown={(e) => {
+                      const startY = e.clientY;
+                      const startHeight = calSettings.calendarHeight || 460;
+                      
+                      const onMouseMove = (moveEvent: MouseEvent) => {
+                        let newHeight = startHeight + (moveEvent.clientY - startY);
+                        if (newHeight < 250) newHeight = 250;
+                        if (newHeight > 1200) newHeight = 1200;
+                        setCalSettings(prev => ({ ...prev, calendarHeight: newHeight }));
+                      };
+                      
+                      const onMouseUp = () => {
+                        window.removeEventListener('mousemove', onMouseMove);
+                        window.removeEventListener('mouseup', onMouseUp);
+                        // Persist manually to avoid triggering iframe reload via handleUpdateSettings
+                        setCalSettings(prev => {
+                          try {
+                            localStorage.setItem(`gw_cal_settings_${userStorageKey}`, JSON.stringify(prev));
+                          } catch {}
+                          return prev;
+                        });
+                      };
+                      
+                      window.addEventListener('mousemove', onMouseMove);
+                      window.addEventListener('mouseup', onMouseUp);
+                    }}
+                    onTouchStart={(e) => {
+                      const startY = e.touches[0].clientY;
+                      const startHeight = calSettings.calendarHeight || 460;
+                      
+                      const onTouchMove = (moveEvent: TouchEvent) => {
+                        let newHeight = startHeight + (moveEvent.touches[0].clientY - startY);
+                        if (newHeight < 250) newHeight = 250;
+                        if (newHeight > 1200) newHeight = 1200;
+                        setCalSettings(prev => ({ ...prev, calendarHeight: newHeight }));
+                      };
+                      
+                      const onTouchEnd = () => {
+                        window.removeEventListener('touchmove', onTouchMove);
+                        window.removeEventListener('touchend', onTouchEnd);
+                        setCalSettings(prev => {
+                          try {
+                            localStorage.setItem(`gw_cal_settings_${userStorageKey}`, JSON.stringify(prev));
+                          } catch {}
+                          return prev;
+                        });
+                      };
+                      
+                      window.addEventListener('touchmove', onTouchMove);
+                      window.addEventListener('touchend', onTouchEnd);
+                    }}
+                  >
+                    <div className="w-12 h-1 rounded-full bg-gray-400 dark:bg-gray-500" />
                   </div>
                 </div>
               )}

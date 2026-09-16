@@ -449,10 +449,10 @@ const setupLegacyDailyReports = () => {
         if (settings.botBijakGroupIdBale) targets.push({ platform: 'bale', id: settings.botBijakGroupIdBale, type: 'bijak' });
 
         // 3. Exit Permit Groups (First, Second, Third, and/or Dedicated based on configuration)
-        const sendToFirst = settings.dailyExitReportSendToFirstGroup !== false;
+        const sendToFirst = settings.dailyExitReportSendToFirstGroup === true;
         const sendToSecond = settings.dailyExitReportSendToSecondGroup === true;
         const sendToThird = settings.dailyExitReportSendToThirdGroup === true;
-        const sendToDedicated = settings.dailyExitReportSendToDedicatedGroup === true;
+        const sendToDedicated = settings.dailyExitReportSendToDedicatedGroup !== false;
 
         if (sendToFirst) {
             if (settings.exitPermitNotificationTelegramId) targets.push({ platform: 'telegram', id: settings.exitPermitNotificationTelegramId, type: 'exit' });

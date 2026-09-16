@@ -3592,7 +3592,7 @@ const Settings: React.FC<SettingsProps> = ({
                       <input
                         type="checkbox"
                         checked={
-                          settings.dailyExitReportSendToFirstGroup !== false
+                          settings.dailyExitReportSendToFirstGroup === true
                         }
                         onChange={(e) =>
                           setSettings({
@@ -3643,7 +3643,7 @@ const Settings: React.FC<SettingsProps> = ({
                       <input
                         type="checkbox"
                         checked={
-                          settings.dailyExitReportSendToDedicatedGroup || false
+                          settings.dailyExitReportSendToDedicatedGroup !== false
                         }
                         onChange={(e) =>
                           setSettings({
@@ -7212,77 +7212,6 @@ const Settings: React.FC<SettingsProps> = ({
                           placeholder="...@g.us"
                         />
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Daily Exit & Security Reports Group Settings */}
-                <div className="glass-panel p-6 rounded-2xl border border-gray-200/60 dark:border-gray-800/60 shadow-sm space-y-4">
-                  <div className="flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 pb-3">
-                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-xl">
-                      <ShieldCheck size={20} />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-sm text-gray-800 dark:text-white">
-                        🚗 تنظیمات ارسال گزارش‌های روزانه تردد و خروج کالا
-                      </h4>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        شناسه‌های گروه‌های اختصاصی جهت ارسال خلاصه خروج کالا، تردد و وقایع انتظامات
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                        گروه تلگرام گزارش خروج روزانه
-                      </label>
-                      <input
-                        type="text"
-                        value={settings.dailyExitReportDedicatedTelegramId || ""}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            dailyExitReportDedicatedTelegramId: e.target.value,
-                          })
-                        }
-                        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
-                        placeholder="-100..."
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                        گروه بله گزارش خروج روزانه
-                      </label>
-                      <input
-                        type="text"
-                        value={settings.dailyExitReportDedicatedBaleId || ""}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            dailyExitReportDedicatedBaleId: e.target.value,
-                          })
-                        }
-                        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
-                        placeholder="شناسه گروه بله"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                        گروه واتساپ گزارش خروج روزانه
-                      </label>
-                      <input
-                        type="text"
-                        value={settings.dailyExitReportDedicatedWhatsAppId || ""}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            dailyExitReportDedicatedWhatsAppId: e.target.value,
-                          })
-                        }
-                        className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-lg p-2.5 text-xs dir-ltr font-mono focus:ring-2 focus:ring-emerald-500"
-                        placeholder="...@g.us"
-                      />
                     </div>
                   </div>
                 </div>

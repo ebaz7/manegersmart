@@ -13,7 +13,7 @@ import {
 } from '../services/storageService';
 import { generateUUID, getCurrentShamsiDate, getYesterdayShamsiDate, jalaliToGregorian, formatDate, getShamsiDateFromIso, formatLocalDateToIso, getIsoFromJalali } from '../constants';
 import { Shield, Plus, CheckCircle, XCircle, Clock, Truck, AlertTriangle, UserCheck, Calendar, Printer, Archive, FileSymlink, Edit, Trash2, Eye, FileText, CheckSquare, User as UserIcon, ListChecks, Activity, FileDown, Loader2, Pencil, ChevronDown, ChevronUp, FolderOpen, Folder, Save, X, Camera, Settings, MessageSquare, ZoomIn, ZoomOut, RotateCcw, Sparkles, Check, CheckCheck, DollarSign, CreditCard, Paperclip, ExternalLink, Send, FileImage, Download, Building2, ShieldCheck, Copy, Share2 } from 'lucide-react';
-import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport, PrintPersonnelOvertime } from './security/SecurityPrints';
+import { PrintSecurityDailyLog, PrintPersonnelDelay, PrintIncidentReport, PrintPersonnelOvertime, PrintDriverPayment } from './security/SecurityPrints';
 import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
 import { searchSavedDrivers, saveDriverToMemory, getSavedDrivers, findDriverByName, findDriverByPlate, syncDriversFromRecords, SavedDriver } from '../services/driverMemoryService';
 import { getRolePermissions } from '../services/authService';
@@ -281,7 +281,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
     const [driverPaymentEditingId, setDriverPaymentEditingId] = useState<string | null>(null);
     const [showDriverPaymentForm, setShowDriverPaymentForm] = useState(false);
     const [viewingPaymentModal, setViewingPaymentModal] = useState<DriverPayment | null>(null);
-    const [driverPaymentStatusFilter, setDriverPaymentStatusFilter] = useState<'all' | 'pending_supervisor' | 'pending_factory' | 'archived'>('all');
+    const [driverPaymentStatusFilter, setDriverPaymentStatusFilter] = useState<'all' | 'cartable' | 'archived'>('all');
     const [isUploadingPaymentFile, setIsUploadingPaymentFile] = useState(false);
     const [driverPaymentSearchQuery, setDriverPaymentSearchQuery] = useState('');
     const [sharingPaymentId, setSharingPaymentId] = useState<string | null>(null);
@@ -1390,7 +1390,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 `📅 **تاریخ ثبت**: ${formatDate(dp.date)}\n` +
                                 (dp.description ? `📝 **توضیحات**: ${dp.description}\n` : '');
 
-            if (targetGroupId) {
+            if (targetGroupId && !settings?.disableInternalChatSharing) {
                 const baseMsg = {
                     id: generateUUID(),
                     sender: currentUser.fullName,
@@ -1422,8 +1422,12 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 }
             }
 
-            const groupStageName = resolvedStage === 'factory' ? 'گروه دوم (مدیریت/مالی)' : 'گروه اول (انتظامات)';
-            alert(`فرم واریزی راننده (${dp.driverName}) با موفقیت به ${groupStageName} و پیام‌رسان‌ها ارسال شد ✅`);
+            if (settings?.disableInternalChatSharing) {
+                alert(`فرم واریزی راننده (${dp.driverName}) با موفقیت به پیام‌رسان‌ها (بات‌ها) ارسال شد ✅`);
+            } else {
+                const groupStageName = resolvedStage === 'factory' ? 'گروه دوم (مدیریت/مالی)' : 'گروه اول (انتظامات)';
+                alert(`فرم واریزی راننده (${dp.driverName}) با موفقیت به ${groupStageName} و پیام‌رسان‌ها ارسال شد ✅`);
+            }
         } catch (err) {
             console.error('Error sharing driver payment to group:', err);
             alert('خطا در ارسال اطلاعات به گروه‌ها.');
@@ -1507,7 +1511,8 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                 botDriverPaymentSecondGroupIdTele: currentSettings.botDriverPaymentSecondGroupIdTele || '',
                 botDriverPaymentSecondGroupIdBale: currentSettings.botDriverPaymentSecondGroupIdBale || '',
                 botDriverPaymentSecondGroupIdWhatsApp: currentSettings.botDriverPaymentSecondGroupIdWhatsApp || '',
-                botDriverPaymentAutoSendEnabled: currentSettings.botDriverPaymentAutoSendEnabled !== false
+                botDriverPaymentAutoSendEnabled: currentSettings.botDriverPaymentAutoSendEnabled !== false,
+                disableInternalChatSharing: currentSettings.disableInternalChatSharing || false
             });
             const groups = await getGroups();
             setChatGroupsList(Array.isArray(groups) ? groups : []);
@@ -2015,6 +2020,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 {printTarget.type === 'daily_delay' && <PrintPersonnelDelay delays={printTarget.delays} meta={printTarget.meta} />}
                                 {printTarget.type === 'daily_overtime' && <PrintPersonnelOvertime overtimes={printTarget.overtimes} meta={printTarget.meta} />}
                                 {printTarget.type === 'incident' && <PrintIncidentReport incident={printTarget.incident} />}
+                                {printTarget.type === 'driver_payment' && <PrintDriverPayment payment={printTarget.payment} />}
                             </div>
                         </ScaledContainer>
                     </div>
@@ -3709,26 +3715,15 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                     همه ({driverPayments.length})
                                 </button>
                                 <button
-                                    onClick={() => setDriverPaymentStatusFilter('pending_supervisor')}
+                                    onClick={() => setDriverPaymentStatusFilter('cartable')}
                                     className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                                        driverPaymentStatusFilter === 'pending_supervisor'
+                                        driverPaymentStatusFilter === 'cartable'
                                             ? 'bg-amber-500 text-white shadow-xs'
                                             : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
                                     }`}
                                 >
                                     <Clock size={13} />
-                                    <span>انتظار تایید سرپرست ({driverPayments.filter(p => !p.supervisorApproved).length})</span>
-                                </button>
-                                <button
-                                    onClick={() => setDriverPaymentStatusFilter('pending_factory')}
-                                    className={`px-3 py-1.5 rounded-lg font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                                        driverPaymentStatusFilter === 'pending_factory'
-                                            ? 'bg-blue-600 text-white shadow-xs'
-                                            : 'text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30'
-                                    }`}
-                                >
-                                    <Building2 size={13} />
-                                    <span>انتظار تایید مدیر کارخانه ({driverPayments.filter(p => p.supervisorApproved && !p.factoryApproved).length})</span>
+                                    <span>کارتابل ({driverPayments.filter(p => !p.factoryApproved && p.status !== 'ARCHIVED').length})</span>
                                 </button>
                                 <button
                                     onClick={() => setDriverPaymentStatusFilter('archived')}
@@ -3769,8 +3764,7 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                         {driverPayments
                                             .filter(dp => {
                                                 // Status tab filter
-                                                if (driverPaymentStatusFilter === 'pending_supervisor' && dp.supervisorApproved) return false;
-                                                if (driverPaymentStatusFilter === 'pending_factory' && (!dp.supervisorApproved || dp.factoryApproved)) return false;
+                                                if (driverPaymentStatusFilter === 'cartable' && (dp.factoryApproved || dp.status === 'ARCHIVED')) return false;
                                                 if (driverPaymentStatusFilter === 'archived' && (!dp.factoryApproved && dp.status !== 'ARCHIVED')) return false;
 
                                                 // Search query
@@ -3892,6 +3886,15 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                                                 title="مشاهده جزئیات کامل فرم واریزی"
                                                             >
                                                                 <Eye size={15}/>
+                                                            </button>
+
+                                                            {/* Print & Form View Button */}
+                                                            <button 
+                                                                onClick={() => { setPrintTarget({ type: 'driver_payment', payment: dp }); setShowPrintModal(true); }}
+                                                                className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 hover:bg-teal-100 transition-all"
+                                                                title="نمایش فرم و چاپ"
+                                                            >
+                                                                <Printer size={15}/>
                                                             </button>
 
                                                             {/* Stage 1: Supervisor Approve Action */}
@@ -4260,6 +4263,16 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 </button>
                                 <button 
                                     onClick={() => {
+                                        setPrintTarget({ type: 'driver_payment', payment: viewingPaymentModal });
+                                        setShowPrintModal(true);
+                                    }}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+                                >
+                                    <Printer size={14} />
+                                    <span>نمایش و چاپ فرم</span>
+                                </button>
+                                <button 
+                                    onClick={() => {
                                         const dp = viewingPaymentModal;
                                         setViewingPaymentModal(null);
                                         setDriverPaymentForm({ ...dp });
@@ -4319,6 +4332,24 @@ const SecurityModule: React.FC<Props> = ({ currentUser, financialYear }) => {
                                 />
                                 <span className="font-bold text-purple-950 dark:text-purple-200">
                                     ارسال خودکار به گروه‌ها و بات‌ها هنگام تایید مراحل ۱ و ۲
+                                </span>
+                            </label>
+
+                            {/* Disable internal chat sharing toggle */}
+                            <label className="flex items-center gap-2 cursor-pointer bg-red-50 dark:bg-red-950/20 p-3.5 rounded-xl border border-red-200 dark:border-red-900/40">
+                                <input
+                                    type="checkbox"
+                                    checked={securitySettingsDraft.disableInternalChatSharing === true}
+                                    onChange={(e) =>
+                                        setSecuritySettingsDraft({
+                                            ...securitySettingsDraft,
+                                            disableInternalChatSharing: e.target.checked,
+                                        })
+                                    }
+                                    className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                                />
+                                <span className="font-bold text-red-950 dark:text-red-200">
+                                    غیر فعال‌سازی ارسال به گروه‌های چت داخل نرم‌افزار اسپان بافت (فقط ارسال به ربات‌های پیام‌رسان بله/تلگرام/واتساپ انجام شود)
                                 </span>
                             </label>
 

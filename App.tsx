@@ -1848,6 +1848,37 @@ function App() {
                 if (currentUser) apiCall('/notifications/read', 'POST', { username: currentUser.username, id: 'all' }).catch(console.error);
             }}
             onDeleteNotification={deleteNotification}
+            onOpenNotification={(n) => {
+                deleteNotification(n.id);
+                if (n.url) {
+                    const cleanUrl = n.url.replace(/^\/+/, '');
+                    const [targetTab, searchParams] = cleanUrl.split('?');
+                    if (targetTab) {
+                        setActiveTab(targetTab);
+                        if (targetTab !== 'warehouse') setWarehouseInitialTab('dashboard');
+                        if (targetTab !== 'manage-exit') setExitPermitStatusFilter(null);
+                        if (targetTab !== 'manage') setDashboardStatusFilter(null);
+                        if (targetTab !== 'purchase') setPurchaseInitialTab('REQUESTS');
+                    }
+                    if (searchParams) {
+                        try {
+                            const params = new URLSearchParams(searchParams);
+                            const exitStatus = params.get('exitStatus');
+                            const filterStatus = params.get('filterStatus');
+                            const filter = params.get('filter');
+                            const taskId = params.get('task');
+                            if (exitStatus) setExitPermitStatusFilter(exitStatus);
+                            if (filterStatus) setDashboardStatusFilter(filterStatus);
+                            if (filter && targetTab === 'warehouse') setWarehouseInitialTab('approvals');
+                            if (taskId) {
+                                window.dispatchEvent(new CustomEvent('OPEN_TASK_DETAILS', { detail: { taskId } }));
+                            }
+                        } catch (e) {
+                            console.error('Error parsing notification params:', e);
+                        }
+                    }
+                }
+            }}
             onAddNotification={addAppNotification}
             onRemoveNotification={removeNotification}
             financialYear={financialYear}

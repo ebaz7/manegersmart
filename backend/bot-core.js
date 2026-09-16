@@ -3130,7 +3130,7 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
     } catch (e) { console.error("Payment Notification Helper Error:", e); }
 };
 
-export const notifyDriverPayment = async (dp, db, eventType = 'CREATE') => {
+export const notifyDriverPayment = async (dp, db, eventType = 'CREATE', options = {}) => {
     try {
         if (!dp) return { success: false, error: 'No driver payment data' };
         const isEdit = eventType === 'EDIT';

@@ -432,6 +432,7 @@ export interface SystemSettings {
   botDriverPaymentSecondGroupIdWhatsApp?: string;
   securityDriverPaymentSecondInternalGroupId?: string;
   securityDriverPaymentSecondInternalGroupName?: string;
+  disableInternalChatSharing?: boolean;
   botForceJoinChannels?: { name: string; link: string; id: string; platform?: 'telegram' | 'bale' | 'all' }[];
   botForceJoinEnabled?: boolean;
   botStoreLinks?: { title: string; url: string }[];

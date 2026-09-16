@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { SecurityLog, PersonnelDelay, SecurityIncident, DailySecurityMeta, PersonnelOvertime } from '../../types';
+import { SecurityLog, PersonnelDelay, SecurityIncident, DailySecurityMeta, PersonnelOvertime, DriverPayment } from '../../types';
 import { formatDate } from '../../constants';
 import PrintPersonnelDelayForm from './PrintPersonnelDelayForm';
 import PrintPersonnelOvertimeForm from './PrintPersonnelOvertimeForm';
@@ -378,4 +378,172 @@ export const PrintIncidentReport: React.FC<{ incident: SecurityIncident }> = ({ 
 export const PrintPersonnelOvertime: React.FC<{ overtimes: PersonnelOvertime[], meta?: DailySecurityMeta }> = ({ overtimes, meta }) => {
     const safeOvertimes = overtimes.length > 0 ? overtimes : [{ date: new Date().toISOString() } as PersonnelOvertime];
     return <PrintPersonnelOvertimeForm overtimes={overtimes} date={safeOvertimes[0].date} meta={meta} />;
+};
+
+export const PrintDriverPayment: React.FC<{ payment: DriverPayment }> = ({ payment }) => {
+    const formattedAmount = payment.amount ? Number(payment.amount).toLocaleString('fa-IR') + ' ریال' : '—';
+    const entryTime = payment.createdAt ? new Date(payment.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : '—';
+    
+    return (
+        <div className="printable-content glass-panel text-black font-sans relative" 
+            style={{ 
+                width: '210mm', 
+                minHeight: '296mm', 
+                direction: 'rtl', 
+                margin: '0 auto',
+                boxSizing: 'border-box',
+                padding: '10mm',
+                backgroundColor: 'white'
+            }}
+        >
+            <div style={{ border: '3px solid black', width: '100%', minHeight: '270mm', display: 'flex', flexDirection: 'column', padding: '15px' }}>
+                {/* Header */}
+                <div style={{ display: 'flex', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>
+                    {/* Right: Meta */}
+                    <div style={{ width: '180px', borderLeft: '2px solid black', paddingLeft: '10px', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>تاریخ:</span><span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{payment.date || '—'}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>شماره:</span><span style={{ fontFamily: 'monospace' }}>{payment.id?.substring(0, 8) || '—'}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>ساعت ورود:</span><span style={{ fontFamily: 'monospace' }}>{entryTime}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>ساعت خروج:</span><span style={{ fontFamily: 'monospace' }}>—</span></div>
+                    </div>
+                    {/* Center: Title */}
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <h2 style={{ fontSize: '20px', fontWeight: '900', margin: '0 0 5px 0' }}>فرم واریزی رانندگان</h2>
+                        <h3 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0, color: '#4b5563' }}>گروه تولیدی اسپان بافت</h3>
+                    </div>
+                    {/* Left: Logo */}
+                    <div style={{ width: '180px', borderRight: '2px solid black', paddingRight: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '900', border: '2px solid black', padding: '5px 15px', borderRadius: '4px', transform: 'rotate(-2deg)' }}>اسپان بافت</div>
+                    </div>
+                </div>
+
+                {/* Info Block 1 (5 Column Table as in preprinted scan) */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px', textAlign: 'center' }}>
+                    <thead>
+                        <tr style={{ backgroundColor: '#f3f4f6', height: '35px' }}>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '22%' }}>مشخصات راننده</th>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '22%' }}>شماره شهربانی خودرو</th>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '18%' }}>هزینه حمل و نقل</th>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '18%' }}>جنس وارده</th>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '20%' }}>فروشنده</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style={{ height: '55px' }}>
+                            <td style={{ border: '2px solid black', fontWeight: 'bold' }}>
+                                {payment.driverName || '—'}
+                                {payment.driverPhone && <div style={{ fontSize: '9px', color: '#4b5563', marginTop: '4px' }}>تلفن: {payment.driverPhone}</div>}
+                            </td>
+                            <td style={{ border: '2px solid black', padding: '5px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                    {payment.plateNumber ? <IranianPlateDisplay value={payment.plateNumber} size="sm" /> : '—'}
+                                </div>
+                            </td>
+                            <td style={{ border: '2px solid black', fontWeight: 'bold', fontSize: '12px' }}>{formattedAmount}</td>
+                            <td style={{ border: '2px solid black' }}>{payment.goodsName || '—'}</td>
+                            <td style={{ border: '2px solid black' }}>{payment.permitProvider || '—'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                {/* Info Block 2 (3 Columns for Financial Details) */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '11px', textAlign: 'center' }}>
+                    <thead>
+                        <tr style={{ backgroundColor: '#f3f4f6', height: '35px' }}>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '33%' }}>شماره کارت</th>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '34%' }}>شماره شبا</th>
+                            <th style={{ border: '2px solid black', fontWeight: 'bold', width: '33%' }}>شماره ملی / حساب</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style={{ height: '50px' }}>
+                            <td style={{ border: '2px solid black', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
+                                {payment.cardNumber ? payment.cardNumber.replace(/(\d{4})/g, '$1-').replace(/-$/, '') : '—'}
+                            </td>
+                            <td style={{ border: '2px solid black', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold', direction: 'ltr' }}>
+                                {payment.shebaNumber ? (payment.shebaNumber.startsWith('IR') ? payment.shebaNumber : 'IR' + payment.shebaNumber) : '—'}
+                            </td>
+                            <td style={{ border: '2px solid black', fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold' }}>
+                                {payment.accountNumber || '—'}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                {/* Route Info & Details */}
+                <div style={{ border: '2px solid black', padding: '10px', fontSize: '11px', marginBottom: '20px', backgroundColor: '#fafafa', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <div><strong>مسیر حمل:</strong> از {payment.origin || '—'} به {payment.destination || '—'}</div>
+                        <div><strong>مقدار / تعداد:</strong> {payment.quantity || '—'}</div>
+                    </div>
+                    {payment.description && (
+                        <div style={{ borderTop: '1px solid #ddd', paddingTop: '8px', marginTop: '4px' }}>
+                            <strong>توضیحات:</strong> {payment.description}
+                        </div>
+                    )}
+                </div>
+
+                {/* Signature/Approval Stamps (Bottom Area) */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px', height: '120px', borderTop: '2.5px solid black', paddingTop: '10px' }}>
+                        {/* Driver Signature */}
+                        <div style={{ border: '1px solid black', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fafafa' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '11px' }}>امضاء راننده</span>
+                            <span style={{ color: '#ccc', fontSize: '10px' }}>اثر انگشت / امضا</span>
+                        </div>
+
+                        {/* Security Signature (Supervisor Approved) */}
+                        <div style={{ border: '1px solid black', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '11px' }}>امضاء انتظامات</span>
+                            {payment.supervisorApproved ? (
+                                <div style={{ 
+                                    border: '2px solid blue', 
+                                    color: 'blue', 
+                                    padding: '4px 8px', 
+                                    borderRadius: '4px', 
+                                    transform: 'rotate(-5deg)',
+                                    fontWeight: 'bold',
+                                    fontSize: '10px',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ borderBottom: '1px solid blue', fontSize: '8px', paddingBottom: '2px', marginBottom: '2px' }}>تایید سرپرست</div>
+                                    {payment.supervisorApproverName || 'انتظامات'}
+                                </div>
+                            ) : (
+                                <span style={{ color: '#ccc', fontSize: '10px' }}>در انتظار تایید</span>
+                            )}
+                        </div>
+
+                        {/* Accounting Signature */}
+                        <div style={{ border: '1px solid black', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fafafa' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '11px' }}>امضاء حسابداری</span>
+                            <span style={{ color: '#ccc', fontSize: '10px' }}>بررسی و پرداخت</span>
+                        </div>
+
+                        {/* Management Signature (Factory Approved) */}
+                        <div style={{ border: '1px solid black', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '11px' }}>امضاء مدیریت</span>
+                            {payment.factoryApproved ? (
+                                <div style={{ 
+                                    border: '2px solid green', 
+                                    color: 'green', 
+                                    padding: '4px 8px', 
+                                    borderRadius: '4px', 
+                                    transform: 'rotate(-5deg)',
+                                    fontWeight: 'bold',
+                                    fontSize: '10px',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ borderBottom: '1px solid green', fontSize: '8px', paddingBottom: '2px', marginBottom: '2px' }}>تایید و بایگانی</div>
+                                    {payment.factoryApproverName || 'مدیر کارخانه'}
+                                </div>
+                            ) : (
+                                <span style={{ color: '#ccc', fontSize: '10px' }}>در انتظار تایید</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };

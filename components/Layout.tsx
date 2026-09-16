@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   BookOpen, LayoutDashboard, Search, PlusCircle, ListChecks, FileText, Inbox, Users, LogOut, 
   User as UserIcon, Settings, Bell, BellOff, MessageSquare, X, Check, Container, KeyRound, Save, 
@@ -33,6 +34,7 @@ interface LayoutProps {
   clearNotifications: () => void;
   markAllNotificationsAsRead?: () => void;
   onDeleteNotification?: (id: string) => void;
+  onOpenNotification?: (notification: AppNotification) => void;
   onAddNotification: (title: string, message: string) => void;
   onRemoveNotification: (id: string) => void;
   financialYear?: string;
@@ -64,6 +66,7 @@ const Layout: React.FC<LayoutProps> = ({
   clearNotifications, 
   markAllNotificationsAsRead, 
   onDeleteNotification, 
+  onOpenNotification,
   onAddNotification, 
   onRemoveNotification, 
   financialYear, 
@@ -226,6 +229,7 @@ const Layout: React.FC<LayoutProps> = ({
   const isSecure = window.isSecureContext;
   const notifRef = useRef<HTMLDivElement>(null);
   const mobileNotifRef = useRef<HTMLDivElement>(null);
+  const [notifOrigin, setNotifOrigin] = useState<'sidebar' | 'header'>('sidebar');
   
   // Mobile Drawer State
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -712,73 +716,351 @@ const Layout: React.FC<LayoutProps> = ({
     window.dispatchEvent(new CustomEvent('BOTTOM_NAV_VISIBLE', { detail: isBottomBarVisible }));
   }, [isBottomBarVisible]);
 
-  const NotificationDropdown = () => ( 
-    <div role="dialog" aria-label="اعلان‌ها" className="notification-dropdown-container fixed top-16 left-4 right-4 md:absolute md:top-auto md:bottom-16 md:left-2 md:right-auto md:w-80 glass-panel rounded-xl shadow-2xl border border-gray-200/50 dark:border-white/10 text-gray-800 dark:text-gray-200 z-[9999] overflow-hidden origin-top md:origin-bottom-left animate-scale-in max-h-[60vh] flex flex-col">
-        <div className="bg-blue-50 p-3 flex justify-between items-center border-b border-blue-100 shrink-0">
+  const NotificationDropdown = () => {
+    const [filterTab, setFilterTab] = useState<'all' | 'unread'>('all');
+    const safeNotifications = useMemo(() => Array.isArray(notifications) ? notifications : [], [notifications]);
+    
+    const unreadCountLocal = useMemo(() => safeNotifications.filter(n => !n.read).length, [safeNotifications]);
+    
+    const displayedNotifications = useMemo(() => {
+      if (filterTab === 'unread') {
+        return safeNotifications.filter(n => !n.read);
+      }
+      return safeNotifications;
+    }, [safeNotifications, filterTab]);
+
+    const formatTimeAgo = (ts: number | string | undefined) => {
+      if (!ts) return '';
+      const timeNum = typeof ts === 'string' ? new Date(ts).getTime() : ts;
+      if (isNaN(timeNum)) return '';
+      const diffMs = Date.now() - timeNum;
+      const diffMin = Math.floor(diffMs / 60000);
+      if (diffMin < 1) return 'همین الان';
+      if (diffMin < 60) return `${diffMin} دقیقه پیش`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours} ساعت پیش`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'دیروز';
+      if (diffDays < 7) return `${diffDays} روز پیش`;
+      try {
+        return new Date(timeNum).toLocaleDateString('fa-IR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return '';
+      }
+    };
+
+    const getCategoryMeta = (n: AppNotification) => {
+      const text = `${n.title || ''} ${n.message || ''} ${n.url || ''}`.toLowerCase();
+      if (text.includes('تسک') || text.includes('task') || text.includes('یادآور')) {
+        return {
+          icon: CheckSquare,
+          badgeText: 'وظیفه / تسک',
+          badgeClass: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40',
+          iconColor: 'text-purple-600 dark:text-purple-400'
+        };
+      }
+      if (text.includes('خروج') || text.includes('مجوز') || text.includes('حواله') || text.includes('exit')) {
+        return {
+          icon: Truck,
+          badgeText: 'حواله خروج',
+          badgeClass: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40',
+          iconColor: 'text-emerald-600 dark:text-emerald-400'
+        };
+      }
+      if (text.includes('پرداخت') || text.includes('واریز') || text.includes('دستور') || text.includes('order')) {
+        return {
+          icon: Receipt,
+          badgeText: 'دستور پرداخت',
+          badgeClass: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40',
+          iconColor: 'text-amber-600 dark:text-amber-400'
+        };
+      }
+      if (text.includes('چک') || text.includes('صیاد') || text.includes('رسید')) {
+        return {
+          icon: FileCheck2,
+          badgeText: 'چک صیادی',
+          badgeClass: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/40',
+          iconColor: 'text-cyan-600 dark:text-cyan-400'
+        };
+      }
+      if (text.includes('پیام') || text.includes('chat') || text.includes('گفتگو')) {
+        return {
+          icon: MessageSquare,
+          badgeText: 'پیام گفتگو',
+          badgeClass: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40',
+          iconColor: 'text-blue-600 dark:text-blue-400'
+        };
+      }
+      if (text.includes('نامه') || text.includes('دبیرخانه')) {
+        return {
+          icon: FileText,
+          badgeText: 'دبیرخانه',
+          badgeClass: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40',
+          iconColor: 'text-indigo-600 dark:text-indigo-400'
+        };
+      }
+      if (text.includes('انبار') || text.includes('کالا') || text.includes('warehouse')) {
+        return {
+          icon: Package,
+          badgeText: 'انبارداری',
+          badgeClass: 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300 border border-orange-200 dark:border-orange-800/40',
+          iconColor: 'text-orange-600 dark:text-orange-400'
+        };
+      }
+      return {
+        icon: Bell,
+        badgeText: 'اعلان سیستم',
+        badgeClass: 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700',
+        iconColor: 'text-zinc-500 dark:text-zinc-400'
+      };
+    };
+
+    const handleItemClick = (n: AppNotification) => {
+      setShowNotifDropdown(false);
+      if (showMobileMenu) setShowMobileMenu(false);
+
+      if (onOpenNotification) {
+        onOpenNotification(n);
+      } else {
+        if (onDeleteNotification) {
+          onDeleteNotification(n.id);
+        } else {
+          onRemoveNotification(n.id);
+        }
+        if (n.url) {
+          const clean = n.url.replace(/^\/+/, '');
+          const [baseTab] = clean.split('?');
+          if (baseTab) {
+            setActiveTab(baseTab);
+          }
+        }
+      }
+    };
+
+    return createPortal(
+      <div className="fixed inset-0 z-[999999] pointer-events-none" dir="rtl">
+        {/* Backdrop for click outside */}
+        <div 
+          className="fixed inset-0 bg-black/25 dark:bg-black/50 backdrop-blur-[1px] md:bg-transparent pointer-events-auto transition-opacity"
+          onClick={() => setShowNotifDropdown(false)}
+        />
+
+        {/* Floating Notification Center Panel */}
+        <div 
+          role="dialog" 
+          aria-label="مرکز اعلان‌ها" 
+          className={`notification-dropdown-container pointer-events-auto fixed ${
+            notifOrigin === 'header' 
+              ? 'top-16 inset-x-3 sm:inset-x-auto sm:left-4 sm:w-[410px] max-h-[calc(100vh-80px)]' 
+              : 'bottom-16 md:bottom-20 right-3 sm:right-6 md:right-[296px] w-[calc(100vw-24px)] sm:w-[410px] max-h-[calc(100vh-120px)]'
+          } bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800/90 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-[1000000] text-zinc-800 dark:text-zinc-100 backdrop-blur-2xl transition-all`}
+          style={{
+            boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.08)'
+          }}
+        >
+          {/* Header */}
+          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-                {notifEnabled ? <Bell size={16} className="text-blue-600"/> : <BellOff size={16} className="text-gray-500 dark:text-gray-500"/>}
-                <span className="text-xs font-bold text-blue-800">وضعیت اعلان‌ها:</span>
-            </div>
-            <button onClick={handleToggleNotif} className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${notifEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 hover:bg-red-200 animate-pulse'}`}>
-                {notifEnabled ? 'فعال است' : 'فعال‌سازی'}
-            </button>
-        </div>
-        <div className="bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200 p-2 flex justify-between items-center border-b shrink-0">
-            <span className="text-xs font-bold text-gray-600 dark:text-gray-400">پیام‌های سیستم</span>
-            {notifications.length > 0 && (
-                <button onClick={clearNotifications} className="text-gray-400 hover:text-red-500 flex items-center gap-1 text-[10px] cursor-pointer">
-                    <Trash2 size={12} /> پاک کردن همه
-                </button>
-            )}
-        </div>
-        <div className="overflow-y-auto flex-1 custom-scrollbar">
-            {notifications.length === 0 ? (
-                <div className="p-6 text-center text-xs text-gray-400 flex flex-col items-center">
-                    <BellOff size={24} className="mb-2 opacity-20"/>
-                    هیچ پیامی نیست
+              <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                <Bell size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-black text-zinc-900 dark:text-zinc-100">مرکز اعلان‌ها</h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-bold">
+                    {safeNotifications.length} اعلان
+                  </span>
                 </div>
-            ) : (
-                notifications.map((n: any) => (
-                    <div key={n.id} 
-                         onClick={() => {
-                             onRemoveNotification(n.id);
-                             if (n.url) {
-                                 let tab = n.url.replace(/^\//, ''); // Remove leading slash
-                                 setActiveTab(tab);
-                                 setShowMobileMenu(false);
-                             }
-                         }}
-                         className={`p-3 border-b hover:bg-gray-50 text-right last:border-0 relative group cursor-pointer ${n.read ? 'opacity-50' : ''}`}>
-                        <div className="flex justify-between items-start pl-14">
-                            <div className="text-xs font-bold text-gray-800 mb-1">{n.title}</div>
-                            <div className="text-[9px] text-gray-400 whitespace-nowrap">{new Date(n.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</div>
-                        </div>
-                        <div className="text-xs text-gray-600 leading-tight pl-14">{n.message}</div>
-                        
-                        <div className="absolute top-2.5 left-2 flex items-center gap-1 md:opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            {!n.read && (
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); onRemoveNotification(n.id); }} 
-                                className="text-gray-400 hover:text-green-500 p-1.5 rounded-full hover:bg-green-50 transition-colors"
-                                title="علامت خوانده شده"
-                            >
-                                <Check size={14}/>
-                            </button>
-                            )}
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); onDeleteNotification && onDeleteNotification(n.id); }} 
-                                className="text-gray-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-                                title="حذف اعلان"
-                            >
-                                <Trash2 size={14}/>
-                            </button>
-                        </div>
-                    </div>
-                ))
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">مدیریت هشدارهای کاربری، وظایف و پیام‌ها</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => setShowNotifDropdown(false)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 transition-colors"
+                title="بستن پنجره"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* System Push Status Banner */}
+          <div className="px-3.5 py-2 bg-blue-50/70 dark:bg-blue-950/30 border-b border-blue-100/70 dark:border-blue-900/40 flex items-center justify-between text-xs shrink-0">
+            <div className="flex items-center gap-2">
+              {notifEnabled ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              )}
+              <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300">
+                {notifEnabled ? 'دریافت اعلان‌های سیستم فعال است' : 'اعلان‌های مرورگر غیرفعال است'}
+              </span>
+            </div>
+            <button 
+              onClick={handleToggleNotif}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                notifEnabled 
+                  ? 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100' 
+                  : 'bg-red-500 hover:bg-red-600 text-white shadow-sm'
+              }`}
+            >
+              {notifEnabled ? 'تست ارسال' : 'فعال‌سازی'}
+            </button>
+          </div>
+
+          {/* Filter Tabs & Quick Actions */}
+          <div className="px-3 pt-2 pb-1.5 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setFilterTab('all')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  filterTab === 'all'
+                    ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                }`}
+              >
+                همه ({safeNotifications.length})
+              </button>
+              <button
+                onClick={() => setFilterTab('unread')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  filterTab === 'unread'
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                }`}
+              >
+                خوانده‌نشده ({unreadCountLocal})
+              </button>
+            </div>
+
+            {safeNotifications.length > 0 && (
+              <div className="flex items-center gap-1">
+                {unreadCountLocal > 0 && markAllNotificationsAsRead && (
+                  <button
+                    onClick={markAllNotificationsAsRead}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                    title="خواندن همه"
+                  >
+                    <CheckCircle2 size={15} />
+                  </button>
+                )}
+                <button
+                  onClick={clearNotifications}
+                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                  title="پاکسازی تمام اعلان‌ها"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             )}
+          </div>
+
+          {/* Notifications Scrollable List */}
+          <div className="overflow-y-auto flex-1 custom-scrollbar p-2.5 space-y-2 min-h-[160px]">
+            {displayedNotifications.length === 0 ? (
+              <div className="py-12 px-4 text-center flex flex-col items-center justify-center text-zinc-400 select-none">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800/60 flex items-center justify-center mb-2.5 text-zinc-400">
+                  <BellOff size={22} className="opacity-60" />
+                </div>
+                <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                  {filterTab === 'unread' ? 'هیچ اعلان خوانده‌نشده‌ای ندارید' : 'مرکز اعلان‌ها خالی است'}
+                </p>
+                <p className="text-[11px] text-zinc-400 max-w-[220px]">
+                  تمامی تسک‌ها، پیام‌ها و تاییدیه‌ها بررسی شده‌اند.
+                </p>
+              </div>
+            ) : (
+              displayedNotifications.map((n) => {
+                const meta = getCategoryMeta(n);
+                const IconComponent = meta.icon;
+                const timeText = formatTimeAgo(n.timestamp);
+
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => handleItemClick(n)}
+                    className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                      !n.read 
+                        ? 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-200/80 dark:border-blue-900/50 hover:bg-blue-50/80 dark:hover:bg-blue-900/30 shadow-sm' 
+                        : 'bg-zinc-50/50 dark:bg-zinc-800/30 border-zinc-200/60 dark:border-zinc-800/60 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/60'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className={`p-2 rounded-xl shrink-0 ${meta.badgeClass}`}>
+                        <IconComponent size={16} className={meta.iconColor} />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1.5 mb-1">
+                          <span className="text-xs font-black text-zinc-900 dark:text-zinc-100 truncate">
+                            {n.title}
+                          </span>
+                          {!n.read && (
+                            <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" title="خوانده نشده" />
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-zinc-600 dark:text-zinc-300 leading-relaxed line-clamp-2 mb-2 font-normal">
+                          {n.message}
+                        </p>
+
+                        <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-1 border-t border-zinc-100/80 dark:border-zinc-800/60">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${meta.badgeClass}`}>
+                              {meta.badgeText}
+                            </span>
+                            <span>{timeText}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                            {!n.read && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRemoveNotification(n.id);
+                                }}
+                                className="p-1 rounded-md text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                                title="علامت‌گذاری به عنوان خوانده شده"
+                              >
+                                <Check size={13} />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onDeleteNotification) {
+                                  onDeleteNotification(n.id);
+                                } else {
+                                  onRemoveNotification(n.id);
+                                }
+                              }}
+                              className="p-1 rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                              title="حذف این اعلان"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer note */}
+          {safeNotifications.length > 0 && (
+            <div className="p-2 bg-zinc-50/80 dark:bg-zinc-800/40 border-t border-zinc-100 dark:border-zinc-800/60 text-center text-[10px] text-zinc-400 shrink-0">
+              با کلیک روی هر اعلان، به صفحه مربوطه منتقل شده و اعلان به طور خودکار پاک می‌شود.
+            </div>
+          )}
         </div>
-    </div> 
-  );
+      </div>,
+      document.body
+    );
+  };
 
   const showCustomBg = bgMode === 'custom' && !!customBgImage;
   const resolvedBgImage = customBgImage ? resolveImageUrl(customBgImage) : null;
@@ -1174,6 +1456,7 @@ const Layout: React.FC<LayoutProps> = ({
                       <div className="pt-4 mt-2 border-t border-zinc-200 dark:border-zinc-800 relative" ref={notifRef}>
                           <button onClick={() => {
                               const nextState = !showNotifDropdown;
+                              setNotifOrigin('sidebar');
                               setShowNotifDropdown(nextState);
                               if (nextState && markAllNotificationsAsRead) {
                                   markAllNotificationsAsRead();
@@ -1185,7 +1468,6 @@ const Layout: React.FC<LayoutProps> = ({
                               </div>
                               {isSidebarOpen && <span className="font-bold whitespace-nowrap animate-fade-in">مرکز اعلان‌ها</span>}
                           </button>
-                          {showNotifDropdown && <NotificationDropdown />}
                           
                           {!notifEnabled && isSidebarOpen && (
                               <button onClick={handleToggleNotif} className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-xs bg-red-50 text-red-600 hover:bg-red-100 transition-all font-black border border-red-100 animate-fade-in">
@@ -1547,6 +1829,7 @@ const Layout: React.FC<LayoutProps> = ({
                       <div className="relative notification-trigger" ref={mobileNotifRef}>
                           <button onClick={() => {
                               const nextState = !showNotifDropdown;
+                              setNotifOrigin('header');
                               setShowNotifDropdown(nextState);
                               if (nextState && markAllNotificationsAsRead) {
                                   markAllNotificationsAsRead();
@@ -1555,7 +1838,6 @@ const Layout: React.FC<LayoutProps> = ({
                               <Bell size={16} className="text-zinc-700 dark:text-zinc-200" />
                               {unreadCount > 0 && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}
                           </button>
-                          {showNotifDropdown && <NotificationDropdown />}
                       </div>
                   )}
               </div>
@@ -1667,6 +1949,8 @@ const Layout: React.FC<LayoutProps> = ({
             />
         )}
       </AnimatePresence>
+
+      {showNotifDropdown && <NotificationDropdown />}
     </div>
   );
 };

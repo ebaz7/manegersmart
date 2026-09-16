@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Calendar as CalendarIcon, CheckSquare, RefreshCw, LogIn, LogOut, 
   ExternalLink, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Link2,
@@ -49,6 +50,18 @@ interface CalendarFilter {
   isOther?: boolean;
 }
 
+const getDefaultCalendarFilters = (primaryName: string): CalendarFilter[] => [
+  { id: 'primary', name: primaryName, color: '#039be5', enabled: true, category: 'personal' },
+  { id: 'english', name: 'یادگیری لغات انگلیسی', color: '#84cc16', enabled: true, category: 'english' },
+  { id: 'loans', name: 'اقساط وام و چک‌ها', color: '#1d4ed8', enabled: true, category: 'loans' },
+  { id: 'birthdays', name: 'Birthdays (تولدها)', color: '#10b981', enabled: true, category: 'reminders' },
+  { id: 'tasks', name: 'Tasks (وظایف گوگل)', color: '#eab308', enabled: true, category: 'tasks' },
+  { id: 'holidays', name: 'Holidays in Iran (تعطیلات)', color: '#059669', enabled: true, category: 'holidays', isOther: true },
+  { id: 'lepan', name: 'lepan baft', color: '#06b6d4', enabled: true, category: 'other', isOther: true },
+  { id: 'hengam', name: 'هنگام', color: '#dc2626', enabled: true, category: 'other', isOther: true },
+  { id: 'lian', name: 'لیان', color: '#8b5cf6', enabled: false, category: 'other', isOther: true }
+];
+
 export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({ 
   currentUser, 
   onEventCountChange, 
@@ -56,17 +69,21 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
   onToggleDateCard,
   isDateCardVisible = true
 }) => {
+  const currentUserId = currentUser?.id ? String(currentUser.id) : undefined;
+  const userDisplayName = currentUser?.fullName || currentUser?.username || 'تقویم شخصی';
+  const primaryCalendarName = currentUser?.googleLinkedEmail || userDisplayName;
+
   const [token, setToken] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [currentView, setCurrentView] = useState<'week' | 'month' | 'day' | 'agenda'>('week');
   
-  // Real Google Calendar events & Tasks
+  // Real Google Calendar events & Tasks strictly for active user
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [googleTasks, setGoogleTasks] = useState<GoogleTaskItem[]>([]);
   
-  // Custom user items (notes, loan installments, reminders) matching the user screenshot
+  // Custom user items strictly isolated per user ID
   const [customItems, setCustomItems] = useState<CustomCalendarItem[]>(() => {
-    return getCustomCalendarItems(currentUser?.id ? String(currentUser.id) : undefined);
+    return getCustomCalendarItems(currentUserId);
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -115,18 +132,21 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     }
   });
 
-  // Calendar Category Toggles (My Calendars & Other Calendars matching the image)
-  const [calendarFilters, setCalendarFilters] = useState<CalendarFilter[]>([
-    { id: 'primary', name: currentUser?.googleLinkedEmail || currentUser?.fullName || 'محمد ابراهیم حیدری', color: '#039be5', enabled: true, category: 'personal' },
-    { id: 'english', name: 'یادگیری لغات انگلیسی', color: '#84cc16', enabled: true, category: 'english' },
-    { id: 'loans', name: 'اقساط وام و چک‌ها', color: '#1d4ed8', enabled: true, category: 'loans' },
-    { id: 'birthdays', name: 'Birthdays (تولدها)', color: '#10b981', enabled: true, category: 'reminders' },
-    { id: 'tasks', name: 'Tasks (وظایف گوگل)', color: '#eab308', enabled: true, category: 'tasks' },
-    { id: 'holidays', name: 'Holidays in Iran (تعطیلات)', color: '#059669', enabled: true, category: 'holidays', isOther: true },
-    { id: 'lepan', name: 'lepan baft', color: '#06b6d4', enabled: true, category: 'other', isOther: true },
-    { id: 'hengam', name: 'هنگام', color: '#dc2626', enabled: true, category: 'other', isOther: true },
-    { id: 'lian', name: 'لیان', color: '#8b5cf6', enabled: false, category: 'other', isOther: true }
-  ]);
+  // Calendar Category Toggles (My Calendars & Other Calendars isolated per user)
+  const [calendarFilters, setCalendarFilters] = useState<CalendarFilter[]>(() => {
+    if (currentUserId) {
+      try {
+        const saved = localStorage.getItem(`gw_filters_${currentUserId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((f: CalendarFilter) => f.id === 'primary' ? { ...f, name: primaryCalendarName } : f);
+          }
+        }
+      } catch {}
+    }
+    return getDefaultCalendarFilters(primaryCalendarName);
+  });
 
   // Update current time tick every minute
   useEffect(() => {
@@ -137,18 +157,25 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Save custom items when changed
+  // Save custom items strictly for active user
   const handleSaveCustomItems = (items: CustomCalendarItem[]) => {
     setCustomItems(items);
-    saveCustomCalendarItems(items, currentUser?.id ? String(currentUser.id) : undefined);
+    saveCustomCalendarItems(items, currentUserId);
   };
 
   // Sync token state on mount & user change
-  const checkTokenAndLoad = async () => {
-    const cached = await getGoogleAccessToken(currentUser?.id);
+  const checkTokenAndLoad = async (targetUid?: string) => {
+    const uid = targetUid || currentUserId;
+    if (!uid) {
+      setToken(null);
+      setGoogleEvents([]);
+      setGoogleTasks([]);
+      return;
+    }
+    const cached = await getGoogleAccessToken(uid);
     if (cached) {
       setToken(cached);
-      loadGoogleData(cached);
+      loadGoogleData(cached, uid);
     } else {
       setToken(null);
       setGoogleEvents([]);
@@ -156,23 +183,56 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     }
   };
 
+  // Re-sync all user-specific calendar data whenever the logged-in user changes
   useEffect(() => {
-    checkTokenAndLoad();
+    // 1. Reload isolated custom items for this user
+    setCustomItems(getCustomCalendarItems(currentUserId));
+
+    // 2. Reload isolated calendar filters for this user
+    let userFilters: CalendarFilter[] = getDefaultCalendarFilters(primaryCalendarName);
+    if (currentUserId) {
+      try {
+        const saved = localStorage.getItem(`gw_filters_${currentUserId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            userFilters = parsed.map((f: CalendarFilter) => f.id === 'primary' ? { ...f, name: primaryCalendarName } : f);
+          }
+        }
+      } catch {}
+    }
+    setCalendarFilters(userFilters);
+
+    // 3. Reset temporary modals and errors
+    setError(null);
+    setSelectedItem(null);
+    setShowAddModal(false);
+
+    // 4. Load Google token and calendar events for this user
+    checkTokenAndLoad(currentUserId);
 
     const handleAuthSync = (e: any) => {
+      // Strictly prevent cross-user token contamination
+      if (e?.detail?.userId && currentUserId && String(e.detail.userId) !== currentUserId) {
+        return;
+      }
       if (e?.detail?.token) {
         setToken(e.detail.token);
-        loadGoogleData(e.detail.token);
+        loadGoogleData(e.detail.token, currentUserId);
       } else if (e?.detail?.action === 'logout') {
         setToken(null);
         setGoogleEvents([]);
         setGoogleTasks([]);
       } else {
-        checkTokenAndLoad();
+        checkTokenAndLoad(currentUserId);
       }
     };
 
     const handleCustomUpdate = (e: any) => {
+      // Strictly prevent cross-user event contamination
+      if (e?.detail?.userId && currentUserId && String(e.detail.userId) !== currentUserId) {
+        return;
+      }
       if (e?.detail?.items) {
         setCustomItems(e.detail.items);
       }
@@ -185,9 +245,12 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       window.removeEventListener('google-auth-sync', handleAuthSync);
       window.removeEventListener('custom-calendar-events-updated', handleCustomUpdate);
     };
-  }, [currentUser?.id]);
+  }, [currentUserId, currentUser?.googleLinkedEmail]);
 
-  const loadGoogleData = async (tok: string) => {
+  const loadGoogleData = async (tok: string, forUserId?: string) => {
+    // Abort if target user is no longer active
+    if (forUserId && currentUserId && forUserId !== currentUserId) return;
+
     setIsLoading(true);
     setError(null);
     try {
@@ -213,7 +276,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 
       if (isExpired) {
         setToken(null);
-        removeGoogleTokenForUser(currentUser?.id);
+        removeGoogleTokenForUser(currentUserId);
         setError('نشست حساب گوگل منقضی شده است. جهت اتصال مجدد کلیک کنید.');
       }
     } catch (err: any) {
@@ -227,10 +290,10 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     setIsSigningIn(true);
     setError(null);
     try {
-      const result = await signInWithGoogleWorkspace(currentUser?.id);
+      const result = await signInWithGoogleWorkspace(currentUserId);
       if (result?.accessToken) {
         setToken(result.accessToken);
-        await loadGoogleData(result.accessToken);
+        await loadGoogleData(result.accessToken, currentUserId);
         if (currentUser && result.user?.email) {
           try {
             await updateUser({
@@ -252,10 +315,33 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 
   const handleDisconnect = async () => {
     if (!confirm('آیا از قطع اتصال حساب گوگل اطمینان دارید؟')) return;
-    await logoutGoogleWorkspace(currentUser?.id);
+    await logoutGoogleWorkspace(currentUserId);
     setToken(null);
     setGoogleEvents([]);
     setGoogleTasks([]);
+    if (currentUser) {
+      try {
+        await updateUser({
+          ...currentUser,
+          googleLinkedEmail: '',
+          googleLinkedAt: undefined
+        });
+      } catch (e) {
+        console.debug('Failed to update user profile on disconnect', e);
+      }
+    }
+  };
+
+  const toggleCalendarFilter = (id: string) => {
+    setCalendarFilters(prev => {
+      const updated = prev.map(f => f.id === id ? { ...f, enabled: !f.enabled } : f);
+      if (currentUserId) {
+        try {
+          localStorage.setItem(`gw_filters_${currentUserId}`, JSON.stringify(updated));
+        } catch {}
+      }
+      return updated;
+    });
   };
 
   const toggleCollapse = () => {
@@ -337,11 +423,6 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 
   const handleToday = () => {
     setCurrentDate(new Date());
-  };
-
-  // Toggle calendar filter
-  const toggleCalendarFilter = (id: string) => {
-    setCalendarFilters(prev => prev.map(f => f.id === id ? { ...f, enabled: !f.enabled } : f));
   };
 
   // Combined Active Events & Notes
@@ -605,28 +686,35 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
             <button
               onClick={handleConnect}
               disabled={isSigningIn}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 transition-colors cursor-pointer"
-              title="اتصال به حساب گوگل جهت همگام‌سازی دوطرفه"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors cursor-pointer"
+              title={`اتصال حساب گوگل مختص کاربر: ${userDisplayName}`}
             >
               <RefreshCw size={13} className={isSigningIn ? 'animate-spin' : ''} />
-              <span className="hidden lg:inline">{isSigningIn ? 'اتصال...' : 'اتصال به گوگل'}</span>
+              <span className="hidden sm:inline">{isSigningIn ? 'در حال اتصال...' : 'اتصال به گوگل'}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => loadGoogleData(token)}
-                disabled={isLoading}
-                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 transition-colors"
-                title="بروزرسانی داده‌های گوگل"
+            <div className="flex items-center gap-1 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 pl-1 pr-2 py-0.5 rounded-lg">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span 
+                className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 max-w-[120px] truncate dir-ltr" 
+                title={`حساب گوگل متصل: ${currentUser?.googleLinkedEmail || userDisplayName}`}
               >
-                <RefreshCw size={14} className={isLoading ? 'animate-spin text-blue-600' : ''} />
+                {currentUser?.googleLinkedEmail ? currentUser.googleLinkedEmail.split('@')[0] : 'گوگل متصل'}
+              </span>
+              <button
+                onClick={() => loadGoogleData(token, currentUserId)}
+                disabled={isLoading}
+                className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
+                title="بروزرسانی تقویم گوگل"
+              >
+                <RefreshCw size={12} className={isLoading ? 'animate-spin text-emerald-600' : ''} />
               </button>
               <button
                 onClick={handleDisconnect}
-                className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 transition-colors"
-                title="قطع اتصال حساب گوگل"
+                className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-500 transition-colors cursor-pointer"
+                title="قطع اتصال حساب گوگل این کاربر"
               >
-                <LogOut size={14} />
+                <LogOut size={12} />
               </button>
             </div>
           )}
@@ -962,167 +1050,183 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       )}
 
       {/* 3. QUICK ADD EVENT / LOAN INSTALLMENT MODAL */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-4 sm:p-5 w-full max-w-md shadow-2xl space-y-4">
+      {showAddModal && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddModal(false);
+          }}
+        >
+          <div 
+            className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             
-            <div className="flex items-center justify-between border-b border-gray-100 dark:border-zinc-800 pb-2.5">
+            <div className="px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-gray-50/70 dark:bg-zinc-900">
               <h3 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <Plus size={16} className="text-blue-600" />
+                <Plus size={17} className="text-blue-600" />
                 <span>ثبت رویداد، یادداشت یا قسط وام</span>
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={16} />
+              <button 
+                type="button"
+                onClick={() => setShowAddModal(false)} 
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <X size={17} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEvent} className="space-y-3 text-xs">
-              
-              {/* Title */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  عنوان رویداد یا یادداشت *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="مثال: قسط وام صنعت و معدن، یادگیری لغات، جلسه..."
-                  value={modalTitle}
-                  onChange={(e) => setModalTitle(e.target.value)}
-                  className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  autoFocus
-                />
-              </div>
-
-              {/* Category & Color */}
-              <div className="grid grid-cols-2 gap-2">
+            <form onSubmit={handleSaveEvent} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+                {/* Title */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    دسته‌بندی تقویم
-                  </label>
-                  <select
-                    value={modalCategory}
-                    onChange={(e) => {
-                      const cat = e.target.value as any;
-                      setModalCategory(cat);
-                      if (cat === 'loans') setModalColor('#1d4ed8');
-                      else if (cat === 'english') setModalColor('#84cc16');
-                      else if (cat === 'tasks') setModalColor('#eab308');
-                      else if (cat === 'personal') setModalColor('#039be5');
-                      else setModalColor('#dc2626');
-                    }}
-                    className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
-                  >
-                    <option value="loans">اقساط وام و چک‌ها (آبی تیره)</option>
-                    <option value="english">یادگیری لغات انگلیسی (سبز زیتونی)</option>
-                    <option value="tasks">وظایف و تسک‌ها (زرد)</option>
-                    <option value="personal">تقویم شخصی (آبی)</option>
-                    <option value="reminders">یادآور / تولدها (سبز زمردی)</option>
-                    <option value="other">سایر (قرمز/بنفش)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    رنگ برچسب
+                    عنوان رویداد یا یادداشت *
                   </label>
                   <input
-                    type="color"
-                    value={modalColor}
-                    onChange={(e) => setModalColor(e.target.value)}
-                    className="w-full h-8 rounded-xl border border-gray-300 dark:border-zinc-700 cursor-pointer p-0.5"
-                  />
-                </div>
-              </div>
-
-              {/* Date & Time */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-1">
-                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    تاریخ میلادی
-                  </label>
-                  <input
-                    type="date"
-                    value={modalDate}
-                    onChange={(e) => setModalDate(e.target.value)}
-                    className="w-full p-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                    type="text"
+                    required
+                    placeholder="مثال: قسط وام صنعت و معدن، یادگیری لغات، جلسه..."
+                    value={modalTitle}
+                    onChange={(e) => setModalTitle(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    autoFocus
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    ساعت شروع
-                  </label>
-                  <select
-                    value={modalStartHour}
-                    onChange={(e) => setModalStartHour(Number(e.target.value))}
-                    className="w-full p-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
-                  >
-                    {HOURS.map(h => (
-                      <option key={h} value={h}>{h}:00</option>
-                    ))}
-                  </select>
+                {/* Category & Color */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      دسته‌بندی تقویم
+                    </label>
+                    <select
+                      value={modalCategory}
+                      onChange={(e) => {
+                        const cat = e.target.value as any;
+                        setModalCategory(cat);
+                        if (cat === 'loans') setModalColor('#1d4ed8');
+                        else if (cat === 'english') setModalColor('#84cc16');
+                        else if (cat === 'tasks') setModalColor('#eab308');
+                        else if (cat === 'personal') setModalColor('#039be5');
+                        else setModalColor('#dc2626');
+                      }}
+                      className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-medium"
+                    >
+                      <option value="loans">اقساط وام و چک‌ها (آبی تیره)</option>
+                      <option value="english">یادگیری لغات انگلیسی (سبز زیتونی)</option>
+                      <option value="tasks">وظایف و تسک‌ها (زرد)</option>
+                      <option value="personal">تقویم شخصی (آبی)</option>
+                      <option value="reminders">یادآور / تولدها (سبز زمردی)</option>
+                      <option value="other">سایر (قرمز/بنفش)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      رنگ برچسب
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={modalColor}
+                        onChange={(e) => setModalColor(e.target.value)}
+                        className="w-12 h-8.5 rounded-xl border border-gray-300 dark:border-zinc-700 cursor-pointer p-0.5"
+                      />
+                      <span className="text-[11px] font-mono text-gray-500">{modalColor}</span>
+                    </div>
+                  </div>
                 </div>
 
+                {/* Date & Time */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-1">
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      تاریخ میلادی
+                    </label>
+                    <input
+                      type="date"
+                      value={modalDate}
+                      onChange={(e) => setModalDate(e.target.value)}
+                      className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      ساعت شروع
+                    </label>
+                    <select
+                      value={modalStartHour}
+                      onChange={(e) => setModalStartHour(Number(e.target.value))}
+                      className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                    >
+                      {HOURS.map(h => (
+                        <option key={h} value={h}>{h}:00</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      مدت (ساعت)
+                    </label>
+                    <select
+                      value={modalDuration}
+                      onChange={(e) => setModalDuration(Number(e.target.value))}
+                      className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                    >
+                      <option value={0.5}>۳۰ دقیقه</option>
+                      <option value={1}>۱ ساعت</option>
+                      <option value={2}>۲ ساعت</option>
+                      <option value={3}>۳ ساعت</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Description */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    مدت (ساعت)
+                    توضیحات یا مبلغ و شماره حساب
                   </label>
-                  <select
-                    value={modalDuration}
-                    onChange={(e) => setModalDuration(Number(e.target.value))}
-                    className="w-full p-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
-                  >
-                    <option value={0.5}>۳۰ دقیقه</option>
-                    <option value={1}>۱ ساعت</option>
-                    <option value={2}>۲ ساعت</option>
-                    <option value={3}>۳ ساعت</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  توضیحات یا مبلغ و شماره حساب
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="یادداشت، شماره چک، جزئیات قسط..."
-                  value={modalDescription}
-                  onChange={(e) => setModalDescription(e.target.value)}
-                  className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs"
-                />
-              </div>
-
-              {/* Google Sync Checkbox */}
-              {token && (
-                <label className="flex items-center gap-2 p-2 bg-blue-50/50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={syncToGoogle}
-                    onChange={(e) => setSyncToGoogle(e.target.checked)}
-                    className="rounded text-blue-600 focus:ring-0"
+                  <textarea
+                    rows={3}
+                    placeholder="یادداشت، شماره چک، جزئیات قسط..."
+                    value={modalDescription}
+                    onChange={(e) => setModalDescription(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs"
                   />
-                  <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                    همگام‌سازی و ارسال مستقیم به تقویم گوگل (Google Calendar)
-                  </span>
-                </label>
-              )}
+                </div>
+
+                {/* Google Sync Checkbox */}
+                {token && (
+                  <label className="flex items-center gap-2 p-2.5 bg-blue-50/70 dark:bg-blue-950/40 rounded-xl border border-blue-100 dark:border-blue-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={syncToGoogle}
+                      onChange={(e) => setSyncToGoogle(e.target.checked)}
+                      className="rounded text-blue-600 focus:ring-0"
+                    />
+                    <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">
+                      همگام‌سازی و ارسال مستقیم به تقویم گوگل (Google Calendar)
+                    </span>
+                  </label>
+                )}
+              </div>
 
               {/* Modal Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-zinc-800">
+              <div className="px-5 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center justify-end gap-2 shrink-0 bg-gray-50/50 dark:bg-zinc-900/50">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-3 py-1.5 rounded-xl border border-gray-300 dark:border-zinc-700 text-gray-600 dark:text-gray-400 font-bold hover:bg-gray-100"
+                  className="px-4 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
                   انصراف
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingEvent}
-                  className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20 disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20 disabled:opacity-50 transition-colors cursor-pointer"
                 >
                   {isSavingEvent ? 'در حال ذخیره...' : 'ذخیره در تقویم'}
                 </button>
@@ -1130,13 +1234,22 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 4. EVENT DETAILS POPOVER */}
-      {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-4 w-full max-w-sm shadow-2xl space-y-3">
+      {selectedItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedItem(null);
+          }}
+        >
+          <div 
+            className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-5 w-full max-w-sm shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-zinc-800 pb-2">
               <div className="flex items-center gap-2">
@@ -1145,7 +1258,11 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
                   {selectedItem.title}
                 </h3>
               </div>
-              <button onClick={() => setSelectedItem(null)} className="text-gray-400 hover:text-gray-600">
+              <button 
+                type="button"
+                onClick={() => setSelectedItem(null)} 
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer p-1"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -1160,17 +1277,18 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
                 <span>{selectedItem.timeStr}</span>
               </div>
               {selectedItem.description && (
-                <div className="mt-2 p-2 bg-gray-50 dark:bg-zinc-800 rounded-lg text-xs">
+                <div className="mt-2 p-2.5 bg-gray-50 dark:bg-zinc-800 rounded-lg text-xs leading-relaxed">
                   {selectedItem.description}
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-zinc-800">
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-zinc-800">
               {!selectedItem.isGoogle ? (
                 <button
+                  type="button"
                   onClick={() => handleDeleteItem(selectedItem.id)}
-                  className="flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50"
+                  className="flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
                 >
                   <Trash2 size={13} />
                   <span>حذف یادداشت</span>
@@ -1188,15 +1306,17 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
               )}
 
               <button
+                type="button"
                 onClick={() => setSelectedItem(null)}
-                className="px-3 py-1 bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold"
+                className="px-3.5 py-1.5 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 بستن
               </button>
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

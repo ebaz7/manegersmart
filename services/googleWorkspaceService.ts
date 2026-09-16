@@ -132,7 +132,7 @@ export const signInWithGsi = async (clientId: string): Promise<{ email: string; 
         }
       });
 
-      client.requestAccessToken({ prompt: 'consent' });
+      client.requestAccessToken({ prompt: 'select_account' });
     } catch (e) {
       reject(e);
     }
@@ -142,60 +142,78 @@ export const signInWithGsi = async (clientId: string): Promise<{ email: string; 
 const GOOGLE_TOKEN_STORAGE_KEY_PREFIX = 'gw_access_token_';
 
 let isSigningIn = false;
-let cachedAccessToken: string | null = null;
+// In-memory token cache keyed strictly by user ID to prevent cross-account pollution on shared computers
+const userTokenCache = new Map<string, string>();
 
-export const getStoredGoogleTokenForUser = (userId?: string): string | null => {
-  if (cachedAccessToken) return cachedAccessToken;
+export const getStoredGoogleTokenForUser = (userId?: string | number): string | null => {
+  if (!userId) return null;
+  const uid = String(userId);
+  if (userTokenCache.has(uid)) {
+    return userTokenCache.get(uid) || null;
+  }
   try {
-    const key = userId ? `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${userId}` : 'gw_access_token_global';
+    const key = `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${uid}`;
     const stored = localStorage.getItem(key);
     if (stored) {
-      cachedAccessToken = stored;
+      userTokenCache.set(uid, stored);
       return stored;
     }
   } catch {}
   return null;
 };
 
-export const storeGoogleTokenForUser = (token: string, userId?: string) => {
-  cachedAccessToken = token;
+export const storeGoogleTokenForUser = (token: string, userId?: string | number) => {
+  if (!userId) return;
+  const uid = String(userId);
+  userTokenCache.set(uid, token);
   try {
-    const key = userId ? `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${userId}` : 'gw_access_token_global';
+    const key = `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${uid}`;
     localStorage.setItem(key, token);
-    localStorage.setItem('gw_access_token_global', token);
+    // Remove legacy global key to prevent cross-user token leakage
+    localStorage.removeItem('gw_access_token_global');
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('google-auth-sync', { detail: { token, userId, action: 'login' } }));
+      window.dispatchEvent(new CustomEvent('google-auth-sync', { detail: { token, userId: uid, action: 'login' } }));
     }
   } catch {}
 };
 
-export const removeGoogleTokenForUser = (userId?: string) => {
-  cachedAccessToken = null;
-  try {
-    const key = userId ? `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${userId}` : 'gw_access_token_global';
-    localStorage.removeItem(key);
-    localStorage.removeItem('gw_access_token_global');
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('google-auth-sync', { detail: { token: null, userId, action: 'logout' } }));
-    }
-  } catch {}
+export const removeGoogleTokenForUser = (userId?: string | number) => {
+  if (userId) {
+    const uid = String(userId);
+    userTokenCache.delete(uid);
+    try {
+      const key = `${GOOGLE_TOKEN_STORAGE_KEY_PREFIX}${uid}`;
+      localStorage.removeItem(key);
+      localStorage.removeItem('gw_access_token_global');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('google-auth-sync', { detail: { token: null, userId: uid, action: 'logout' } }));
+      }
+    } catch {}
+  } else {
+    userTokenCache.clear();
+    try {
+      localStorage.removeItem('gw_access_token_global');
+    } catch {}
+  }
 };
 
 // Initialize Google OAuth state listener
 export const initGoogleAuth = (
   onAuthSuccess?: (user: FirebaseUser, token: string) => void,
-  onAuthFailure?: () => void
+  onAuthFailure?: () => void,
+  userId?: string | number
 ) => {
   return onAuthStateChanged(auth, async (user) => {
-    if (user && cachedAccessToken) {
-      if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+    const token = getStoredGoogleTokenForUser(userId);
+    if (user && token) {
+      if (onAuthSuccess) onAuthSuccess(user, token);
     } else {
       if (onAuthFailure) onAuthFailure();
     }
   });
 };
 
-export const signInWithGoogleWorkspace = async (userId?: string): Promise<{ user: { email?: string | null; displayName?: string | null; uid?: string }; accessToken: string } | null> => {
+export const signInWithGoogleWorkspace = async (userId?: string | number): Promise<{ user: { email?: string | null; displayName?: string | null; uid?: string }; accessToken: string } | null> => {
   isSigningIn = true;
   const clientId = (firebaseConfig as any)?.oAuthClientId;
 
@@ -203,8 +221,9 @@ export const signInWithGoogleWorkspace = async (userId?: string): Promise<{ user
   if (clientId) {
     try {
       const gsiRes = await signInWithGsi(clientId);
-      cachedAccessToken = gsiRes.accessToken;
-      storeGoogleTokenForUser(cachedAccessToken, userId);
+      if (userId) {
+        storeGoogleTokenForUser(gsiRes.accessToken, userId);
+      }
       return {
         user: {
           email: gsiRes.email,
@@ -226,9 +245,10 @@ export const signInWithGoogleWorkspace = async (userId?: string): Promise<{ user
       throw new Error('Failed to get access token from Google');
     }
 
-    cachedAccessToken = credential.accessToken;
-    storeGoogleTokenForUser(cachedAccessToken, userId);
-    return { user: result.user, accessToken: cachedAccessToken };
+    if (userId) {
+      storeGoogleTokenForUser(credential.accessToken, userId);
+    }
+    return { user: result.user, accessToken: credential.accessToken };
   } catch (error: any) {
     console.error('Google Sign-in error:', error);
     const friendlyMsg = translateGoogleAuthError(error);
@@ -241,13 +261,14 @@ export const signInWithGoogleWorkspace = async (userId?: string): Promise<{ user
   }
 };
 
-export const getGoogleAccessToken = async (userId?: string): Promise<string | null> => {
-  if (cachedAccessToken) return cachedAccessToken;
+export const getGoogleAccessToken = async (userId?: string | number): Promise<string | null> => {
   return getStoredGoogleTokenForUser(userId);
 };
 
-export const logoutGoogleWorkspace = async (userId?: string) => {
-  await auth.signOut();
+export const logoutGoogleWorkspace = async (userId?: string | number) => {
+  try {
+    await auth.signOut();
+  } catch {}
   removeGoogleTokenForUser(userId);
 };
 
@@ -391,116 +412,135 @@ export interface CustomCalendarItem {
   syncedWithGoogle?: boolean;
 }
 
-export const getCustomCalendarItems = (userId?: string): CustomCalendarItem[] => {
+export const getCustomCalendarItems = (userId?: string | number): CustomCalendarItem[] => {
+  if (!userId) return [];
+  const uid = String(userId);
   try {
-    const key = `gw_custom_events_${userId || 'global'}`;
+    const key = `gw_custom_events_${uid}`;
     const saved = localStorage.getItem(key);
     if (saved) return JSON.parse(saved);
+
+    // If admin or initial user (1), check if legacy global items exist and migrate them
+    if (uid === '1' || uid === 'admin') {
+      const globalSaved = localStorage.getItem('gw_custom_events_global');
+      if (globalSaved) {
+        localStorage.setItem(key, globalSaved);
+        localStorage.removeItem('gw_custom_events_global');
+        return JSON.parse(globalSaved);
+      }
+    }
   } catch {}
   
-  // Default sample items matching user's image if none exists
-  return [
-    {
-      id: 'item_sample_loan_1',
-      title: 'قسط 25/60 وام صنعت و معدن 71,965,251',
-      category: 'loans',
-      color: '#3b82f6', // blue
-      startDate: '2026-09-15',
-      startHour: 8,
-      durationHours: 1,
-      description: 'سررسید قسط وام بانک صنعت و معدن'
-    },
-    {
-      id: 'item_sample_loan_2',
-      title: 'قسط 53/54 وام صنعت و معدن 107,121,981',
-      category: 'loans',
-      color: '#1d4ed8', // dark blue
-      startDate: '2026-09-18',
-      startHour: 8,
-      durationHours: 1,
-      description: 'سررسید قسط دوم وام صنعت و معدن'
-    },
-    {
-      id: 'item_sample_loan_3',
-      title: 'صنعت و معدن 1,511',
-      category: 'loans',
-      color: '#2563eb',
-      startDate: '2026-09-18',
-      startHour: 9,
-      durationHours: 1
-    },
-    {
-      id: 'item_sample_eng_sun',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16', // lime green
-      startDate: '2026-09-13',
-      startHour: 9,
-      durationHours: 0.8
-    },
-    {
-      id: 'item_sample_eng_mon',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16',
-      startDate: '2026-09-14',
-      startHour: 9,
-      durationHours: 0.8
-    },
-    {
-      id: 'item_sample_eng_tue',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16',
-      startDate: '2026-09-15',
-      startHour: 9,
-      durationHours: 0.8
-    },
-    {
-      id: 'item_sample_eng_wed',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16',
-      startDate: '2026-09-16',
-      startHour: 9,
-      durationHours: 0.8
-    },
-    {
-      id: 'item_sample_eng_thu',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16',
-      startDate: '2026-09-17',
-      startHour: 9,
-      durationHours: 0.8
-    },
-    {
-      id: 'item_sample_eng_fri',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16',
-      startDate: '2026-09-18',
-      startHour: 9,
-      durationHours: 0.8
-    },
-    {
-      id: 'item_sample_eng_sat',
-      title: 'یادگیری لغات انگلیسی، 9am',
-      category: 'english',
-      color: '#84cc16',
-      startDate: '2026-09-19',
-      startHour: 9,
-      durationHours: 0.8
-    }
-  ];
+  // Only for admin or user 1 on initial setup, provide default sample items
+  if (uid === '1' || uid === 'admin') {
+    return [
+      {
+        id: 'item_sample_loan_1',
+        title: 'قسط 25/60 وام صنعت و معدن 71,965,251',
+        category: 'loans',
+        color: '#3b82f6', // blue
+        startDate: '2026-09-15',
+        startHour: 8,
+        durationHours: 1,
+        description: 'سررسید قسط وام بانک صنعت و معدن'
+      },
+      {
+        id: 'item_sample_loan_2',
+        title: 'قسط 53/54 وام صنعت و معدن 107,121,981',
+        category: 'loans',
+        color: '#1d4ed8', // dark blue
+        startDate: '2026-09-18',
+        startHour: 8,
+        durationHours: 1,
+        description: 'سررسید قسط دوم وام صنعت و معدن'
+      },
+      {
+        id: 'item_sample_loan_3',
+        title: 'صنعت و معدن 1,511',
+        category: 'loans',
+        color: '#2563eb',
+        startDate: '2026-09-18',
+        startHour: 9,
+        durationHours: 1
+      },
+      {
+        id: 'item_sample_eng_sun',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16', // lime green
+        startDate: '2026-09-13',
+        startHour: 9,
+        durationHours: 0.8
+      },
+      {
+        id: 'item_sample_eng_mon',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16',
+        startDate: '2026-09-14',
+        startHour: 9,
+        durationHours: 0.8
+      },
+      {
+        id: 'item_sample_eng_tue',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16',
+        startDate: '2026-09-15',
+        startHour: 9,
+        durationHours: 0.8
+      },
+      {
+        id: 'item_sample_eng_wed',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16',
+        startDate: '2026-09-16',
+        startHour: 9,
+        durationHours: 0.8
+      },
+      {
+        id: 'item_sample_eng_thu',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16',
+        startDate: '2026-09-17',
+        startHour: 9,
+        durationHours: 0.8
+      },
+      {
+        id: 'item_sample_eng_fri',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16',
+        startDate: '2026-09-18',
+        startHour: 9,
+        durationHours: 0.8
+      },
+      {
+        id: 'item_sample_eng_sat',
+        title: 'یادگیری لغات انگلیسی، 9am',
+        category: 'english',
+        color: '#84cc16',
+        startDate: '2026-09-19',
+        startHour: 9,
+        durationHours: 0.8
+      }
+    ];
+  }
+
+  // Any other user begins with a clean, isolated personal calendar
+  return [];
 };
 
-export const saveCustomCalendarItems = (items: CustomCalendarItem[], userId?: string) => {
+export const saveCustomCalendarItems = (items: CustomCalendarItem[], userId?: string | number) => {
+  if (!userId) return;
+  const uid = String(userId);
   try {
-    const key = `gw_custom_events_${userId || 'global'}`;
+    const key = `gw_custom_events_${uid}`;
     localStorage.setItem(key, JSON.stringify(items));
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('custom-calendar-events-updated', { detail: { items } }));
+      window.dispatchEvent(new CustomEvent('custom-calendar-events-updated', { detail: { items, userId: uid } }));
     }
   } catch {}
 };

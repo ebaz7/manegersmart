@@ -385,6 +385,9 @@ const Layout: React.FC<LayoutProps> = ({
     syncGoogleState();
 
     const handleAuthSync = (e: any) => {
+      if (e?.detail?.userId && currentUser?.id && String(e.detail.userId) !== String(currentUser.id)) {
+        return; // Ignore events from other users
+      }
       if (e?.detail?.action === 'logout') {
         setGoogleLinkedEmail('');
       } else {

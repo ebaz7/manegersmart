@@ -5,7 +5,7 @@ import {
     Search, RefreshCw, Eye, Download, Upload, Calendar, Building2, User,
     FileCheck, ArrowRight, ExternalLink, X, ChevronDown, Check, Sparkles,
     Hash, Layers, ShieldAlert, ArrowUpRight, Copy, Printer, Edit3, CornerUpLeft,
-    CheckSquare, FileText, ArrowLeft, Settings2, Sliders, Zap
+    CheckSquare, FileText, ArrowLeft, Settings2, Sliders, Zap, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as jalaali from 'jalaali-js';
@@ -30,7 +30,9 @@ interface ChequeReceiptRecord {
     id: string;
     receiptNo?: number | string;
     source: 'APP_DRAFT' | 'SAYAN_DB';
-    status: 'PENDING_ACCOUNTING' | 'PENDING_CEO' | 'APPROVED' | 'REGISTERED_IN_SAYAN' | 'REJECTED' | 'PENDING_APPROVAL';
+    status: 'PENDING_ACCOUNTING' | 'PENDING_CEO' | 'APPROVED' | 'REGISTERED_IN_SAYAN' | 'REJECTED' | 'PENDING_APPROVAL' | 'PROCESSING_SAYAN';
+    sayanSyncStatus?: 'QUEUED' | 'PROCESSING' | 'SUCCESS' | 'FAILED';
+    sayanError?: string;
     fiscalYear: string;
     docNo: string | number;
     archiveCode: string | number;
@@ -72,7 +74,6 @@ interface ChequeReceiptRecord {
     };
     sayanDocNo?: number;
     sayanArchiveCode?: number;
-    sayanError?: string;
     sayanRegisteredAt?: string;
     createdAt?: string;
     createdByName?: string;

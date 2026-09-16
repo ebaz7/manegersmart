@@ -28,6 +28,7 @@ import {
   Settings as SettingsIcon,
   Save,
   Loader2,
+  CheckSquare,
   Database,
   FolderOpen,
   Bell,

@@ -48,8 +48,10 @@ export interface User {
   canSayanEditReceipt?: boolean;
   canSayanApproveAccounting?: boolean;
   canSayanApproveCeo?: boolean;
+  canSayanFinalApprove?: boolean;
   canSayanDeleteReceipt?: boolean;
   canAccessChequeReceipts?: boolean;
+  _id?: string;
   canManageProformas?: boolean;
   canSelectProforma?: boolean;
   canViewSayan?: boolean;

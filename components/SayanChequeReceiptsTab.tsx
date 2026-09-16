@@ -549,28 +549,49 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     };
 
     // File attachments handler (PDF / Images)
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
-        Array.from(files).forEach(file => {
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
             const reader = new FileReader();
-            reader.onload = (ev) => {
-                if (ev.target?.result) {
-                    setAttachments(prev => [
-                        ...prev,
-                        {
+            reader.onload = async (ev) => {
+                const dataUrl = ev.target?.result as string;
+                if (!dataUrl) return;
+
+                let serverUrl = '';
+                try {
+                    const uploadRes = await fetch('/api/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
                             fileName: file.name,
-                            fileData: ev.target!.result as string,
-                            fileType: file.type,
-                            fileSize: file.size,
-                            uploadedAt: new Date().toISOString()
-                        }
-                    ]);
+                            fileData: dataUrl
+                        })
+                    });
+                    if (uploadRes.ok) {
+                        const json = await uploadRes.json();
+                        serverUrl = json.url || '';
+                    }
+                } catch (err) {
+                    console.warn('Upload fallback:', err);
                 }
+
+                setAttachments(prev => [
+                    ...prev,
+                    {
+                        fileName: file.name,
+                        fileData: serverUrl ? undefined : dataUrl,
+                        url: serverUrl || undefined,
+                        fileType: file.type,
+                        fileSize: file.size,
+                        uploadedAt: new Date().toISOString()
+                    }
+                ]);
             };
             reader.readAsDataURL(file);
-        });
+        }
     };
 
     // Form Submission: Create Cheque Receipt

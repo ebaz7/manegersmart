@@ -112,35 +112,57 @@ export const MobileAttachmentUploader: React.FC<MobileAttachmentUploaderProps> =
             }
 
             try {
+                let dataUrl = '';
+                let fType = file.type || 'application/octet-stream';
+                let fSize = file.size;
+                const fName = file.name || (file.type.startsWith('image/') ? `عکس_چک_${Date.now()}.jpg` : `پیوست_${Date.now()}.pdf`);
+
                 if (file.type.startsWith('image/')) {
                     // Optimize mobile camera photos
-                    const { dataUrl, size } = await compressImageFile(file);
-                    newItems.push({
-                        id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                        fileName: file.name || `عکس_چک_${newItems.length + 1}.jpg`,
-                        fileType: 'image/jpeg',
-                        fileSize: size || file.size,
-                        fileData: dataUrl,
-                        uploadedAt: new Date().toISOString()
-                    });
+                    const compressed = await compressImageFile(file);
+                    dataUrl = compressed.dataUrl;
+                    fSize = compressed.size || file.size;
+                    fType = 'image/jpeg';
                 } else {
                     // PDF or standard document
-                    const dataUrl = await new Promise<string>((res) => {
+                    dataUrl = await new Promise<string>((res) => {
                         const reader = new FileReader();
                         reader.onload = () => res(reader.result as string);
                         reader.readAsDataURL(file);
                     });
-                    newItems.push({
-                        id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                        fileName: file.name,
-                        fileType: file.type || 'application/pdf',
-                        fileSize: file.size,
-                        fileData: dataUrl,
-                        uploadedAt: new Date().toISOString()
-                    });
                 }
+
+                // Immediately upload to server /api/upload to avoid keeping huge Base64 strings in database state
+                let serverUrl = '';
+                try {
+                    const uploadRes = await fetch('/api/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fileName: fName,
+                            fileData: dataUrl
+                        })
+                    });
+                    if (uploadRes.ok) {
+                        const uploadJson = await uploadRes.json();
+                        serverUrl = uploadJson.url || '';
+                    }
+                } catch (upErr) {
+                    console.warn('Direct upload failed, fallback to backend persistence:', upErr);
+                }
+
+                newItems.push({
+                    id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    fileName: fName,
+                    fileType: fType,
+                    fileSize: fSize,
+                    url: serverUrl || undefined,
+                    // If upload succeeded, don't store huge base64 in fileData; if failed, pass as fallback for backend
+                    fileData: serverUrl ? undefined : dataUrl,
+                    uploadedAt: new Date().toISOString()
+                });
             } catch (err) {
-                console.error('Error reading file:', err);
+                console.error('Error reading/uploading file:', err);
             }
         }
 

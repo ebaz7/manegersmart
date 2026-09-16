@@ -13,7 +13,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 /**
- * Persist attachment base64 to disk and maintain URL + fileData
+ * Persist attachment base64 to disk and store only clean file URL metadata (preventing database bloat)
  */
 export const persistAttachment = (att) => {
     if (!att) return null;
@@ -21,40 +21,35 @@ export const persistAttachment = (att) => {
     let fileName = att.fileName || 'attachment';
     let fileType = att.fileType || '';
     let fileData = att.fileData || '';
+    let fileSize = att.fileSize || 0;
 
-    if (fileData && fileData.startsWith('data:')) {
+    if (fileData && (fileData.startsWith('data:') || (typeof fileData === 'string' && fileData.length > 500))) {
         try {
-            const safeName = fileName.replace(/[^a-zA-Z0-9.\u0600-\u06FF_-]/g, '_');
-            const uniqueName = `cheque_${Date.now()}_${safeName}`;
+            const cleanName = (fileName || 'attachment')
+                .replace(/[\/\\]/g, '')
+                .replace(/[^a-zA-Z0-9.\u0600-\u06FF_-]/g, '_')
+                .substring(0, 60);
+            const ext = path.extname(cleanName) || (fileType.includes('pdf') ? '.pdf' : '.jpg');
+            const uniqueName = `cheque_${Date.now()}_${Math.floor(Math.random() * 10000)}_${cleanName.replace(/\.[^/.]+$/, '')}${ext}`;
             const filePath = path.join(UPLOADS_DIR, uniqueName);
             const base64Data = fileData.replace(/^data:.*;base64,/, '');
-            fs.writeFileSync(filePath, base64Data, 'base64');
+            const buffer = Buffer.from(base64Data, 'base64');
+            fs.writeFileSync(filePath, buffer);
             url = `/uploads/${uniqueName}`;
+            fileSize = buffer.length;
+            console.log(`[Sayan Cheque Service] Offloaded attachment ${(fileSize / 1024).toFixed(1)} KB -> ${url}`);
         } catch (err) {
             console.error('Error saving cheque attachment file to disk:', err);
         }
-    } else if (url && !fileData) {
-        // Attempt to load base64 from disk if url exists
-        try {
-            const filename = path.basename(url);
-            const filePath = path.join(UPLOADS_DIR, filename);
-            if (fs.existsSync(filePath)) {
-                const buffer = fs.readFileSync(filePath);
-                const ext = path.extname(filePath).toLowerCase();
-                let mime = fileType || 'application/octet-stream';
-                if (ext === '.pdf') mime = 'application/pdf';
-                else if (ext === '.png') mime = 'image/png';
-                else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
-                fileData = `data:${mime};base64,${buffer.toString('base64')}`;
-            }
-        } catch (e) {}
     }
 
     return {
+        id: att.id || `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         fileName,
         fileType,
+        fileSize,
         url,
-        fileData: fileData || undefined
+        uploadedAt: att.uploadedAt || new Date().toISOString()
     };
 };
 

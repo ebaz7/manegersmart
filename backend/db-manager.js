@@ -172,7 +172,7 @@ export const sanitizeAndOffloadDb = (db) => {
         });
     }
 
-    // 4. Cheque Receipts
+    // 4. Cheque Receipts & Sayan Cheque Receipts
     if (Array.isArray(db.chequeReceipts)) {
         db.chequeReceipts.forEach(rcpt => {
             if (rcpt.image && typeof rcpt.image === 'string' && rcpt.image.startsWith('data:')) {
@@ -194,6 +194,59 @@ export const sanitizeAndOffloadDb = (db) => {
         });
     }
 
+    // 4b. Sayan Cheque Receipts (System bursary op 11 receipts)
+    if (Array.isArray(db.sayan_cheque_receipts)) {
+        db.sayan_cheque_receipts.forEach(rcpt => {
+            if (Array.isArray(rcpt.attachments)) {
+                rcpt.attachments.forEach(att => {
+                    if (!att) return;
+                    if (att.fileData && typeof att.fileData === 'string' && (att.fileData.startsWith('data:') || att.fileData.length > 500)) {
+                        const newUrl = saveBase64ToFile(att.fileData, att.fileName || 'cheque_attachment');
+                        att.url = newUrl;
+                        delete att.fileData;
+                        modified = true;
+                    }
+                    if (att.data && typeof att.data === 'string' && (att.data.startsWith('data:') || att.data.length > 500)) {
+                        const newUrl = saveBase64ToFile(att.data, att.fileName || 'cheque_attachment');
+                        att.url = newUrl;
+                        delete att.data;
+                        modified = true;
+                    }
+                    if (att.url && typeof att.url === 'string' && att.url.startsWith('data:')) {
+                        att.url = saveBase64ToFile(att.url, att.fileName || 'cheque_attachment');
+                        modified = true;
+                    }
+                    if (att.fileData) {
+                        delete att.fileData;
+                        modified = true;
+                    }
+                });
+            }
+            if (Array.isArray(rcpt.cheques)) {
+                rcpt.cheques.forEach(chq => {
+                    if (chq.image && typeof chq.image === 'string' && chq.image.startsWith('data:')) {
+                        chq.image = saveBase64ToFile(chq.image, `cheque_${chq.chequeNumber || 'item'}`);
+                        modified = true;
+                    }
+                    if (chq.fileData && typeof chq.fileData === 'string' && chq.fileData.startsWith('data:')) {
+                        chq.url = saveBase64ToFile(chq.fileData, `cheque_${chq.chequeNumber || 'item'}`);
+                        delete chq.fileData;
+                        modified = true;
+                    }
+                });
+            }
+            if (rcpt.accountingReview && Array.isArray(rcpt.accountingReview.attachments)) {
+                rcpt.accountingReview.attachments.forEach(att => {
+                    if (att && att.fileData) {
+                        att.url = saveBase64ToFile(att.fileData, att.fileName || 'review_att');
+                        delete att.fileData;
+                        modified = true;
+                    }
+                });
+            }
+        });
+    }
+
     // 5. Messages (Chat)
     if (Array.isArray(db.messages)) {
         db.messages.forEach(msg => {
@@ -203,6 +256,24 @@ export const sanitizeAndOffloadDb = (db) => {
             }
         });
     }
+
+    // 6. Deep recursive safety scan across entire DB to catch ANY remaining base64 payload
+    const deepClean = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        for (const key of Object.keys(obj)) {
+            const val = obj[key];
+            if (typeof val === 'string' && (val.startsWith('data:image/') || val.startsWith('data:application/pdf') || (val.length > 2000 && !val.startsWith('http') && !val.startsWith('/uploads/') && /^[A-Za-z0-9+/=\s]+$/.test(val.substring(0, 100))))) {
+                const savedUrl = saveBase64ToFile(val, key);
+                obj[key] = savedUrl;
+                modified = true;
+            } else if (val && typeof val === 'object') {
+                deepClean(val);
+            }
+        }
+    };
+    try {
+        deepClean(db);
+    } catch (e) {}
 
     return modified;
 };

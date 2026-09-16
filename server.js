@@ -8114,6 +8114,36 @@ app.post('/api/upload-finish', async (req, res) => {
     }
 });
 
+// Admin DB Optimization & Base64 Purge Endpoint
+app.post('/api/admin/optimize-db', (req, res) => {
+    try {
+        const dbPath = path.join(ROOT_DIR, 'database.json');
+        const sizeBefore = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+        
+        const db = dbManager.getDb();
+        const modified = dbManager.sanitizeAndOffloadDb(db);
+        
+        dbManager.saveDbImmediate(db);
+        
+        const sizeAfter = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+        const savedBytes = Math.max(0, sizeBefore - sizeAfter);
+
+        res.json({
+            success: true,
+            modified,
+            sizeBeforeBytes: sizeBefore,
+            sizeAfterBytes: sizeAfter,
+            sizeBeforeMB: (sizeBefore / (1024 * 1024)).toFixed(2),
+            sizeAfterMB: (sizeAfter / (1024 * 1024)).toFixed(2),
+            savedMB: (savedBytes / (1024 * 1024)).toFixed(2),
+            message: `بهینه‌سازی پایگاه داده با موفقیت انجام شد.`
+        });
+    } catch (e) {
+        console.error("DB optimize endpoint error:", e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // 10. BOTS (Telegram/Bale/WhatsApp)
 app.get('/api/whatsapp/status', async (req, res) => {
     try {

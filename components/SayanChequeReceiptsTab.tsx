@@ -5,7 +5,7 @@ import {
     Search, RefreshCw, Eye, Download, Upload, Calendar, Building2, User,
     FileCheck, ArrowRight, ExternalLink, X, ChevronDown, Check, Sparkles,
     Hash, Layers, ShieldAlert, ArrowUpRight, Copy, Printer, Edit3, CornerUpLeft,
-    CheckSquare, FileText, ArrowLeft
+    CheckSquare, FileText, ArrowLeft, Settings2, Sliders, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as jalaali from 'jalaali-js';
@@ -17,6 +17,7 @@ import { AccountingReviewModal } from './sayan-cheques/AccountingReviewModal';
 import { ChequeReceiptDetailModal } from './sayan-cheques/ChequeReceiptDetailModal';
 import { A5ChequeReceiptPrintModal } from './sayan-cheques/A5ChequeReceiptPrintModal';
 import { MobileAttachmentUploader, ReceiptAttachment } from './sayan-cheques/MobileAttachmentUploader';
+import { ChequeWorkflowSettingsModal, ChequeWorkflowConfig } from './ChequeWorkflowSettingsModal';
 
 interface SayanPerson {
     personCode: string;
@@ -113,6 +114,48 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     // Current Active Tab
     const [activeSubTab, setActiveSubTab] = useState<'NEW_RECEIPT' | 'CARTABLE' | 'ARCHIVE'>('NEW_RECEIPT');
 
+    // Workflow Configuration State & System Users List
+    const [workflowConfig, setWorkflowConfig] = useState<ChequeWorkflowConfig>({
+        requireCeoApproval: true,
+        autoRegisterAfterAccounting: false,
+        allowAccountingFinalApproval: false,
+        allowedFinalApproverUserIds: [],
+        allowedFinalApproverRoles: []
+    });
+    const [systemUsersList, setSystemUsersList] = useState<Array<{ id: string; name: string; username: string; role: string; roles?: string[] }>>([]);
+    const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
+
+    const fetchWorkflowConfig = async () => {
+        try {
+            const res = await fetch('/api/sayan/cheque-receipts/workflow-config');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.config) {
+                    setWorkflowConfig(data.config);
+                    if (Array.isArray(data.users)) setSystemUsersList(data.users);
+                }
+            }
+        } catch (e) {
+            console.error("Error fetching cheque workflow config:", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchWorkflowConfig();
+    }, []);
+
+    // Check if current user is allowed to perform final approval
+    const isDirectFinalAllowed = useMemo(() => {
+        const uRole = String(currentUser?.role || '').toUpperCase();
+        const uRoles = Array.isArray(currentUser?.roles) ? currentUser.roles.map((r: any) => String(r).toUpperCase()) : [];
+        if (uRole === 'ADMIN' || uRole === 'CEO' || uRoles.includes('ADMIN') || uRoles.includes('CEO')) return true;
+        if (workflowConfig.requireCeoApproval === false) return true;
+        if (workflowConfig.allowAccountingFinalApproval && (uRole === 'FINANCIAL' || uRole === 'ACCOUNTANT' || uRoles.includes('FINANCIAL') || uRoles.includes('ACCOUNTANT'))) return true;
+        if (Array.isArray(workflowConfig.allowedFinalApproverUserIds) && workflowConfig.allowedFinalApproverUserIds.includes(String(currentUser?.id))) return true;
+        if (Array.isArray(workflowConfig.allowedFinalApproverRoles) && (workflowConfig.allowedFinalApproverRoles.includes(uRole) || workflowConfig.allowedFinalApproverRoles.some((r: string) => uRoles.includes(r)))) return true;
+        return false;
+    }, [currentUser, workflowConfig]);
+
     // Dynamic Permissions based on Settings & Roles
     const resolvedPermissions = useMemo(() => {
         let perms = currentUser?.rolePermissions || {};
@@ -125,21 +168,24 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         }
         
         const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.roles?.includes(UserRole.ADMIN) || currentUser?.roles?.includes('admin');
+        const isCeo = currentUser?.role === UserRole.CEO || currentUser?.role === 'CEO' || currentUser?.role === 'MANAGER' || currentUser?.roles?.includes('ceo');
         
         return {
             canSayanRegisterCheque: isAdmin || perms.canSayanRegisterCheque !== false, // default to true if not explicitly restricted
             canSayanEditReceipt: isAdmin || perms.canSayanEditReceipt === true || (perms.canSayanEditReceipt === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial'))),
             canSayanApproveAccounting: isAdmin || perms.canSayanApproveAccounting === true || (perms.canSayanApproveAccounting === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial'))),
-            canSayanApproveCeo: isAdmin || perms.canSayanApproveCeo === true || (perms.canSayanApproveCeo === undefined && (currentUser?.role === UserRole.CEO || currentUser?.role === 'CEO' || currentUser?.role === 'MANAGER' || currentUser?.roles?.includes('ceo'))),
-            canSayanDeleteReceipt: isAdmin || perms.canSayanDeleteReceipt === true || (perms.canSayanDeleteReceipt === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial')))
+            canSayanApproveCeo: isAdmin || isCeo || isDirectFinalAllowed || perms.canSayanApproveCeo === true,
+            canSayanDeleteReceipt: isAdmin || perms.canSayanDeleteReceipt === true || (perms.canSayanDeleteReceipt === undefined && (currentUser?.role === UserRole.FINANCIAL || currentUser?.roles?.includes('financial'))),
+            canConfigureWorkflow: isAdmin || isCeo || currentUser?.role === UserRole.FINANCIAL
         };
-    }, [currentUser, settings]);
+    }, [currentUser, settings, isDirectFinalAllowed]);
 
     const isFinancialOrAdmin = resolvedPermissions.canSayanApproveAccounting;
     const isCeoOrAdmin = resolvedPermissions.canSayanApproveCeo;
     const canDeleteReceipt = resolvedPermissions.canSayanDeleteReceipt;
     const canEditReceipt = resolvedPermissions.canSayanEditReceipt;
     const canRegisterReceipt = resolvedPermissions.canSayanRegisterCheque;
+    const canConfigureWorkflow = resolvedPermissions.canConfigureWorkflow;
 
     // Redirect to Cartable if registration is not allowed
     useEffect(() => {
@@ -841,6 +887,18 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         return receiptsList.filter(r => r.status === 'PENDING_CEO');
     }, [receiptsList]);
 
+    // Auto-poll to seamlessly reflect background Sayan registration completions
+    useEffect(() => {
+        const hasProcessing = receiptsList.some(r => r.status === 'PROCESSING_SAYAN' || r.sayanSyncStatus === 'QUEUED' || r.sayanSyncStatus === 'PROCESSING');
+        if (!hasProcessing) return;
+
+        const interval = setInterval(() => {
+            fetchReceipts(false);
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [receiptsList]);
+
     const archiveList = useMemo(() => {
         return receiptsList.filter(r => {
             const matchSearch = !searchTerm ||
@@ -853,6 +911,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             if (!matchSearch) return false;
 
             if (statusFilter === 'ALL') return true;
+            if (statusFilter === 'REGISTERED_IN_SAYAN') {
+                return r.status === 'REGISTERED_IN_SAYAN' || r.status === 'PROCESSING_SAYAN';
+            }
             return r.status === statusFilter;
         });
     }, [receiptsList, searchTerm, statusFilter]);
@@ -911,54 +972,68 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     </div>
                 </div>
 
-                {/* Sub-tab Switcher */}
-                <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700 text-xs font-bold w-full sm:w-auto overflow-x-auto">
-                    {canRegisterReceipt && (
+                {/* Sub-tab Switcher & Settings */}
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700 text-xs font-bold w-full sm:w-auto overflow-x-auto">
+                        {canRegisterReceipt && (
+                            <button
+                                type="button"
+                                onClick={() => setActiveSubTab('NEW_RECEIPT')}
+                                className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
+                                    activeSubTab === 'NEW_RECEIPT'
+                                        ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                }`}
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span>ثبت رسید جدید</span>
+                            </button>
+                        )}
+
                         <button
                             type="button"
-                            onClick={() => setActiveSubTab('NEW_RECEIPT')}
-                            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
-                                activeSubTab === 'NEW_RECEIPT'
+                            onClick={() => setActiveSubTab('CARTABLE')}
+                            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap relative ${
+                                activeSubTab === 'CARTABLE'
                                     ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                             }`}
                         >
-                            <Plus className="w-4 h-4" />
-                            <span>ثبت رسید جدید</span>
+                            <CheckSquare className="w-4 h-4" />
+                            <span>کارتابل تایید چک‌ها</span>
+                            {(pendingAccountingList.length > 0 || pendingCeoList.length > 0) && (
+                                <span className="w-5 h-5 rounded-full bg-amber-500 text-white font-mono text-[10px] flex items-center justify-center font-black animate-pulse">
+                                    {toPersianDigits(pendingAccountingList.length + pendingCeoList.length)}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveSubTab('ARCHIVE')}
+                            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
+                                activeSubTab === 'ARCHIVE'
+                                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                            }`}
+                        >
+                            <FileCheck className="w-4 h-4" />
+                            <span>بایگانی و استعلام اسناد سایان</span>
+                            <span className="text-[10px] opacity-70 font-mono">({toPersianDigits(receiptsList.length)})</span>
+                        </button>
+                    </div>
+
+                    {canConfigureWorkflow && (
+                        <button
+                            type="button"
+                            onClick={() => setIsWorkflowModalOpen(true)}
+                            className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-xs"
+                            title="تنظیمات مراحل تایید و اختیارات ثبت در سایان"
+                        >
+                            <Settings2 className="w-4 h-4 text-amber-500" />
+                            <span className="hidden md:inline">تنظیمات تایید نهایی و سایان</span>
                         </button>
                     )}
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveSubTab('CARTABLE')}
-                        className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap relative ${
-                            activeSubTab === 'CARTABLE'
-                                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                    >
-                        <CheckSquare className="w-4 h-4" />
-                        <span>کارتابل تایید چک‌ها</span>
-                        {(pendingAccountingList.length > 0 || pendingCeoList.length > 0) && (
-                            <span className="w-5 h-5 rounded-full bg-amber-500 text-white font-mono text-[10px] flex items-center justify-center font-black animate-pulse">
-                                {toPersianDigits(pendingAccountingList.length + pendingCeoList.length)}
-                            </span>
-                        )}
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveSubTab('ARCHIVE')}
-                        className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
-                            activeSubTab === 'ARCHIVE'
-                                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                    >
-                        <FileCheck className="w-4 h-4" />
-                        <span>بایگانی و استعلام اسناد سایان</span>
-                        <span className="text-[10px] opacity-70 font-mono">({toPersianDigits(receiptsList.length)})</span>
-                    </button>
                 </div>
             </div>
 
@@ -1680,6 +1755,11 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
                                                     ثبت شده در سایان
                                                 </span>
+                                            ) : r.status === 'PROCESSING_SAYAN' || r.sayanSyncStatus === 'QUEUED' || r.sayanSyncStatus === 'PROCESSING' ? (
+                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 flex items-center gap-1 animate-pulse">
+                                                    <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+                                                    <span>در حال ثبت در سایان (پس‌زمینه)</span>
+                                                </span>
                                             ) : r.status === 'PENDING_CEO' ? (
                                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
                                                     منتظر مدیرعامل
@@ -1866,6 +1946,17 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 </div>,
                 document.body
             )}
+            {/* Cheque Workflow & Permissions Settings Modal */}
+            <ChequeWorkflowSettingsModal
+                isOpen={isWorkflowModalOpen}
+                onClose={() => setIsWorkflowModalOpen(false)}
+                currentConfig={workflowConfig}
+                systemUsers={systemUsersList}
+                onSaveSuccess={(updated) => {
+                    setWorkflowConfig(updated);
+                    fetchReceipts(true);
+                }}
+            />
         </div>
     );
 };

@@ -100,7 +100,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             canViewCustomerBalances: true, canImportCustomerBalances: true,
             canViewSayan: true, canViewSayanTraz: true, canViewSayanSales: true, canViewSayanProduction: true, canViewSayanProdReturns: true, canViewSayanCheques: true, canViewSayanRemittances: true, canViewSayanWarehouseOverview: true, canViewSayanWarehouseWidget: true,
             canAccessSayanRegistrations: true, canSayanPreInvoices: true,
-            canSayanRegisterCheque: true, canSayanEditReceipt: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanDeleteReceipt: true,
+            canSayanRegisterCheque: true, canSayanEditReceipt: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanFinalApprove: true, canSayanDeleteReceipt: true,
             canAccessChequeReceipts: true,
             // Purchase-specific permissions hardwired for administrator:
             canView: true, canCreate: true, canApproveTechnical: true, canApproveFactory: true, canApproveCEO: true,
@@ -124,7 +124,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewCustomerBalances: false, canImportCustomerBalances: false,
         canViewSayan: false, canViewSayanTraz: false, canViewSayanSales: false, canViewSayanProduction: false, canViewSayanProdReturns: false, canViewSayanCheques: false, canViewSayanRemittances: false, canViewSayanWarehouseOverview: false, canViewSayanWarehouseWidget: false,
         canAccessSayanRegistrations: false, canSayanPreInvoices: false,
-        canSayanRegisterCheque: false, canSayanEditReceipt: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanDeleteReceipt: false,
+        canSayanRegisterCheque: false, canSayanEditReceipt: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanFinalApprove: false, canSayanDeleteReceipt: false,
         canAccessChequeReceipts: false
     };
 
@@ -254,6 +254,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         if (!settings?.rolePermissions?.[userRole]?.canSayanApproveCeo) {
             perms.canSayanApproveCeo = false;
         }
+        if (!settings?.rolePermissions?.[userRole]?.canSayanFinalApprove) {
+            perms.canSayanFinalApprove = false;
+        }
         if (!settings?.purchaseRolePermissions?.[userRole]?.canManageProformas && !settings?.rolePermissions?.[userRole]?.canManageProformas) {
             perms.canManageProformas = false;
         }
@@ -324,6 +327,19 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         }
         if (userObject.canSayanApproveCeo !== undefined) {
             perms.canSayanApproveCeo = userObject.canSayanApproveCeo;
+        }
+        if (userObject.canSayanFinalApprove !== undefined) {
+            perms.canSayanFinalApprove = userObject.canSayanFinalApprove;
+        }
+        // Check if user is explicitly listed in settings.sayanChequeFinalApprovalUserIds
+        if (settings?.sayanChequeFinalApprovalUserIds && Array.isArray(settings.sayanChequeFinalApprovalUserIds)) {
+            const userId = String(userObject.id || userObject._id || '');
+            const username = String(userObject.username || '');
+            if (userId && settings.sayanChequeFinalApprovalUserIds.includes(userId)) {
+                perms.canSayanFinalApprove = true;
+            } else if (username && settings.sayanChequeFinalApprovalUserIds.includes(username)) {
+                perms.canSayanFinalApprove = true;
+            }
         }
         if (userObject.canAccessChequeReceipts !== undefined) {
             perms.canAccessChequeReceipts = userObject.canAccessChequeReceipts;

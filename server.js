@@ -235,17 +235,48 @@ app.get('/manifest.json', (req, res) => {
 
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' })); // Cache uploads for speed
 
+// --- SAFE FILE SANITIZATION HELPER ---
+const FORBIDDEN_EXTENSIONS = new Set([
+    '.exe', '.bat', '.cmd', '.sh', '.ps1', '.vbs', '.js', '.mjs', '.cjs',
+    '.php', '.phtml', '.php3', '.php4', '.php5', '.py', '.elf', '.dll',
+    '.jar', '.jsp', '.cgi', '.scr', '.hta', '.msi', '.com', '.wsf', '.vbe'
+]);
+
+const getSafeFileName = (origName) => {
+    if (!origName || typeof origName !== 'string') return `file_${Date.now()}`;
+    const base = path.basename(origName).replace(/[\/\\]/g, '');
+    const ext = path.extname(base).toLowerCase();
+    if (FORBIDDEN_EXTENSIONS.has(ext)) {
+        throw new Error('فرمت فایل ارسالی به دلایل امنیتی مجاز نمی‌باشد.');
+    }
+    const cleanBase = base.replace(/[^a-zA-Z0-9._\-\u0600-\u06FF]/g, '_');
+    return cleanBase || `file_${Date.now()}`;
+};
+
 // --- SHARE TARGET FOR ANDROID AND PWA ---
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, UPLOADS_DIR);
     },
     filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '_' + file.originalname;
+        let origName = file.originalname || 'file.jpg';
+        try {
+            origName = Buffer.from(origName, 'latin1').toString('utf8');
+        } catch (_) {}
+        let safeBase = 'file';
+        try {
+            safeBase = getSafeFileName(origName);
+        } catch (e) {
+            return cb(e);
+        }
+        const uniqueSuffix = `${Date.now()}_${safeBase}`;
         cb(null, uniqueSuffix);
     }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 100 * 1024 * 1024 }
+});
 
 app.post('/api/share-target', upload.single('files'), (req, res) => {
     const text = req.body.text || req.body.url || '';
@@ -255,6 +286,26 @@ app.post('/api/share-target', upload.single('files'), (req, res) => {
     }
     const redirectUrl = `/?sharedFileUrl=${encodeURIComponent(sharedUrl)}&sharedText=${encodeURIComponent(text)}`;
     res.redirect(redirectUrl);
+});
+
+// Direct Multipart File Upload Endpoint for high-speed mobile & desktop uploads
+app.post('/api/upload-file', upload.single('file'), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'هیچ فایلی برای بارگذاری ارسال نشده است.' });
+        }
+        const fileUrl = `/uploads/${req.file.filename}`;
+        res.json({
+            success: true,
+            fileName: req.file.originalname,
+            url: fileUrl,
+            fileSize: req.file.size,
+            fileType: req.file.mimetype
+        });
+    } catch (e) {
+        console.error("Direct file upload error:", e);
+        res.status(500).json({ success: false, error: 'خطا در بارگذاری فایل: ' + e.message });
+    }
 });
 
 // Shared data logic moved to db-manager.js and utils.js
@@ -1895,55 +1946,60 @@ app.all(['/api/sayan/cheque-receipts/accounting-approve', '/api/sayan/cheque-rec
     }
 });
 
-// 6. Stage 2: CEO / Admin Approval & Direct Sayan Registration
+// 6. Stage 2: Final / CEO Approval & Sequential Background Sayan Registration
 app.all(['/api/sayan/cheque-receipts/approve', '/api/sayan/cheque-receipts/:id/ceo-approve', '/api/sayan/cheque-receipts/:id/approve'], async (req, res) => {
     try {
         const receiptId = req.params.id || req.body?.receiptId;
         const currentUser = req.body?.currentUser || req.user || { id: req.body?.approverId, name: req.body?.approverName || 'مدیرعامل' };
         const note = req.body?.note || '';
-        const registerImmediately = req.body?.registerImmediately !== false; // default true on ceo-approve
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
         
-        // Stage 1: Apply CEO approval (this sets status to APPROVED locally)
+        // Immediate non-blocking CEO/Final approval with background queue registration
         const approved = await sayanChequeService.approveCEOReceipt(receiptId, currentUser, note);
 
-        let sayanResult = null;
-        if (registerImmediately) {
-            try {
-                sayanResult = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
-            } catch (sayanErr) {
-                console.error("Sayan registration failed during CEO approval, reverting status to PENDING_CEO:", sayanErr);
-                
-                // Revert status to PENDING_CEO and store the exact Sayan error in memory state so the user can see it
-                const db = getDb();
-                const record = db.sayan_cheque_receipts?.find(r => r.id === receiptId);
-                if (record) {
-                    record.status = 'PENDING_CEO';
-                    record.sayanError = sayanErr.message;
-                    if (!record.ceoApproval) record.ceoApproval = {};
-                    record.ceoApproval.failedAt = new Date().toISOString();
-                    record.ceoApproval.error = sayanErr.message;
-                    saveDb();
-                }
-                
-                return res.status(500).json({ 
-                    success: false, 
-                    error: `تایید مدیرعامل ثبت شد ولی ارسال به سایان با خطا مواجه گردید: ${sayanErr.message}. رسید در وضعیت «منتظر تایید مدیرعامل» باقی ماند تا قابل اصلاح، بازگشت یا تلاش مجدد باشد.`,
-                    sayanError: sayanErr.message 
-                });
-            }
-        }
-
-        res.json({ success: true, receipt: approved, sayanResult, sayanDocNo: sayanResult?.docNo, sayanArchiveCode: sayanResult?.archiveCode, docNo: sayanResult?.docNo, archiveCode: sayanResult?.archiveCode });
+        res.json({ 
+            success: true, 
+            queued: true,
+            receipt: approved,
+            message: 'رسید با موفقیت تایید شد و در صف صدور سند سایان قرار گرفت.'
+        });
     } catch (err) {
         console.error("Error approving cheque receipt:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 7. Reject / Return Cheque Receipt for Revision
+// 7. Workflow Configuration for Cheque Receipts & Sayan Registration
+app.get('/api/sayan/cheque-receipts/workflow-config', (req, res) => {
+    try {
+        const config = sayanChequeService.getChequeWorkflowConfig();
+        const db = getDb();
+        const users = (db.users || []).map(u => ({
+            id: u.id,
+            username: u.username,
+            name: u.fullName || u.name || u.username,
+            role: u.role,
+            roles: u.roles || []
+        }));
+        res.json({ success: true, config, users });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/sayan/cheque-receipts/workflow-config', (req, res) => {
+    try {
+        const newConfig = req.body || {};
+        const saved = sayanChequeService.updateChequeWorkflowConfig(newConfig);
+        res.json({ success: true, config: saved, message: 'تنظیمات فرآیند تایید و ثبت سایان با موفقیت ذخیره شد.' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 8. Reject / Return Cheque Receipt for Revision
 app.all(['/api/sayan/cheque-receipts/reject', '/api/sayan/cheque-receipts/:id/reject'], async (req, res) => {
     try {
         const receiptId = req.params.id || req.body?.receiptId;
@@ -1961,7 +2017,7 @@ app.all(['/api/sayan/cheque-receipts/reject', '/api/sayan/cheque-receipts/:id/re
     }
 });
 
-// 6. Dry-run validate Cheque Receipt before registering
+// 9. Dry-run validate Cheque Receipt before registering
 app.post('/api/sayan/cheque-receipts/dry-run', async (req, res) => {
     try {
         const receiptData = req.body.receipt || req.body;
@@ -1973,7 +2029,7 @@ app.post('/api/sayan/cheque-receipts/dry-run', async (req, res) => {
     }
 });
 
-// 7. Register approved Cheque Receipt directly in Sayan DB
+// 10. Register approved Cheque Receipt directly in Sayan DB
 app.post('/api/sayan/cheque-receipts/register-in-sayan', async (req, res) => {
     try {
         const { receiptId, currentUser } = req.body || {};
@@ -1988,7 +2044,7 @@ app.post('/api/sayan/cheque-receipts/register-in-sayan', async (req, res) => {
     }
 });
 
-// 8. Delete draft / cancel receipt
+// 11. Delete draft / cancel receipt
 app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
     try {
         const { receiptId } = req.body || {};
@@ -2004,7 +2060,7 @@ app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
     }
 });
 
-// 9. Inspect Real Sayan Document Details (BUR_TBL_008, 009, 012, 016)
+// 12. Inspect Real Sayan Document Details (BUR_TBL_008, 009, 012, 016)
 app.get('/api/sayan/cheque-receipts/real-document/:archiveCode', async (req, res) => {
     try {
         const archiveCode = req.params.archiveCode;
@@ -2021,20 +2077,25 @@ app.get('/api/sayan/cheque-receipts/real-document/:archiveCode', async (req, res
     }
 });
 
-// 10. Get Cartable / Pending Counts for Cheque Receipts
+// 13. Get Cartable / Pending Counts for Cheque Receipts
 app.get('/api/sayan/cheque-receipts/pending-counts', (req, res) => {
     try {
         const db = getDb();
         const list = db.sayan_cheque_receipts || [];
+        const config = sayanChequeService.getChequeWorkflowConfig();
         const pendingAccounting = list.filter(r => r.status === 'PENDING_ACCOUNTING' || r.status === 'PENDING_APPROVAL').length;
-        const pendingCEO = list.filter(r => r.status === 'PENDING_CEO').length;
-        const approved = list.filter(r => r.status === 'APPROVED').length;
+        const pendingCeo = list.filter(r => r.status === 'PENDING_CEO').length;
+        const processingSayan = list.filter(r => r.status === 'PROCESSING_SAYAN' || r.sayanSyncStatus === 'QUEUED' || r.sayanSyncStatus === 'PROCESSING').length;
+        const approved = list.filter(r => r.status === 'REGISTERED_IN_SAYAN' || r.status === 'APPROVED').length;
         res.json({
             success: true,
             pendingAccounting,
-            pendingCEO,
+            pendingCeo,
+            pendingCEO: pendingCeo, // Backwards-compatible
+            processingSayan,
             approved,
-            totalPending: pendingAccounting + pendingCEO
+            totalPending: pendingAccounting + pendingCeo,
+            config
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -7946,25 +8007,7 @@ app.get('/api/announcements', (req, res) => res.json(getDb().announcements || []
 app.post('/api/announcements', (req, res) => { const db = getDb(); if(!db.announcements) db.announcements=[]; db.announcements.push(req.body); saveDb(db); res.json(db.announcements); });
 app.delete('/api/announcements/:id', (req, res) => { const db = getDb(); db.announcements = db.announcements.filter(a => a.id !== req.params.id); saveDb(db); res.json(db.announcements); });
 
-// --- SAFE FILE SANITIZATION HELPER ---
-const FORBIDDEN_EXTENSIONS = new Set([
-    '.exe', '.bat', '.cmd', '.sh', '.ps1', '.vbs', '.js', '.mjs', '.cjs',
-    '.php', '.phtml', '.php3', '.php4', '.php5', '.py', '.elf', '.dll',
-    '.jar', '.jsp', '.cgi', '.scr', '.hta', '.msi', '.com', '.wsf', '.vbe'
-]);
-
-const getSafeFileName = (origName) => {
-    if (!origName || typeof origName !== 'string') return `file_${Date.now()}`;
-    const base = path.basename(origName).replace(/[\/\\]/g, '');
-    const ext = path.extname(base).toLowerCase();
-    if (FORBIDDEN_EXTENSIONS.has(ext)) {
-        throw new Error('فرمت فایل ارسالی به دلایل امنیتی مجاز نمی‌باشد.');
-    }
-    const cleanBase = base.replace(/[^a-zA-Z0-9._\-\u0600-\u06FF]/g, '_');
-    return cleanBase || `file_${Date.now()}`;
-};
-
-// 9. FILE UPLOAD
+// 9. FILE UPLOAD (Base64 JSON Endpoint)
 app.post('/api/upload', (req, res) => {
     try {
         const { fileName, fileData } = req.body;

@@ -147,7 +147,8 @@ const PERMISSION_GROUPS = [
             { id: 'canSayanEditReceipt', label: 'ویرایش اطلاعات، مبالغ و اقلام رسید چک سایان' },
             { id: 'canSayanDeleteReceipt', label: 'حذف کامل رسید دریافت چک سایان' },
             { id: 'canSayanApproveAccounting', label: 'تایید مرحله اول (تایید مالی / حسابداری چک سایان)' },
-            { id: 'canSayanApproveCeo', label: 'تایید مرحله نهایی (تایید مدیرعامل و ثبت خودکار در ERP سایان)' }
+            { id: 'canSayanApproveCeo', label: 'تایید مرحله نهایی (تایید مدیرعامل و ثبت خودکار در ERP سایان)' },
+            { id: 'canSayanFinalApprove', label: 'تایید نهایی و ثبت در سایان (توسط کاربران مجاز به عنوان جایگزین مدیرعامل)' }
         ] 
     },
     { 

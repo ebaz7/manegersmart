@@ -744,9 +744,16 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   const [warehouseIsMock, setWarehouseIsMock] = useState(false);
 
   // Cheque Receipts pending counts
-  const [pendingChequeCounts, setPendingChequeCounts] = useState<{ pendingAccounting: number; pendingCeo: number; total: number }>({
+  const [pendingChequeCounts, setPendingChequeCounts] = useState<{ 
+      pendingAccounting: number; 
+      pendingCeo: number; 
+      processingSayan: number; 
+      total: number;
+      config?: any;
+  }>({
       pendingAccounting: 0,
       pendingCeo: 0,
+      processingSayan: 0,
       total: 0
   });
 
@@ -758,8 +765,10 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
               if (data.success) {
                   setPendingChequeCounts({
                       pendingAccounting: data.pendingAccounting || 0,
-                      pendingCeo: data.pendingCeo || 0,
-                      total: data.total || 0
+                      pendingCeo: data.pendingCeo || data.pendingCEO || 0,
+                      processingSayan: data.processingSayan || 0,
+                      total: data.totalPending || data.total || 0,
+                      config: data.config
                   });
               }
           }
@@ -770,7 +779,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   useEffect(() => {
       fetchPendingCheques();
-      const timer = setInterval(fetchPendingCheques, 60000);
+      const timer = setInterval(fetchPendingCheques, 30000);
       return () => clearInterval(timer);
   }, []);
 
@@ -1348,13 +1357,20 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   // 6. Cheque Receipts Pending Count (Accounting Review & CEO Approval)
   const isFinancialOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.FINANCIAL || (currentUser as any).roles?.includes('financial') || (currentUser as any).roles?.includes('admin');
-  const isCeoOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === 'MANAGER' || (currentUser as any).roles?.includes('ceo') || (currentUser as any).roles?.includes('admin');
+  
+  const chequeConfig = pendingChequeCounts.config;
+  const isDirectFinalAllowed = chequeConfig?.requireCeoApproval === false 
+      || (chequeConfig?.allowAccountingFinalApproval && (currentUser.role === UserRole.FINANCIAL || (currentUser as any).roles?.includes('financial')))
+      || (Array.isArray(chequeConfig?.allowedFinalApproverUserIds) && chequeConfig.allowedFinalApproverUserIds.includes(String(currentUser.id)))
+      || (Array.isArray(chequeConfig?.allowedFinalApproverRoles) && (chequeConfig.allowedFinalApproverRoles.includes(currentUser.role) || (currentUser as any).roles?.some((r: string) => chequeConfig.allowedFinalApproverRoles.includes(r))));
+
+  const isCeoOrAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === 'CEO' || currentUser.role === 'MANAGER' || (currentUser as any).roles?.includes('ceo') || (currentUser as any).roles?.includes('admin') || isDirectFinalAllowed;
   
   let pendingChequeCount = 0;
-  if (isFinancialOrAdmin && pendingChequeCounts.pendingAccounting > 0) {
+  if ((isFinancialOrAdmin || isCeoOrAdmin) && pendingChequeCounts.pendingAccounting > 0) {
       pendingChequeCount += pendingChequeCounts.pendingAccounting;
   }
-  if (isCeoOrAdmin && pendingChequeCounts.pendingCeo > 0) {
+  if ((isCeoOrAdmin || isDirectFinalAllowed) && pendingChequeCounts.pendingCeo > 0) {
       pendingChequeCount += pendingChequeCounts.pendingCeo;
   }
 
@@ -2743,7 +2759,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                         </div>
                     )}
 
-                    {pendingChequeCount > 0 && (isFinancialOrAdmin || isCeoOrAdmin) && (
+                    {/* 1. Cheque Receipts: CEO / Final Approval Tile */}
+                    {pendingChequeCounts.pendingCeo > 0 && (isCeoOrAdmin || isDirectFinalAllowed) && (
                         <div 
                             onClick={() => {
                                 if (onNavigate) {
@@ -2754,7 +2771,41 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                                 setTimeout(() => {
                                     window.dispatchEvent(new CustomEvent('SAYAN_SUB_TAB_CHANGE', { detail: 'CHEQUE_RECEIPTS' }));
                                     setTimeout(() => {
-                                        window.dispatchEvent(new CustomEvent('CHEQUE_RECEIPTS_SUB_TAB_CHANGE', { detail: 'ARCHIVE' }));
+                                        window.dispatchEvent(new CustomEvent('CHEQUE_RECEIPTS_SUB_TAB_CHANGE', { detail: 'CARTABLE' }));
+                                    }, 100);
+                                }, 150);
+                            }} 
+                            className="bg-gradient-to-br from-[#d97706] to-[#b45309] rounded-2xl p-6 text-white shadow-lg shadow-amber-500/15 cursor-pointer transform hover:scale-[1.03] hover:-translate-y-1 transition-all relative overflow-hidden group"
+                        >
+                            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><ShieldCheck size={100}/></div>
+                            <div className="relative z-10">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl"><Crown size={24} className="text-white"/></div>
+                                    <span className="bg-yellow-300 text-yellow-950 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse">{pendingChequeCounts.pendingCeo} مورد</span>
+                                </div>
+                                <h3 className="text-xl font-black mb-1">
+                                    تاییدات رسید چک (نقش مدیرعامل)
+                                </h3>
+                                <p className="text-amber-50 text-xs opacity-90">
+                                    {pendingChequeCounts.pendingCeo} رسید چک تایید حسابداری شده و منتظر تایید نهایی جهت صدور سند در سایان است
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 2. Cheque Receipts: Accounting Review Tile */}
+                    {pendingChequeCounts.pendingAccounting > 0 && (isFinancialOrAdmin || isCeoOrAdmin) && (
+                        <div 
+                            onClick={() => {
+                                if (onNavigate) {
+                                    onNavigate('sayan-operations');
+                                } else {
+                                    window.dispatchEvent(new CustomEvent('CHANGE_TAB', { detail: 'sayan-operations' }));
+                                }
+                                setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent('SAYAN_SUB_TAB_CHANGE', { detail: 'CHEQUE_RECEIPTS' }));
+                                    setTimeout(() => {
+                                        window.dispatchEvent(new CustomEvent('CHEQUE_RECEIPTS_SUB_TAB_CHANGE', { detail: 'CARTABLE' }));
                                     }, 100);
                                 }, 150);
                             }} 
@@ -2764,15 +2815,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                             <div className="relative z-10">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl"><CreditCard size={24} className="text-white"/></div>
-                                    <span className="bg-yellow-400 text-yellow-900 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse">{pendingChequeCount} مورد</span>
+                                    <span className="bg-yellow-400 text-yellow-900 text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse">{pendingChequeCounts.pendingAccounting} مورد</span>
                                 </div>
                                 <h3 className="text-xl font-black mb-1">
-                                    {isCeoOrAdmin && pendingChequeCounts.pendingCeo > 0 ? 'تایید مدیرعامل رسید چک' : 'بررسی حسابداری رسید چک'}
+                                    بررسی حسابداری رسید چک
                                 </h3>
                                 <p className="text-emerald-50 text-xs opacity-85">
-                                    {isCeoOrAdmin && pendingChequeCounts.pendingCeo > 0 
-                                        ? `${pendingChequeCounts.pendingCeo} رسید چک تایید حسابداری شده و منتظر تایید نهایی مدیرعامل است`
-                                        : `${pendingChequeCounts.pendingAccounting} رسید چک منتظر بررسی و تایید حسابداری است`}
+                                    {pendingChequeCounts.pendingAccounting} رسید چک منتظر بررسی و تایید حسابداری است
                                 </p>
                             </div>
                         </div>

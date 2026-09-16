@@ -755,11 +755,14 @@ export const updateChequeReceipt = async (receiptId, updatePayload, currentUser)
     return record;
 };
 
+// --- SEQUENTIAL ASYNC QUEUE FOR SAYAN CHEQUE REGISTRATION ---
+const sayanRegistrationQueue = [];
+let isProcessingSayanQueue = false;
+
 /**
- * Stage 2 Approval: CEO / Executive Approval
- * Moves status from PENDING_CEO to APPROVED
+ * Queue receipt for sequential background Sayan ERP registration
  */
-export const approveCEOReceipt = async (receiptId, currentUser, note = '') => {
+export const queueChequeReceiptForSayanRegistration = async (receiptId, currentUser, note = '') => {
     const db = getDb();
     if (!db.sayan_cheque_receipts) db.sayan_cheque_receipts = [];
 
@@ -768,12 +771,16 @@ export const approveCEOReceipt = async (receiptId, currentUser, note = '') => {
         throw new Error(`رسید با شناسه ${receiptId} یافت نشد.`);
     }
 
-    record.status = 'APPROVED';
+    // Set optimistic status immediately so client UI closes and shows approved/processing
+    record.status = 'PROCESSING_SAYAN';
+    record.sayanSyncStatus = 'QUEUED';
+    record.sayanError = null;
+
     const ceoInfo = {
         id: currentUser?.id || 'CEO',
         name: currentUser?.fullName || currentUser?.name || 'مدیرعامل',
         role: currentUser?.role || 'CEO',
-        note: note || 'تایید نهایی توسط مدیرعامل انجام شد.',
+        note: note || 'تایید نهایی توسط مدیرعامل انجام شد و در صف صدور سند سایان قرار گرفت.',
         approvedAt: new Date().toISOString()
     };
     record.ceoApproval = ceoInfo;
@@ -783,7 +790,90 @@ export const approveCEOReceipt = async (receiptId, currentUser, note = '') => {
     record.updatedAt = new Date().toISOString();
 
     saveDb();
+
+    // Add to memory queue if not already present
+    if (!sayanRegistrationQueue.some(item => item.receiptId === receiptId)) {
+        sayanRegistrationQueue.push({ receiptId, currentUser, note });
+    }
+
+    // Trigger sequential queue processing asynchronously in background (non-blocking)
+    setTimeout(() => {
+        processSayanRegistrationQueue().catch(err => {
+            console.error('[Sayan Cheque Queue] Worker error:', err);
+        });
+    }, 50);
+
     return record;
+};
+
+/**
+ * Sequential background processor: processes one cheque receipt at a time to prevent number collision & SQL locks
+ */
+export const processSayanRegistrationQueue = async () => {
+    if (isProcessingSayanQueue) return;
+    if (sayanRegistrationQueue.length === 0) return;
+
+    isProcessingSayanQueue = true;
+    try {
+        while (sayanRegistrationQueue.length > 0) {
+            const task = sayanRegistrationQueue[0]; // peek
+            if (!task) {
+                sayanRegistrationQueue.shift();
+                continue;
+            }
+
+            const db = getDb();
+            const record = db.sayan_cheque_receipts?.find(r => r.id === task.receiptId);
+            
+            if (!record) {
+                sayanRegistrationQueue.shift();
+                continue;
+            }
+
+            if (record.status === 'REGISTERED_IN_SAYAN') {
+                sayanRegistrationQueue.shift();
+                continue;
+            }
+
+            record.sayanSyncStatus = 'PROCESSING';
+            saveDb();
+
+            try {
+                console.log(`[Sayan Cheque Queue] Registering receipt ${task.receiptId} (#${record.receiptNo}) in Sayan...`);
+                const sayanResult = await registerChequeReceiptInSayan(task.receiptId, task.currentUser);
+                console.log(`[Sayan Cheque Queue] Success for receipt ${task.receiptId}: DocNo=${sayanResult.docNo}, Archive=${sayanResult.archiveCode}`);
+            } catch (err) {
+                console.error(`[Sayan Cheque Queue] Failed registering receipt ${task.receiptId}:`, err.message);
+                const currentDb = getDb();
+                const currentRec = currentDb.sayan_cheque_receipts?.find(r => r.id === task.receiptId);
+                if (currentRec && currentRec.status !== 'REGISTERED_IN_SAYAN') {
+                    currentRec.status = 'PENDING_CEO';
+                    currentRec.sayanSyncStatus = 'FAILED';
+                    currentRec.sayanError = err.message || 'خطا در صدور سند در سایان';
+                    if (!currentRec.ceoApproval) currentRec.ceoApproval = {};
+                    currentRec.ceoApproval.failedAt = new Date().toISOString();
+                    currentRec.ceoApproval.error = err.message;
+                    saveDb();
+                }
+            } finally {
+                // Remove task from queue after completion
+                sayanRegistrationQueue.shift();
+            }
+        }
+    } finally {
+        isProcessingSayanQueue = false;
+        if (sayanRegistrationQueue.length > 0) {
+            setTimeout(processSayanRegistrationQueue, 150);
+        }
+    }
+};
+
+/**
+ * Stage 2 Approval: CEO / Executive Approval
+ * Moves status from PENDING_CEO to PROCESSING_SAYAN and registers in background queue
+ */
+export const approveCEOReceipt = async (receiptId, currentUser, note = '') => {
+    return await queueChequeReceiptForSayanRegistration(receiptId, currentUser, note);
 };
 
 /**
@@ -982,7 +1072,17 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         // 1. Header (BUR_TBL_008) - Format time strictly to whole seconds (eliminates .5500000 fractional bug in Sayan ERP)
         "N'IN' + N'SERT INTO BUR_TBL_008 (Field_004, Field_005, Field_006, Field_008, Field_009, Field_010, Field_015, Field_016, Field_021, Field_022, Field_023, Field_024, Field_025, Field_028, Field_030) ' + ",
         `N'VALUES (${fiscalYear}, ${archiveCode}, ${docNo}, CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), ''11'', ''${personCode}'', 0, 1, ''1'', ''${userGuid}'', 0, 0, ${totalAmount}, N''${headerDescription}'', CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `,
-        "N'DECLARE @NewHId BIGINT = SCOPE_IDENTITY(); ' + "
+        "N'DECLARE @NewHId BIGINT = SCOPE_IDENTITY(); ' + ",
+
+        // 2. Dimensions (BUR_TBL_016)
+        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 6, ''1''); ' + `,
+        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 15, ''${personCode}''); ' + `,
+
+        // 3. Accounting Voucher Header (ACT_TBL_008)
+        // CRITICAL ARCHITECTURAL REQUIREMENT: Must be inserted BEFORE ACT_TBL_009 and ACT_TBL_010 rows
+        // to satisfy SQL Server Foreign Key constraints ACT_Voucher_ACT_Record and ACT_Voucher_ACT_ElaborativeRecord!
+        "N'IN' + N'SERT INTO ACT_TBL_008 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_017) ' + ",
+        `N'VALUES (${fiscalYear}, ${actDocNo}, ${actDocNo}, '''', CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), 0, 0, '''', 5, ''${userGuid}'', ${totalAmount}, ${totalAmount}, CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `
     ];
 
     const createdChequesMeta = [];
@@ -1051,21 +1151,9 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         );
     }
 
-    // Dimensions (BUR_TBL_016)
-    sqlChunks.push(
-        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 6, ''1''); ' + `,
-        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 15, ''${personCode}''); ' + `
-    );
-
-    // Header (ACT_TBL_008)
-    sqlChunks.push(
-        "N'IN' + N'SERT INTO ACT_TBL_008 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_017) ' + ",
-        `N'VALUES (${fiscalYear}, ${actDocNo}, ${actDocNo}, '''', CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), 0, 0, '''', 5, ''${userGuid}'', ${totalAmount}, ${totalAmount}, CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `
-    );
-
     // Finalize Transaction
     sqlChunks.push(
-        `N'SELECT @NewHId as HeaderId, ${archiveCode} as ArchiveCode, ${docNo} as DocNo; ' + `,
+        `N'SELECT @NewHId as HeaderId, ${archiveCode} as ArchiveCode, ${docNo} as DocNo, ${actDocNo} as ActDocNo; ' + `,
         "N'COM' + N'MIT TRAN;'",
         ");"
     );
@@ -1080,6 +1168,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
     record.sayanHeaderId = String(nextHeaderId);
     record.archiveCode = String(archiveCode);
     record.docNo = String(docNo);
+    record.actDocNo = String(actDocNo);
     record.receiptNo = Number(poshtNomreh) || poshtNomreh;
     record.poshtNomreh = String(poshtNomreh);
     record.registeredAt = new Date().toISOString();

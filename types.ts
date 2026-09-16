@@ -219,6 +219,7 @@ export interface RolePermissions {
   canSayanEditReceipt?: boolean;
   canSayanApproveAccounting?: boolean;
   canSayanApproveCeo?: boolean;
+  canSayanFinalApprove?: boolean;
   canSayanDeleteReceipt?: boolean;
   canAccessSecretariat?: boolean;
   canManageSecretariatSettings?: boolean;
@@ -523,7 +524,13 @@ export interface SystemSettings {
   // SAYAN ONLINE EXIT PERMITS INTEGRATION
   sayanOnlineExitPermitsEnabled?: boolean;
   sayanYearClosed?: boolean;
-  
+
+  // SAYAN CHEQUE WORKFLOW SETTINGS
+  sayanChequeDisableCeoApproval?: boolean; // غیرفعال کردن مرحله تایید مدیرعامل
+  sayanChequeEnableFinalApproval?: boolean; // فعال بودن مرحله تایید نهایی پس از ثبت
+  sayanChequeFinalApprovalUserIds?: string[]; // شناسه‌های کاربرانی که دسترسی تایید نهایی و ثبت در سایان دارند
+  sayanChequeDirectRegisterOnSubmit?: boolean; // ثبت مستقیم در سایان بلافاصله پس از تایید حسابداری / مرحله قبل
+
   // MINI APPS
   miniAppCarPriceUrl?: string;
   miniAppCarEstimatorUrl?: string;

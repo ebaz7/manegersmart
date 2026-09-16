@@ -7770,6 +7770,123 @@ const Settings: React.FC<SettingsProps> = ({
                           </div>
                         </label>
                       </div>
+
+                      {/* Cheque Workflow & Approval Settings in Sayan */}
+                      <div className="border-t border-indigo-100 pt-4 mt-2 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <CheckSquare size={18} className="text-indigo-600" />
+                          <h4 className="text-sm font-black text-gray-800">
+                            تنظیمات فرآیند تاییدات و ثبت رسید چک در سایان ERP
+                          </h4>
+                        </div>
+
+                        <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                          {/* Option 1: Disable CEO approval */}
+                          <label className="flex items-start gap-3 cursor-pointer p-3 bg-white border border-gray-200 rounded-xl shadow-xs hover:border-indigo-300 transition-colors">
+                            <div className="relative mt-0.5">
+                              <input 
+                                type="checkbox" 
+                                className="sr-only" 
+                                checked={settings.sayanChequeDisableCeoApproval || false}
+                                onChange={(e) => setSettings({ ...settings, sayanChequeDisableCeoApproval: e.target.checked })}
+                              />
+                              <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanChequeDisableCeoApproval ? 'bg-indigo-600' : 'bg-gray-300'}`}></div>
+                              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanChequeDisableCeoApproval ? 'transform translate-x-4' : ''}`}></div>
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-sm font-bold text-gray-900">
+                                غیرفعال کردن مرحله تایید مدیرعامل برای ثبت رسیدهای چک
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                با فعال کردن این گزینه، رسیدهای چک نیازی به حضور در کارتابل مدیرعامل ندارند و کاربر/کاربران مجاز تعیین شده می‌توانند تایید نهایی و صدور سند در سایان را انجام دهند.
+                              </div>
+                            </div>
+                          </label>
+
+                          {/* Option 2: Require Final Approval after registration */}
+                          <label className="flex items-start gap-3 cursor-pointer p-3 bg-white border border-gray-200 rounded-xl shadow-xs hover:border-indigo-300 transition-colors">
+                            <div className="relative mt-0.5">
+                              <input 
+                                type="checkbox" 
+                                className="sr-only" 
+                                checked={settings.sayanChequeEnableFinalApproval !== false}
+                                onChange={(e) => setSettings({ ...settings, sayanChequeEnableFinalApproval: e.target.checked })}
+                              />
+                              <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanChequeEnableFinalApproval !== false ? 'bg-indigo-600' : 'bg-gray-300'}`}></div>
+                              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanChequeEnableFinalApproval !== false ? 'transform translate-x-4' : ''}`}></div>
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-sm font-bold text-gray-900">
+                                فعال بودن مرحله تایید نهایی پس از ثبت رسید (جهت بررسی و صدور قطعی در سایان)
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                در صورت غیرفعال بودن، بلافاصله پس از بررسی و تایید اولیه مالی/حسابداری، سند مستقیماً در ERP سایان ثبت می‌گردد.
+                              </div>
+                            </div>
+                          </label>
+
+                          {/* Authorized Users for Final Approval */}
+                          <div className="pt-2 border-t border-gray-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <label className="text-xs font-black text-gray-800 block">
+                                  کاربران مجاز جهت تایید نهایی و ثبت سند در سایان (به جای یا در کنار مدیرعامل):
+                                </label>
+                                <span className="text-[11px] text-gray-500">
+                                  کاربران عادی انتخاب شده در زیر، کاشی و دکمه تایید نهایی و صدور سند در سایان را مشاهده و اجرا خواهند کرد.
+                                </span>
+                              </div>
+                              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                                {settings.sayanChequeFinalApprovalUserIds?.length || 0} کاربر مجاز
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-white rounded-xl border border-gray-200">
+                              {systemUsers.map((u) => {
+                                const isSelected = (settings.sayanChequeFinalApprovalUserIds || []).includes(u.id);
+                                return (
+                                  <label 
+                                    key={u.id}
+                                    className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                                      isSelected ? 'bg-indigo-50/80 border-indigo-300 text-indigo-900 font-bold' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    <input 
+                                      type="checkbox"
+                                      className="rounded text-indigo-600 focus:ring-indigo-500"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        const currentIds = settings.sayanChequeFinalApprovalUserIds || [];
+                                        let updatedIds: string[];
+                                        if (e.target.checked) {
+                                          updatedIds = Array.from(new Set([...currentIds, u.id]));
+                                        } else {
+                                          updatedIds = currentIds.filter(id => id !== u.id);
+                                        }
+                                        setSettings({
+                                          ...settings,
+                                          sayanChequeFinalApprovalUserIds: updatedIds
+                                        });
+                                      }}
+                                    />
+                                    <div className="truncate flex-1">
+                                      <span>{u.fullName || u.username}</span>
+                                      <span className="text-[10px] text-gray-400 block truncate font-normal">
+                                        {u.username} • {u.role === 'ADMIN' ? 'مدیر ارشد' : u.role === 'CEO' ? 'مدیرعامل' : u.role === 'FINANCIAL' ? 'مالی' : 'کاربر'}
+                                      </span>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                              {systemUsers.length === 0 && (
+                                <div className="col-span-full text-center py-3 text-xs text-gray-400">
+                                  در حال بارگذاری لیست کاربران...
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex gap-3 items-start">
                       <div className="glass-panel p-2 rounded-lg text-indigo-600 shadow-sm">

@@ -49,7 +49,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const [records, setRecords] = useState<TradeRecord[]>(() => {
         try {
             const cached = getLocalData<TradeRecord[]>(LS_KEYS.TRADE, []);
-            return Array.isArray(cached) ? cached : [];
+            return Array.isArray(cached) ? cached.filter(r => !r.transferredTo) : [];
         } catch {
             return [];
         }
@@ -500,12 +500,33 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         return val;
     };
 
+    const formatRecordDateSafe = (val?: string): string => {
+        if (!val) return '---';
+        const trimmed = String(val).trim();
+        if (!trimmed || trimmed === 'Invalid Date') return '---';
+        if (/^[0-9\u06F0-\u06F9]{4}[/-][0-9\u06F0-\u06F9]{1,2}[/-][0-9\u06F0-\u06F9]{1,2}$/.test(trimmed)) {
+            return trimmed;
+        }
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleDateString('fa-IR');
+        }
+        return trimmed;
+    };
+
     const loadRecords = async () => { 
         try {
             const data = await getTradeRecords(); 
             // Safety Check: Ensure records is always an array and auto-heal invalid year formats
             const rawList = Array.isArray(data) ? data : [];
-            const sanitizedList = rawList.map(r => {
+            // Automatically purge any old residual transferred-out records so they never linger in old commodity groups or archives
+            rawList.forEach(r => {
+                if (r.transferredTo) {
+                    deleteTradeRecord(r.id).catch(err => console.error("Error purging old transferred record", err));
+                }
+            });
+            const nonTransferredList = rawList.filter(r => !r.transferredTo);
+            const sanitizedList = nonTransferredList.map(r => {
                 let changed = false;
                 let regDate = r.registrationDate;
                 let expDate = r.registrationExpiry;
@@ -567,8 +588,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const goCompany = (company: string) => { setSelectedCompany(company); setNavLevel('COMPANY'); setSelectedGroup(null); setSearchTerm(''); };
     const goGroup = (group: string) => { setSelectedGroup(group); setNavLevel('GROUP'); setSearchTerm(''); };
 
-    // SAFE RECORDS ACCESS
-    const safeRecords = Array.isArray(records) ? records : [];
+    // SAFE RECORDS ACCESS - Exclude any transferred-out records so they never appear in old commodity groups or archives
+    const safeRecords = (Array.isArray(records) ? records : []).filter(r => !r.transferredTo);
 
     const groupedData = useMemo(() => {
         const currentRecords = safeRecords.filter(r => showArchived ? r.isArchived : !r.isArchived);
@@ -2151,7 +2172,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             goodsName: newGoodsNameClean,
             sellerName: transferForm.newSellerName?.trim() || selectedRecord.sellerName,
             commodityGroup: transferForm.targetCommodityGroup.trim(),
-            startDate: new Date().toLocaleDateString('fa-IR'),
+            startDate: selectedRecord.startDate || new Date().toISOString().split('T')[0],
             createdAt: Date.now(),
             createdBy: currentUser.fullName,
             transferredFrom: {
@@ -2170,27 +2191,20 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             ]
         };
 
-        const updatedOldRecord: TradeRecord = {
-            ...selectedRecord,
-            status: 'Completed' as const,
-            isArchived: true,
-            transferredTo: {
-                fileNumber: transferForm.newFileNumber.trim(),
-                goodsName: newGoodsNameClean,
-                commodityGroup: transferForm.targetCommodityGroup.trim(),
-                recordId: newRecord.id,
-                proformaNumber: newRecord.proformaNumber,
-                registrationNumber: newRecord.registrationNumber
-            }
-        };
-
-        await persistRecordUpdate(updatedOldRecord);
+        // Crucial: The old record is completely deleted from the source commodity group so it never appears in POY or any source group (neither active nor archive)
+        try {
+            await deleteTradeRecord(selectedRecord.id);
+        } catch (delErr) {
+            console.error("Error deleting source record during transfer", delErr);
+        }
         await saveTradeRecord(newRecord);
 
         setShowTransferModal(false);
         alert('پرونده با موفقیت به گروه جدید منتقل شد و پروفرم جدید ثبت گردید.');
         setSelectedRecord(newRecord);
-        setViewMode('dashboard');
+        setSelectedGroup(newRecord.commodityGroup);
+        setViewMode('details');
+        setActiveTab('proforma');
         loadRecords();
     };
     const handleStageClick = (stage: TradeStage) => { 
@@ -2642,11 +2656,11 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         currentRecord: TradeRecord,
         recordsList: TradeRecord[]
     ): TradeRecord => {
-        // 1. If hist.recordSnapshot exists and has items
-        if (hist.recordSnapshot && hist.recordSnapshot.items && hist.recordSnapshot.items.length > 0) {
+        // 1. If hist.recordSnapshot exists, use it as complete self-contained snapshot
+        if (hist.recordSnapshot) {
             return {
                 ...hist.recordSnapshot,
-                items: (hist.items && hist.items.length > 0) ? hist.items : hist.recordSnapshot.items,
+                items: (hist.items && hist.items.length > 0) ? hist.items : (hist.recordSnapshot.items || []),
                 freightCost: hist.freightCost !== undefined ? hist.freightCost : (hist.recordSnapshot.freightCost || 0)
             };
         }
@@ -5357,7 +5371,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     {record.orderNumber && <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">سفارش:</span> <span className="font-mono text-gray-700 dark:text-gray-300 font-semibold">{record.orderNumber}</span></div>}
                                     {record.registrationNumber && <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">ثبت سفارش:</span> <span className="font-mono text-blue-700 dark:text-blue-300 font-semibold">{record.registrationNumber}</span></div>}
                                     <div className="flex items-center gap-1"><Building2 size={12} /> فروشنده: <span className="text-gray-700 dark:text-gray-300">{record.sellerName}</span></div>
-                                    <div className="flex items-center gap-1"><History size={12} /> شروع: <span>{new Date(record.startDate).toLocaleDateString('fa-IR')}</span></div>
+                                    <div className="flex items-center gap-1"><History size={12} /> شروع: <span>{formatRecordDateSafe(record.startDate)}</span></div>
                                     
                                     {/* Match Badges / Highlights */}
                                     {matchHighlights.length > 0 && (

@@ -1867,7 +1867,7 @@ function App() {
                             const filterStatus = params.get('filterStatus');
                             const filter = params.get('filter');
                             const taskId = params.get('task');
-                            if (exitStatus) setExitPermitStatusFilter(exitStatus);
+                            if (exitStatus === 'pending') setExitPermitStatusFilter('pending');
                             if (filterStatus) setDashboardStatusFilter(filterStatus);
                             if (filter && targetTab === 'warehouse') setWarehouseInitialTab('approvals');
                             if (taskId) {

@@ -102,7 +102,7 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-const PORT = process.argv.includes('--dev') ? 3000 : (process.env.PORT || 3000);
+const PORT = 3000;
 
 app.disable('x-powered-by');
 app.use(cors()); 
@@ -11195,6 +11195,22 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
         appType: "spa",
     });
     app.use(vite.middlewares);
+    // Development SPA Fallback: serve index.html transformed by Vite for client-side routing
+    app.use('*', async (req, res, next) => {
+        const url = req.originalUrl;
+        if (url.startsWith('/api')) {
+            return next();
+        }
+        try {
+            const templatePath = path.join(ROOT_DIR, 'index.html');
+            let template = fs.readFileSync(templatePath, 'utf-8');
+            template = await vite.transformIndexHtml(url, template);
+            res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        } catch (e) {
+            vite.ssrFixStacktrace(e);
+            next(e);
+        }
+    });
 } else {
     let buildTime = "Unknown";
     try {

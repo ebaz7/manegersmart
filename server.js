@@ -2252,6 +2252,17 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
             getWarehouseInventoryForDate(currentYearDateTo, currentYearDateFrom)
         ]);
 
+        if (Array.isArray(lastYearStock) && lastYearStock.length > 0 && Array.isArray(currentStock) && currentStock.length > 0) {
+            const overview = db.warehouseOverview || {};
+            overview.sayanCache = {
+                lastYearStock,
+                currentStock,
+                timestamp: Date.now()
+            };
+            db.warehouseOverview = overview;
+            saveDb(db);
+        }
+
         res.json({
             success: true,
             lastYearStock,
@@ -2259,6 +2270,17 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
         });
     } catch (err) {
         console.error("Warehouse Inventory Fetch Error:", err);
+        const db = getDb();
+        const cached = db.warehouseOverview?.sayanCache;
+        if (cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0) {
+            return res.json({
+                success: true,
+                fromCache: true,
+                warning: 'استفاده از آخرین نسخه کش شده موجودی انبار به دلیل قطعی موقت سایان',
+                lastYearStock: cached.lastYearStock,
+                currentStock: cached.currentStock
+            });
+        }
         res.status(500).json({ error: err.message || 'خطا در دریافت موجودی از سایان' });
     }
 });
@@ -2282,16 +2304,16 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
         if (!sayanUrl || !sayanKey) {
             const meta = db.warehouseOverview?.meta || {};
             return res.json({
-                success: false,
-                isMock: true,
-                message: 'تنظیمات آدرس API یا کلید امنیتی سایان ثبت نشده است.',
+                success: true,
+                isMock: false,
+                message: 'تنظیمات ارتباط زنده سایان ثبت نشده؛ استفاده از آخرین تراز ذخیره‌شده',
                 meta: {
-                    totalCurrentAllWeight: meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 730000,
-                    diffAllWeight: meta.diffAllWeight !== undefined ? meta.diffAllWeight : -30000,
-                    ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : -4.1,
-                    totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 45000,
-                    totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : -75000,
-                    reportDate: meta.reportDate || '۱۴۰۵/۰۵/۳۱'
+                    totalCurrentAllWeight: meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 0,
+                    diffAllWeight: meta.diffAllWeight !== undefined ? meta.diffAllWeight : 0,
+                    ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : 0,
+                    totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 0,
+                    totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : 0,
+                    reportDate: meta.reportDate || ''
                 }
             });
         }
@@ -2305,12 +2327,14 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
                 .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
                 .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
             const match = clean.match(/^(\d{4})/);
-            return match ? parseInt(match[1]) : 1404;
+            return match ? parseInt(match[1]) : 1405;
         };
 
         const getJalaliYearStartMiladi = (year) => {
-            if (year < 1404) return '2024-03-20';
-            return '2025-03-21';
+            if (year <= 1403) return '2024-03-20';
+            if (year === 1404) return '2025-03-21';
+            if (year === 1405) return '2026-03-21';
+            return `${year + 621}-03-21`;
         };
 
         const y1 = getJalaliYear(meta.report1Jalali || "۱۴۰۳/۱۲/۳۰");
@@ -2474,12 +2498,162 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
         const totalLastYearRawWeight = filteredImported.reduce((sum, item) => sum + getItemValue(item.code, true), 0);
 
         const bg = filteredImported.reduce((sum, item) => sum + getItemValue(item.code, false), 0);
-        
+
+        const tradeRecords = db.tradeRecords || [];
+        const allowedCompanies = meta.allowedCompanies || [];
+
+        const normalizeCompanyName = (name) => {
+            if (!name) return '';
+            return String(name)
+                .trim()
+                .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                .replace(/ي/g, 'ی')
+                .replace(/ك/g, 'ک')
+                .replace(/آ/g, 'ا')
+                .replace(/\s+/g, ' ')
+                .toLowerCase();
+        };
+
+        const isCompanyMatching = (recordCompany, allowedComps) => {
+            if (!allowedComps || allowedComps.length === 0) return true;
+            const normRec = normalizeCompanyName(recordCompany);
+            if (!normRec || normRec === 'بدون شرکت') {
+                return allowedComps.some(c => {
+                    const normC = normalizeCompanyName(c);
+                    return normC === 'بدون شرکت' || normC === '';
+                });
+            }
+
+            return allowedComps.some(allowed => {
+                const normAllowed = normalizeCompanyName(allowed);
+                if (!normAllowed) return false;
+                if (normRec === normAllowed) return true;
+
+                const cleanRec = normRec.replace(/^شرکت\s+/, '').trim();
+                const cleanAllowed = normAllowed.replace(/^شرکت\s+/, '').trim();
+                if (cleanRec === cleanAllowed) return true;
+
+                if (cleanAllowed.length >= 5 && cleanRec.includes(cleanAllowed)) return true;
+                if (cleanRec.length >= 5 && cleanAllowed.includes(cleanRec)) return true;
+
+                return false;
+            });
+        };
+
+        const getRecordWeight = (rec) => {
+            if (rec.shippingDocuments && rec.shippingDocuments.length > 0) {
+                const commDocs = rec.shippingDocuments.filter((d) => d.type === 'Commercial Invoice');
+                let commW = 0;
+                for (const doc of commDocs) {
+                    if (doc.invoiceItems && doc.invoiceItems.length > 0) {
+                        commW += doc.invoiceItems.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+                    } else if (doc.netWeight) {
+                        commW += Number(doc.netWeight) || 0;
+                    }
+                }
+                if (commW > 0) return commW;
+            }
+            return rec.items ? rec.items.reduce((sum, item) => sum + (Number(item.weight) || 0), 0) : 0;
+        };
+
+        const activeTradeRecords = tradeRecords.filter((r) => !r.isArchived && isCompanyMatching(r.company, allowedCompanies));
+
+        const parsedCommercialCustoms = [];
+        const parsedCommercialPurchaseAndTransit = [];
+
+        for (const record of activeTradeRecords) {
+            const isCompleted = record.status === 'Completed' || Boolean(record.isArchived);
+
+            const hasTruckFreight = Boolean(
+                (record.internalShippingData?.payments && record.internalShippingData.payments.length > 0) ||
+                (record.stages?.['INTERNAL_SHIPPING']?.costRial > 0) ||
+                record.stages?.['INTERNAL_SHIPPING']?.isCompleted ||
+                (record.stages?.['حمل داخلی']?.costRial > 0) ||
+                record.stages?.['حمل داخلی']?.isCompleted
+            );
+
+            if (isCompleted || hasTruckFreight) {
+                continue;
+            }
+
+            const hasCottage = Boolean(
+                (record.cottageNumber && String(record.cottageNumber).trim() !== '') ||
+                (record.greenLeafData?.duties && record.greenLeafData.duties.length > 0) ||
+                (record.greenLeafData?.guarantees && record.greenLeafData.guarantees.length > 0) ||
+                (record.stages?.['GREEN_LEAF']?.costRial > 0 || record.stages?.['GREEN_LEAF']?.isCompleted) ||
+                (record.stages?.['برگ سبز']?.costRial > 0 || record.stages?.['برگ سبز']?.isCompleted) ||
+                (record.greenLeafData?.duties?.some((d) => d.cottageNumber && String(d.cottageNumber).trim() !== ''))
+            );
+
+            const hasArrivalNotice = Boolean(
+                (record.clearanceData?.receipts && record.clearanceData.receipts.length > 0) ||
+                (record.clearanceData?.payments && record.clearanceData.payments.length > 0) ||
+                (record.stages?.['CLEARANCE_DOCS']?.costRial > 0 || record.stages?.['CLEARANCE_DOCS']?.isCompleted) ||
+                (record.stages?.['ترخیصیه و قبض انبار']?.costRial > 0 || record.stages?.['ترخیصیه و قبض انبار']?.isCompleted) ||
+                record.isInCustoms
+            );
+
+            const isInCustoms = hasCottage || hasArrivalNotice;
+
+            const hasCurrencyPurchase = Boolean(
+                (record.currencyPurchaseData && (
+                    (record.currencyPurchaseData.purchasedAmount || 0) > 0 || 
+                    (record.currencyPurchaseData.tranches && record.currencyPurchaseData.tranches.length > 0)
+                )) ||
+                (record.stages?.['CURRENCY_PURCHASE']?.costCurrency > 0 || record.stages?.['CURRENCY_PURCHASE']?.costRial > 0 || record.stages?.['CURRENCY_PURCHASE']?.isCompleted) ||
+                (record.stages?.['خرید ارز']?.costCurrency > 0 || record.stages?.['خرید ارز']?.costRial > 0 || record.stages?.['خرید ارز']?.isCompleted)
+            );
+
+            const hasAllocationApproved = Boolean(
+                record.currencyPurchaseData?.allocationDate ||
+                record.stages?.['ALLOCATION_APPROVED']?.isCompleted ||
+                record.stages?.['تخصیص یافته']?.isCompleted
+            );
+
+            if (isInCustoms) {
+                parsedCommercialCustoms.push({
+                    id: `com_${record.id}`,
+                    weight: getRecordWeight(record)
+                });
+            } else if (hasCurrencyPurchase || hasAllocationApproved) {
+                parsedCommercialPurchaseAndTransit.push({
+                    id: `com_${record.id}`,
+                    weight: getRecordWeight(record)
+                });
+            }
+        }
+
+        const clearedFileNumbers = new Set(
+            tradeRecords
+                .filter((r) => {
+                    const hasTruck = Boolean(
+                        (r.internalShippingData?.payments && r.internalShippingData.payments.length > 0) ||
+                        (r.stages?.['INTERNAL_SHIPPING']?.costRial > 0) ||
+                        r.stages?.['INTERNAL_SHIPPING']?.isCompleted ||
+                        (r.stages?.['حمل داخلی']?.costRial > 0) ||
+                        r.stages?.['حمل داخلی']?.isCompleted
+                    );
+                    return r.status === 'Completed' || r.isArchived || hasTruck;
+                })
+                .map((r) => r.fileNumber)
+                .filter(Boolean)
+        );
+
+        const baseCustoms = (overview.goodsInCustoms || []).filter((x) => !x.id.startsWith('com_') && (!x.proforma || !clearedFileNumbers.has(x.proforma)));
+        const baseTransit = (overview.goodsInTransit || []).filter((x) => !x.id.startsWith('com_') && (!x.proforma || !clearedFileNumbers.has(x.proforma)));
+        const basePurchase = (overview.purchasingGoods || []).filter((x) => !x.id.startsWith('com_') && (!x.proforma || !clearedFileNumbers.has(x.proforma)));
+
+        const mergedBasePurchaseAndTransit = [...basePurchase, ...baseTransit];
+
+        const finalGoodsInCustoms = [...baseCustoms, ...parsedCommercialCustoms];
+        const finalPurchasingGoods = [...mergedBasePurchaseAndTransit, ...parsedCommercialPurchaseAndTransit];
+
         const calculateCustomTableSum = (items, field) => (items || []).reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
-        const transit = calculateCustomTableSum(overview.goodsInTransit, 'weight');
-        const customs = calculateCustomTableSum(overview.goodsInCustoms, 'weight');
-        const purchase = calculateCustomTableSum(overview.purchasingGoods, 'weight');
-        
+
+        const customs = calculateCustomTableSum(finalGoodsInCustoms, 'weight');
+        const purchase = calculateCustomTableSum(finalPurchasingGoods, 'weight');
+        const transit = 0;
+
         const totalCurrentRawWeight = bg + transit + customs + purchase;
 
         const totalLastYearAllWeight = totalLastYearYarnsWeight + totalLastYearRawWeight;
@@ -2547,16 +2721,16 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
         const db = getDb();
         const meta = db.warehouseOverview?.meta || {};
         res.json({
-            success: false,
-            isMock: true,
-            message: 'خطا در اتصال به سرور سایان: نمایش آمار ذخیره‌شده قبلی',
+            success: true,
+            isMock: false,
+            message: 'استفاده از آخرین تراز واقعی ثبت‌شده در انبار',
             meta: {
-                totalCurrentAllWeight: meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 730000,
-                diffAllWeight: meta.diffAllWeight !== undefined ? meta.diffAllWeight : -30000,
-                ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : -4.1,
-                totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 45000,
-                totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : -75000,
-                reportDate: meta.reportDate || '۱۴۰۵/۰۵/۳۱'
+                totalCurrentAllWeight: meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 0,
+                diffAllWeight: meta.diffAllWeight !== undefined ? meta.diffAllWeight : 0,
+                ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : 0,
+                totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 0,
+                totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : 0,
+                reportDate: meta.reportDate || ''
             }
         });
     }

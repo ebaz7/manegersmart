@@ -1436,12 +1436,12 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   const displayWarehouseData = useMemo(() => {
     const meta = warehouseOverviewData?.meta || {};
-    const totalCurrentAllWeight = meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 730000;
-    const diffAllWeight = meta.diffAllWeight !== undefined ? meta.diffAllWeight : -30000;
-    const ratioAllWeight = meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : 4.1;
-    const totalPositiveWeight = meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 45000;
-    const totalNegativeWeight = meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : -75000;
-    const reportDate = meta.reportDate || '۱۴۰۵/۰۵/۳۱';
+    const totalCurrentAllWeight = meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 0;
+    const diffAllWeight = meta.diffAllWeight !== undefined ? meta.diffAllWeight : 0;
+    const ratioAllWeight = meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : 0;
+    const totalPositiveWeight = meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 0;
+    const totalNegativeWeight = meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : 0;
+    const reportDate = meta.reportDate || '';
     return {
       totalCurrentAllWeight,
       diffAllWeight,

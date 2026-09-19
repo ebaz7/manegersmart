@@ -1035,6 +1035,33 @@ td {
   border-color: var(--glass-border) !important;
 }
 
+tfoot td,
+tfoot th {
+  color: inherit !important;
+}
+
+.bg-indigo-950 td,
+.bg-slate-900 td,
+.bg-blue-900 td,
+.bg-emerald-900 td,
+.bg-sky-900 td {
+  color: #ffffff !important;
+}
+
+.bg-indigo-950 td.text-emerald-300,
+.bg-slate-900 td.text-emerald-300,
+.bg-blue-900 td.text-emerald-300,
+.bg-emerald-900 td.text-emerald-300,
+.bg-sky-900 td.text-emerald-300 {
+  color: #6ee7b7 !important;
+}
+
+.bg-indigo-950 td.text-amber-300,
+.bg-slate-900 td.text-amber-300,
+.bg-blue-900 td.text-amber-300 {
+  color: #fcd34d !important;
+}
+
 @layer utilities {
   .will-change-scroll {
     will-change: transform;

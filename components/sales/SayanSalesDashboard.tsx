@@ -4,7 +4,7 @@ import {
   Send, Printer, Download, Calendar, Filter, ChevronDown, ChevronRight, 
   Sparkles, RefreshCw, BarChart2, PieChart as PieChartIcon, LineChart as LineChartIcon,
   CheckCircle2, AlertCircle, ArrowUpRight, ArrowDownRight, Layers, Award, ShieldAlert, X,
-  Image as ImageIcon, FileSpreadsheet, Eye, Grid
+  Image as ImageIcon, FileSpreadsheet, Eye, EyeOff, Check, Grid
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, 
@@ -234,6 +234,39 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   const [selectedPreset, setSelectedPreset] = useState<string>('custom');
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'official' | 'unofficial'>('all');
   const [excludeOther, setExcludeOther] = useState<boolean>(true);
+  const [excludedSalesGroups, setExcludedSalesGroups] = useState<string[]>([]);
+
+  // Toggle exclusion of a major product group in comparison report
+  const toggleExcludeSalesGroup = (groupName: string) => {
+    setExcludedSalesGroups(prev =>
+      prev.includes(groupName) ? prev.filter(g => g !== groupName) : [...prev, groupName]
+    );
+  };
+
+  // Reset all excluded product groups
+  const clearExcludedSalesGroups = () => {
+    setExcludedSalesGroups([]);
+  };
+
+  // Available major product groups present in datasets for exclusion chips
+  const availableSalesGroups = useMemo(() => {
+    const groups = new Set<string>();
+    salesData.forEach(row => {
+      const g = classifyMajorCategory(row.GroupName, row.ItemName, row.ItemCode);
+      if (g) groups.add(g);
+    });
+    if (compareDataB && compareDataB.length > 0) {
+      compareDataB.forEach(row => {
+        const g = classifyMajorCategory(row.GroupName, row.ItemName, row.ItemCode);
+        if (g) groups.add(g);
+      });
+    }
+    // If no transactions yet, fallback to canonical MAJOR_CATEGORIES
+    if (groups.size === 0) {
+      MAJOR_CATEGORIES.forEach(g => groups.add(g));
+    }
+    return Array.from(groups).sort((a, b) => a.localeCompare(b, 'fa'));
+  }, [salesData, compareDataB]);
 
   // Dashboard Image Export Handler (html2canvas)
   const handleExportImage = async () => {
@@ -847,7 +880,10 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     };
 
     // Mode 1: Group comparison rows (Level-2 15 Major Categories)
-    const compareGroupRows = MAJOR_CATEGORIES.map(catName => {
+    // Filter out user-selected excluded major product groups
+    const compareGroupRows = MAJOR_CATEGORIES
+      .filter(catName => !excludedSalesGroups.includes(catName))
+      .map(catName => {
       const catA = processedMetrics.categoryList.find(c => c.name === catName) || { salesAmt: 0, retAmt: 0, netAmt: 0, salesWgt: 0, retWgt: 0, netWgt: 0, netFee: 0 };
       const catBRecord = catMapB.get(catName);
       const grossAmtB = catBRecord ? catBRecord.salesAmt : 0;
@@ -942,7 +978,10 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         diffFee,
         variance: getVariance(diffAmt, diffWgt, diffFee)
       };
-    }).filter(r => Math.abs(r.netAmtA) > 0 || Math.abs(r.netAmtB) > 0);
+    }).filter(r => {
+      if (excludedSalesGroups.includes(r.majorCategory)) return false;
+      return Math.abs(r.netAmtA) > 0 || Math.abs(r.netAmtB) > 0;
+    });
 
     return {
       netAmtA, netAmtB, amtDiff, amtGrowthPct,
@@ -952,7 +991,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       compareGroupRows,
       compareItemRows
     };
-  }, [compareMode, compareDataB, processedMetrics, invoiceFilter]);
+  }, [compareMode, compareDataB, processedMetrics, invoiceFilter, excludedSalesGroups]);
 
   // ----------------------------------------------------------------------
   // QUICK PRESET SELECTION
@@ -2901,6 +2940,77 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Product Groups Filter / Exclusion Option */}
+            <div className="pt-3 border-t border-white/10 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-md bg-white/10 border border-white/20 text-blue-300 flex items-center justify-center shadow-xs">
+                    <Filter className="w-3.5 h-3.5" />
+                  </span>
+                  <div>
+                    <div className="text-xs font-bold text-white flex items-center gap-2">
+                      <span>استثنا کردن گروه کالاهای اصلی از گزارش مقایسه‌ای</span>
+                      {excludedSalesGroups.length > 0 && (
+                        <span className="bg-rose-500/20 text-rose-300 border border-rose-400/40 text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {excludedSalesGroups.length} گروه مستثنی شده
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300">
+                      روی هر گروه کالا کلیک کنید تا از جدول مقایسه، محاسبات، نمودارها و PDF چاپی حذف شود:
+                    </p>
+                  </div>
+                </div>
+
+                {excludedSalesGroups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearExcludedSalesGroups}
+                    className="text-[11px] text-blue-200 hover:text-white font-bold flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-md border border-white/20 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>نمایش مجدد همه گروه‌ها</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Groups list / chips */}
+              {availableSalesGroups.length === 0 ? (
+                <div className="text-[11px] text-slate-400 py-1.5 font-medium bg-black/20 rounded-lg px-3 border border-dashed border-white/10">
+                  داده‌ای برای استخراج گروه‌های کالا یافت نشد.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {availableSalesGroups.map(group => {
+                    const isExcluded = excludedSalesGroups.includes(group);
+                    return (
+                      <button
+                        key={group}
+                        type="button"
+                        onClick={() => toggleExcludeSalesGroup(group)}
+                        className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                          isExcluded
+                            ? 'bg-rose-950/80 text-rose-300 border border-rose-500/60 line-through opacity-85 hover:opacity-100 shadow-sm'
+                            : 'bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white border border-white/20 hover:border-blue-400 shadow-xs'
+                        }`}
+                        title={isExcluded ? `گروه «${group}» مستثنی شده است (برای بازگردانی کلیک کنید)` : `برای استثنا کردن «${group}» کلیک کنید`}
+                      >
+                        {isExcluded ? (
+                          <EyeOff className="w-3 h-3 text-rose-400 shrink-0" />
+                        ) : (
+                          <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                        )}
+                        <span>{group}</span>
+                        {isExcluded && (
+                          <span className="text-[9px] bg-rose-500/30 text-rose-200 px-1 rounded font-normal no-underline">مستثنی</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {!compareMode ? (
@@ -3010,7 +3120,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
                       }`}
                     >
                       <Grid className="w-3.5 h-3.5" />
-                      <span>۱. خلاصه گروه‌های کالا (۱۵ گروه اصلی)</span>
+                      <span>۱. خلاصه گروه‌های کالا ({comparisonMetrics?.compareGroupRows.length || 0} گروه)</span>
                     </button>
                     <button
                       type="button"

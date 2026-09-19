@@ -552,28 +552,26 @@ export const saveChequeReceiptDraft = async (receiptData, currentUser) => {
     const isEdit = Boolean(receiptData.id);
     const receiptId = receiptData.id || `RCPT_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     
-    // Internal app receipt number & Posht-Nomreh unification
-    // "شماره رسید با پشت نمره باید یکی باشه که همون 766 هست"
+    // Internal app receipt number & Posht-Nomreh handling
     let poshtNomreh = String(receiptData.poshtNomreh || '').trim();
-    let receiptNo = receiptData.receiptNo ? String(receiptData.receiptNo).trim() : '';
+    let receiptNo = receiptData.receiptNo !== undefined && receiptData.receiptNo !== null && String(receiptData.receiptNo).trim() !== '' 
+        ? String(receiptData.receiptNo).trim() 
+        : '';
 
     if (poshtNomreh && !receiptNo) {
         receiptNo = poshtNomreh;
     } else if (receiptNo && !poshtNomreh) {
         poshtNomreh = receiptNo;
-    } else if (poshtNomreh && receiptNo && poshtNomreh !== receiptNo) {
-        // Keep them strictly aligned
-        receiptNo = poshtNomreh;
     }
 
     if (!receiptNo) {
         if (isEdit) {
             const existing = db.sayan_cheque_receipts.find(r => r.id === receiptId);
             receiptNo = existing?.receiptNo || existing?.poshtNomreh || getNextAppReceiptNumber(fy);
-            poshtNomreh = String(receiptNo);
+            if (!poshtNomreh) poshtNomreh = String(receiptNo);
         } else {
             receiptNo = getNextAppReceiptNumber(fy);
-            poshtNomreh = String(receiptNo);
+            if (!poshtNomreh) poshtNomreh = String(receiptNo);
         }
     }
 
@@ -652,6 +650,10 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
 
     // Apply any modifications made during accounting review
     if (updatePayload) {
+        if (updatePayload.receiptNo !== undefined && updatePayload.receiptNo !== null && String(updatePayload.receiptNo).trim() !== '') {
+            const cleanNo = String(updatePayload.receiptNo).trim();
+            record.receiptNo = !isNaN(Number(cleanNo)) ? Number(cleanNo) : cleanNo;
+        }
         if (updatePayload.personCode) record.personCode = String(updatePayload.personCode).trim();
         if (updatePayload.personName) record.personName = String(updatePayload.personName).trim();
         if (updatePayload.cashboxCode) record.cashboxCode = String(updatePayload.cashboxCode).trim();
@@ -716,6 +718,10 @@ export const updateChequeReceipt = async (receiptId, updatePayload, currentUser)
         throw new Error(`رسید با شناسه ${receiptId} یافت نشد.`);
     }
 
+    if (updatePayload.receiptNo !== undefined && updatePayload.receiptNo !== null && String(updatePayload.receiptNo).trim() !== '') {
+        const cleanNo = String(updatePayload.receiptNo).trim();
+        record.receiptNo = !isNaN(Number(cleanNo)) ? Number(cleanNo) : cleanNo;
+    }
     if (updatePayload.personCode) record.personCode = String(updatePayload.personCode).trim();
     if (updatePayload.personName) record.personName = String(updatePayload.personName).trim();
     if (updatePayload.cashboxCode) record.cashboxCode = String(updatePayload.cashboxCode).trim();
@@ -750,6 +756,31 @@ export const updateChequeReceipt = async (receiptId, updatePayload, currentUser)
     record.lastEditedBy = currentUser ? { id: currentUser.id, name: currentUser.fullName || currentUser.name } : null;
     record.updatedAt = new Date().toISOString();
     // Crucial: record.status is NOT changed. It stays strictly at its current stage!
+
+    saveDb();
+    return record;
+};
+
+/**
+ * Direct Update of Receipt Number (شماره رسید)
+ */
+export const updateReceiptNumber = async (receiptId, newReceiptNo, currentUser) => {
+    const db = getDb();
+    if (!db.sayan_cheque_receipts) db.sayan_cheque_receipts = [];
+
+    const record = db.sayan_cheque_receipts.find(r => r.id === receiptId || String(r.receiptNo) === String(receiptId));
+    if (!record) {
+        throw new Error(`رسید با شناسه یا شماره ${receiptId} یافت نشد.`);
+    }
+
+    const cleanNo = String(newReceiptNo || '').trim();
+    if (!cleanNo) {
+        throw new Error('شماره رسید نمی‌تواند خالی باشد.');
+    }
+
+    record.receiptNo = !isNaN(Number(cleanNo)) ? Number(cleanNo) : cleanNo;
+    record.updatedAt = new Date().toISOString();
+    record.lastEditedBy = currentUser ? { id: currentUser.id, name: currentUser.fullName || currentUser.name } : null;
 
     saveDb();
     return record;

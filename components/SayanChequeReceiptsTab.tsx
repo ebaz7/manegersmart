@@ -214,6 +214,10 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const personContainerRef = useRef<HTMLDivElement>(null);
 
     const [poshtNomreh, setPoshtNomreh] = useState('');
+    const [receiptNoInput, setReceiptNoInput] = useState('');
+    const [editingReceiptNoItem, setEditingReceiptNoItem] = useState<{ id: string; currentNo: string } | null>(null);
+    const [tempQuickReceiptNo, setTempQuickReceiptNo] = useState('');
+    const [savingQuickReceiptNo, setSavingQuickReceiptNo] = useState(false);
     const [targetTotalAmount, setTargetTotalAmount] = useState<number | ''>('');
     const [docDateShamsi, setDocDateShamsi] = useState(getTodayShamsi());
     const [description, setDescription] = useState('');
@@ -280,11 +284,48 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         try {
             const res = await fetch(`/api/sayan/cheque-receipts/meta?fiscalYear=${fiscalYear}`);
             const data = await res.json();
-            if (data.success && data.nextPoshtNomreh) {
-                setPoshtNomreh(String(data.nextPoshtNomreh));
+            if (data.success) {
+                if (data.nextPoshtNomreh) {
+                    setPoshtNomreh(String(data.nextPoshtNomreh));
+                }
+                if (data.nextReceiptNo || data.nextPoshtNomreh) {
+                    setReceiptNoInput(String(data.nextReceiptNo || data.nextPoshtNomreh));
+                }
             }
         } catch (err) {
             console.error('Failed to fetch next posht nomreh', err);
+        }
+    };
+
+    const handleUpdateQuickReceiptNo = async (receiptId: string, newNo: string) => {
+        const cleanNo = newNo.trim();
+        if (!cleanNo) {
+            alert('لطفا شماره رسید را وارد کنید.');
+            return;
+        }
+        setSavingQuickReceiptNo(true);
+        try {
+            const res = await fetch(`/api/sayan/cheque-receipts/${receiptId}/update-receipt-no`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    receiptNo: cleanNo,
+                    currentUser: { id: currentUser?.id, name: currentUser?.fullName || currentUser?.name }
+                })
+            });
+            const data = await res.json();
+            if (data.success && data.receipt) {
+                setReceiptsList(prev => prev.map(r => r.id === receiptId ? data.receipt : r));
+                setEditingReceiptNoItem(null);
+                setSuccessMessage(`شماره رسید با موفقیت به #${toPersianDigits(cleanNo)} تغییر یافت.`);
+                setTimeout(() => setSuccessMessage(null), 3500);
+            } else {
+                alert(data.error || 'خطا در ویرایش شماره رسید');
+            }
+        } catch (e: any) {
+            alert(e.message || 'خطا در ارتباط با سرور');
+        } finally {
+            setSavingQuickReceiptNo(false);
         }
     };
 
@@ -670,6 +711,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         try {
             const payload = {
                 fiscalYear,
+                receiptNo: receiptNoInput.trim() || undefined,
                 poshtNomreh: poshtNomreh.trim() || '1',
                 personCode: selectedPerson ? selectedPerson.personCode : '101',
                 personName: selectedPerson ? selectedPerson.fullName : personQuery.trim(),
@@ -1105,7 +1147,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                             </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
                             {/* 1. Person Search Autocomplete */}
                             <div ref={personContainerRef} className="relative">
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -1140,7 +1182,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                     setPersonQuery(first.fullName);
                                                     setPersonDropdownOpen(false);
                                                     setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || first.fullName })));
-                                                    document.getElementById('input-posht-nomreh')?.focus();
+                                                    document.getElementById('input-receipt-no')?.focus();
                                                 } else {
                                                     handleEnterNext(0, 'person');
                                                 }
@@ -1183,7 +1225,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                         setPersonDropdownOpen(false);
                                                         // Autofill InNameOf in cheque rows if empty
                                                         setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || p.fullName })));
-                                                        document.getElementById('input-posht-nomreh')?.focus();
+                                                        document.getElementById('input-receipt-no')?.focus();
                                                     }}
                                                     className="w-full text-right p-2.5 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between group"
                                                 >
@@ -1207,7 +1249,29 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 )}
                             </div>
 
-                            {/* 2. Posht-Nomreh */}
+                            {/* 2. Editable Receipt Number */}
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                                    <span>شماره رسید</span>
+                                    <span className="text-[10px] text-blue-600 font-normal">دستی / مثال: ۱۳۹۹</span>
+                                </label>
+                                <input
+                                    id="input-receipt-no"
+                                    type="text"
+                                    value={receiptNoInput}
+                                    onChange={(e) => setReceiptNoInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            document.getElementById('input-posht-nomreh')?.focus();
+                                        }
+                                    }}
+                                    placeholder="مثال: ۱۳۹۹"
+                                    className="w-full bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 text-xs font-mono font-black text-blue-700 dark:text-blue-300 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                                />
+                            </div>
+
+                            {/* 3. Posht-Nomreh */}
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                                     شماره پشت‌نمره رسید *
@@ -1228,7 +1292,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 />
                             </div>
 
-                            {/* 3. Target Total Amount */}
+                            {/* 4. Target Total Amount */}
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                                     جمع چک (ریال) - کنترلی
@@ -1252,7 +1316,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 />
                             </div>
 
-                            {/* 4. Receipt Date (Shamsi) */}
+                            {/* 5. Receipt Date (Shamsi) */}
                             <div>
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
                                     تاریخ ثبت رسید (شمسی)
@@ -1444,11 +1508,27 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     <div key={rec.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 space-y-3 hover:shadow-md transition-shadow">
                                         <div className="flex items-start justify-between">
                                             <div>
-                                                <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
-                                                    <span>{rec.personName}</span>
-                                                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
-                                                        #{toPersianDigits(rec.receiptNo || rec.id)}
-                                                    </span>
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="font-bold text-xs text-slate-900 dark:text-white">{rec.personName}</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold">
+                                                            #{toPersianDigits(rec.receiptNo || rec.id)}
+                                                        </span>
+                                                        {canEditReceipt && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingReceiptNoItem({ id: rec.id, currentNo: String(rec.receiptNo || rec.id) });
+                                                                    setTempQuickReceiptNo(String(rec.receiptNo || rec.id));
+                                                                }}
+                                                                className="p-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors cursor-pointer"
+                                                                title="ویرایش شماره رسید"
+                                                            >
+                                                                <Edit3 className="w-3 h-3" />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
                                                     پشت‌نمره: {toPersianDigits(rec.poshtNomreh || '-')} | تاریخ: {toPersianDigits(rec.docDate)}
@@ -1538,8 +1618,24 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                             {hasError ? 'خطای ثبت سایان' : 'تایید حسابداری شده'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
-                                                        پشت‌نمره: {toPersianDigits(rec.poshtNomreh || '-')} | رسید: #{toPersianDigits(rec.receiptNo || rec.id)}
+                                                    <div className="text-[11px] text-slate-400 mt-0.5 font-mono flex items-center gap-1.5 flex-wrap">
+                                                        <span>پشت‌نمره: {toPersianDigits(rec.poshtNomreh || '-')}</span>
+                                                        <span>|</span>
+                                                        <span className="text-blue-600 dark:text-blue-400 font-bold">رسید: #{toPersianDigits(rec.receiptNo || rec.id)}</span>
+                                                        {canEditReceipt && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingReceiptNoItem({ id: rec.id, currentNo: String(rec.receiptNo || rec.id) });
+                                                                    setTempQuickReceiptNo(String(rec.receiptNo || rec.id));
+                                                                }}
+                                                                className="p-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors cursor-pointer"
+                                                                title="ویرایش شماره رسید (مثلا: ۱۳۹۹)"
+                                                            >
+                                                                <Edit3 className="w-3 h-3" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <span className="font-mono font-black text-xs text-emerald-600 dark:text-emerald-400">
@@ -1727,7 +1823,23 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 {archiveList.map(r => (
                                     <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                                         <td className="px-3 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
-                                            #{toPersianDigits(r.receiptNo || r.id)}
+                                            <div className="flex items-center gap-1.5">
+                                                <span>#{toPersianDigits(r.receiptNo || r.id)}</span>
+                                                {canEditReceipt && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setEditingReceiptNoItem({ id: r.id, currentNo: String(r.receiptNo || r.id) });
+                                                            setTempQuickReceiptNo(String(r.receiptNo || r.id));
+                                                        }}
+                                                        className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 transition-colors cursor-pointer"
+                                                        title="ویرایش شماره رسید (مثلا: ۱۳۹۹)"
+                                                    >
+                                                        <Edit3 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-3 py-3 font-mono font-bold text-amber-600">
                                             {toPersianDigits(r.poshtNomreh || '-')}
@@ -1958,6 +2070,98 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     fetchReceipts(true);
                 }}
             />
+
+            {/* Quick Edit Receipt Number Modal */}
+            {editingReceiptNoItem && typeof document !== 'undefined' && createPortal(
+                <div 
+                    className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs animate-fade-in"
+                    dir="rtl"
+                    onClick={() => {
+                        if (!savingQuickReceiptNo) setEditingReceiptNoItem(null);
+                    }}
+                >
+                    <div 
+                        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-scale-in"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3.5">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                                    <Edit3 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                                        ویرایش دستی شماره رسید
+                                    </h3>
+                                    <p className="text-[11px] text-slate-500">
+                                        شماره رسید مورد نظر را وارد نمایید (مثال: ۱۳۹۹)
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditingReceiptNoItem(null)}
+                                disabled={savingQuickReceiptNo}
+                                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                                شماره رسید جدید:
+                            </label>
+                            <input
+                                type="text"
+                                value={tempQuickReceiptNo}
+                                onChange={(e) => setTempQuickReceiptNo(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleUpdateQuickReceiptNo(editingReceiptNoItem.id, tempQuickReceiptNo);
+                                    }
+                                }}
+                                autoFocus
+                                placeholder="مثال: ۱۳۹۹"
+                                className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-blue-400 dark:border-blue-600 rounded-2xl px-4 py-3 text-base font-mono font-black text-blue-700 dark:text-blue-300 outline-none focus:bg-white dark:focus:bg-slate-900 transition-all text-center tracking-widest"
+                            />
+                            <p className="text-[11px] text-slate-400 leading-relaxed">
+                                این شماره در تمامی اسناد، گزارشات، فایل پرینت A5 و فرآیند تاییدیه مالی جایگزین خواهد شد.
+                            </p>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => setEditingReceiptNoItem(null)}
+                                disabled={savingQuickReceiptNo}
+                                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            >
+                                انصراف
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleUpdateQuickReceiptNo(editingReceiptNoItem.id, tempQuickReceiptNo)}
+                                disabled={savingQuickReceiptNo}
+                                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50"
+                            >
+                                {savingQuickReceiptNo ? (
+                                    <>
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        <span>در حال ذخیره...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>ثبت و ذخیره تغییرات</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

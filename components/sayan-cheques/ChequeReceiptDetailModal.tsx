@@ -69,11 +69,46 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
     const [receipt, setReceipt] = useState<any>(initialReceipt);
     const [showUploader, setShowUploader] = useState(false);
     const [savingAttachments, setSavingAttachments] = useState(false);
+    const [isEditingReceiptNo, setIsEditingReceiptNo] = useState(false);
+    const [tempReceiptNo, setTempReceiptNo] = useState(String(initialReceipt?.receiptNo || initialReceipt?.id || ''));
+    const [savingReceiptNo, setSavingReceiptNo] = useState(false);
 
     // Keep internal receipt synced if prop updates
     React.useEffect(() => {
         setReceipt(initialReceipt);
+        setTempReceiptNo(String(initialReceipt?.receiptNo || initialReceipt?.id || ''));
     }, [initialReceipt]);
+
+    const handleSaveReceiptNo = async () => {
+        const cleanNo = tempReceiptNo.trim();
+        if (!cleanNo) {
+            alert('لطفا شماره رسید را وارد کنید.');
+            return;
+        }
+        setSavingReceiptNo(true);
+        try {
+            const res = await fetch(`/api/sayan/cheque-receipts/${receipt.id}/update-receipt-no`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    receiptNo: cleanNo,
+                    currentUser: { id: currentUser.id, name: currentUser.fullName || currentUser.name }
+                })
+            });
+            const data = await res.json();
+            if (data.success && data.receipt) {
+                setReceipt(data.receipt);
+                setIsEditingReceiptNo(false);
+                if (onUpdateReceipt) onUpdateReceipt(data.receipt);
+            } else {
+                alert(data.error || 'خطا در ویرایش شماره رسید');
+            }
+        } catch (e: any) {
+            alert(e.message || 'خطا در ارتباط با سرور');
+        } finally {
+            setSavingReceiptNo(false);
+        }
+    };
 
     const isFinancialOrAdmin = propsIsFinancialOrAdmin !== undefined 
         ? propsIsFinancialOrAdmin 
@@ -261,9 +296,62 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                 <h3 className="text-base font-black text-slate-900 dark:text-white">
                                     رسید دریافت چک
                                 </h3>
-                                <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 font-bold">
-                                    #{toPersianDigits(receipt.receiptNo || receipt.id)}
-                                </span>
+                                {isEditingReceiptNo ? (
+                                    <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-blue-400 rounded-lg p-0.5 shadow-sm">
+                                        <span className="text-xs font-mono font-bold text-blue-600 px-1">#</span>
+                                        <input
+                                            type="text"
+                                            value={tempReceiptNo}
+                                            onChange={(e) => setTempReceiptNo(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleSaveReceiptNo();
+                                                if (e.key === 'Escape') setIsEditingReceiptNo(false);
+                                            }}
+                                            className="w-20 px-1.5 py-0.5 text-xs font-mono font-bold text-blue-700 dark:text-blue-300 bg-transparent outline-none border-0"
+                                            autoFocus
+                                            placeholder="شماره رسید"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveReceiptNo}
+                                            disabled={savingReceiptNo}
+                                            className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                                            title="ذخیره شماره رسید"
+                                        >
+                                            <Check className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTempReceiptNo(String(receipt.receiptNo || receipt.id || ''));
+                                                setIsEditingReceiptNo(false);
+                                            }}
+                                            className="p-1 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+                                            title="انصراف"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-1">
+                                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 font-bold">
+                                            #{toPersianDigits(receipt.receiptNo || receipt.id)}
+                                        </span>
+                                        {canEditReceipt && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setTempReceiptNo(String(receipt.receiptNo || receipt.id || ''));
+                                                    setIsEditingReceiptNo(true);
+                                                }}
+                                                className="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-950 text-blue-500 transition-colors cursor-pointer"
+                                                title="ویرایش شماره رسید (مثال: ۱۳۹۹)"
+                                            >
+                                                <Edit3 className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                                 {statusBadge()}
                             </div>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -309,10 +397,17 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                         </div>
 
                         <div>
-                            <span className="text-slate-400 block mb-1">پشت‌نمره / شماره رسید:</span>
-                            <span className="font-mono font-black text-amber-600 text-sm">
-                                {toPersianDigits(receipt.poshtNomreh || '-')}
-                            </span>
+                            <span className="text-slate-400 block mb-1">شماره رسید / پشت‌نمره:</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-black text-blue-600 text-sm">
+                                    رسید: #{toPersianDigits(receipt.receiptNo || receipt.id)}
+                                </span>
+                                {receipt.poshtNomreh && (
+                                    <span className="font-mono font-bold text-amber-600 text-[11px] bg-amber-50 dark:bg-amber-950 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                        پشت‌نمره: {toPersianDigits(receipt.poshtNomreh)}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         <div>

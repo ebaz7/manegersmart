@@ -1927,6 +1927,26 @@ app.put('/api/sayan/cheque-receipts/:id', async (req, res) => {
     }
 });
 
+// 4.6. Update Receipt Number directly (شماره رسید)
+app.post(['/api/sayan/cheque-receipts/:id/update-receipt-no', '/api/sayan/cheque-receipts/update-receipt-no'], async (req, res) => {
+    try {
+        const receiptId = req.params.id || req.body?.receiptId || req.body?.id;
+        const newReceiptNo = req.body?.receiptNo !== undefined ? req.body?.receiptNo : req.body?.newReceiptNo;
+        const currentUser = req.body?.currentUser || req.user || { id: req.body?.reviewerId, name: req.body?.reviewerName || 'کاربر' };
+        if (!receiptId) {
+            return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
+        }
+        if (newReceiptNo === undefined || newReceiptNo === null || String(newReceiptNo).trim() === '') {
+            return res.status(400).json({ success: false, error: 'شماره رسید جدید الزامی است.' });
+        }
+        const updated = await sayanChequeService.updateReceiptNumber(receiptId, newReceiptNo, currentUser);
+        res.json({ success: true, receipt: updated, message: 'شماره رسید با موفقیت به‌روزرسانی شد.' });
+    } catch (err) {
+        console.error("Error updating receipt number:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // 5. Stage 1: Accounting Staff Review, In-flight Edit & Approval
 app.all(['/api/sayan/cheque-receipts/accounting-approve', '/api/sayan/cheque-receipts/:id/accounting-review', '/api/sayan/cheque-receipts/:id/accounting-approve'], async (req, res) => {
     try {

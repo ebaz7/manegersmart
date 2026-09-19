@@ -246,6 +246,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
         fullName: receipt.personName || ''
     });
     const [editPersonResults, setEditPersonResults] = useState<SayanPerson[]>([]);
+    const [editReceiptNo, setEditReceiptNo] = useState(String(receipt.receiptNo || receipt.id || ''));
     const [editPoshtNomreh, setEditPoshtNomreh] = useState(String(receipt.poshtNomreh || ''));
     const [editDescription, setEditDescription] = useState(receipt.description || '');
     const [accountingNote, setAccountingNote] = useState(receipt.accountingReview?.note || '');
@@ -348,6 +349,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
         }
 
         return {
+            receiptNo: editReceiptNo.trim(),
             personCode: finalPersonCode,
             personName: finalPersonName,
             poshtNomreh: editPoshtNomreh,
@@ -456,7 +458,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                             </h4>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                             {/* Person Selection */}
                             <div className="relative sm:col-span-2 md:col-span-1">
                                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -499,6 +501,20 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                         ))}
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Receipt Number */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    شماره رسید *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={editReceiptNo}
+                                    onChange={(e) => setEditReceiptNo(e.target.value)}
+                                    placeholder="مثال: ۱۳۹۹"
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-blue-600 dark:text-blue-400 outline-none focus:border-blue-500"
+                                />
                             </div>
 
                             {/* Posht Nomreh */}

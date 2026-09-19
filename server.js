@@ -102,7 +102,11 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-const PORT = 3000;
+let PORT = process.env.PORT || 3000;
+const portArgIndex = process.argv.indexOf('--port');
+if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    PORT = parseInt(process.argv[portArgIndex + 1], 10) || PORT;
+}
 
 app.disable('x-powered-by');
 app.use(cors()); 

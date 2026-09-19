@@ -1024,8 +1024,12 @@ export const WarehouseOverviewTab: React.FC = () => {
 
     // Total calculations using grouped yarns + detail imported
     const totalLastYearContainers = useMemo(() => {
-        return calculateTotalSayanSum(true, 'containers');
-    }, [lastYearOverrides, alignedYarns, alignedImported]);
+        const bg = calculateTotalSayanSum(true, 'containers');
+        const transit = calculateCustomTableSum(goodsInTransit, 'container');
+        const customs = calculateCustomTableSum(goodsInCustoms, 'container');
+        const purchase = calculateCustomTableSum(purchasingGoods, 'container');
+        return bg + transit + customs + purchase;
+    }, [goodsInTransit, goodsInCustoms, purchasingGoods, lastYearOverrides, alignedYarns, alignedImported]);
 
     const totalCurrentContainers = useMemo(() => {
         const bg = calculateTotalSayanSum(false, 'containers');
@@ -1036,8 +1040,12 @@ export const WarehouseOverviewTab: React.FC = () => {
     }, [goodsInTransit, goodsInCustoms, purchasingGoods, currentOverrides, alignedYarns, alignedImported]);
 
     const totalLastYearDollars = useMemo(() => {
-        return calculateTotalSayanSum(true, 'dollars');
-    }, [lastYearOverrides, alignedYarns, alignedImported]);
+        const bg = calculateTotalSayanSum(true, 'dollars');
+        const transit = calculateCustomTableSum(goodsInTransit, 'dollars');
+        const customs = calculateCustomTableSum(goodsInCustoms, 'dollars');
+        const purchase = calculateCustomTableSum(purchasingGoods, 'dollars');
+        return bg + transit + customs + purchase;
+    }, [goodsInTransit, goodsInCustoms, purchasingGoods, lastYearOverrides, alignedYarns, alignedImported]);
 
     const totalCurrentDollars = useMemo(() => {
         const bg = calculateTotalSayanSum(false, 'dollars');
@@ -1071,12 +1079,14 @@ export const WarehouseOverviewTab: React.FC = () => {
     const isYarnsDownward = diffYarnsWeight < 0;
 
     // 2. Raw Materials & Imported Goods (مواد اولیه و واردات شامل انبار + گمرک + ترانزیت + خرید)
-    // سال قبل: فقط جمع وزن واردات و مواد اولیه سال قبل
     const totalLastYearRawWeight = useMemo(() => {
-        return alignedImported.reduce((sum, item) => sum + getItemValue(item.code, true, 'weight', true), 0);
-    }, [alignedImported, lastYearOverrides, sayanLastYear]);
+        const bg = alignedImported.reduce((sum, item) => sum + getItemValue(item.code, true, 'weight', true), 0);
+        const transit = calculateCustomTableSum(goodsInTransit, 'weight');
+        const customs = calculateCustomTableSum(goodsInCustoms, 'weight');
+        const purchase = calculateCustomTableSum(purchasingGoods, 'weight');
+        return bg + transit + customs + purchase;
+    }, [alignedImported, goodsInTransit, goodsInCustoms, purchasingGoods, lastYearOverrides, sayanLastYear]);
 
-    // سال جاری: جمع وزن واردات سال جاری + بارهای در گمرک + بارهای در حال خرید و در راه
     const totalCurrentRawWeight = useMemo(() => {
         const bg = alignedImported.reduce((sum, item) => sum + getItemValue(item.code, false, 'weight', true), 0);
         const transit = calculateCustomTableSum(goodsInTransit, 'weight');
@@ -2347,17 +2357,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                             {renderTableBody(true)}
                             <tfoot>
                                 <tr className="bg-slate-900 text-white font-extrabold border-t border-slate-700">
-                                    <td className="py-3 px-3 text-right font-extrabold text-white" colSpan={3}>جمع کل انبارها (سایان)</td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">
+                                    <td className="py-3 px-3 text-right font-extrabold" colSpan={3}>جمع کل انبارها (سایان)</td>
+                                    <td className="py-3 px-2 font-mono text-center">
                                         {calculateTotalSayanSum(true, 'cartons').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center text-amber-300 font-bold">
+                                    <td className="py-3 px-2 font-mono text-center text-amber-300">
                                         {calculateTotalSayanSum(true, 'weight').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">
+                                    <td className="py-3 px-2 font-mono text-center">
                                         {calculateTotalSayanSum(true, 'containers').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center text-emerald-300 font-bold">
+                                    <td className="py-3 px-2 font-mono text-center text-emerald-300">
                                         ${calculateTotalSayanSum(true, 'dollars').toLocaleString('en-US')}
                                     </td>
                                 </tr>
@@ -2392,17 +2402,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                             {renderTableBody(false)}
                             <tfoot>
                                 <tr className="bg-blue-900 text-white font-extrabold border-t border-blue-700">
-                                    <td className="py-3 px-3 text-right font-extrabold text-white" colSpan={3}>جمع کل انبارها (سایان)</td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">
+                                    <td className="py-3 px-3 text-right font-extrabold" colSpan={3}>جمع کل انبارها (سایان)</td>
+                                    <td className="py-3 px-2 font-mono text-center">
                                         {calculateTotalSayanSum(false, 'cartons').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center text-amber-300 font-bold">
+                                    <td className="py-3 px-2 font-mono text-center text-amber-300">
                                         {calculateTotalSayanSum(false, 'weight').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">
+                                    <td className="py-3 px-2 font-mono text-center">
                                         {calculateTotalSayanSum(false, 'containers').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center text-emerald-300 font-bold">
+                                    <td className="py-3 px-2 font-mono text-center text-emerald-300">
                                         ${calculateTotalSayanSum(false, 'dollars').toLocaleString('en-US')}
                                     </td>
                                 </tr>
@@ -2528,11 +2538,11 @@ export const WarehouseOverviewTab: React.FC = () => {
                         {commercialGoods.length > 0 && (
                             <tfoot>
                                 <tr className="bg-emerald-900 text-white font-extrabold border-t border-emerald-700">
-                                    <td className="py-3 px-3 text-right font-extrabold text-white" colSpan={2}>جمع کل انبار تجاری</td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(commercialGoods, 'weight').toLocaleString('fa-IR')}</td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(commercialGoods, 'cartons').toLocaleString('fa-IR')}</td>
-                                    <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(commercialGoods, 'container').toLocaleString('fa-IR')}</td>
-                                    <td className="py-3 px-2 font-mono text-center text-emerald-300 font-bold">${calculateCustomTableSum(commercialGoods, 'dollars').toLocaleString('en-US')}</td>
+                                    <td className="py-3 px-3 text-right" colSpan={2}>جمع کل انبار تجاری</td>
+                                    <td className="py-3 px-2 font-mono">{calculateCustomTableSum(commercialGoods, 'cartons').toLocaleString('fa-IR')}</td>
+                                    <td className="py-3 px-2 font-mono">{calculateCustomTableSum(commercialGoods, 'weight').toLocaleString('fa-IR')}</td>
+                                    <td className="py-3 px-2 font-mono">{calculateCustomTableSum(commercialGoods, 'container').toLocaleString('fa-IR')}</td>
+                                    <td className="py-3 px-2 font-mono text-emerald-300">${calculateCustomTableSum(commercialGoods, 'dollars').toLocaleString('en-US')}</td>
                                     {isEditMode && <td></td>}
                                 </tr>
                             </tfoot>
@@ -2681,11 +2691,11 @@ export const WarehouseOverviewTab: React.FC = () => {
                             {goodsInCustoms.length > 0 && (
                                 <tfoot>
                                     <tr className="bg-sky-900 text-white font-extrabold border-t border-sky-700">
-                                        <td className="py-3 px-3 text-right font-extrabold text-white" colSpan={2}>جمع بارهای در گمرک</td>
-                                        <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(goodsInCustoms, 'weight').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(goodsInCustoms, 'cartons').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(goodsInCustoms, 'container').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-center text-emerald-300 font-bold">${calculateCustomTableSum(goodsInCustoms, 'dollars').toLocaleString('en-US')}</td>
+                                        <td className="py-3 px-3 text-right" colSpan={2}>جمع بارهای در گمرک</td>
+                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(goodsInCustoms, 'weight').toLocaleString('fa-IR')}</td>
+                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(goodsInCustoms, 'cartons').toLocaleString('fa-IR')}</td>
+                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(goodsInCustoms, 'container').toLocaleString('fa-IR')}</td>
+                                        <td className="py-3 px-2 font-mono text-emerald-300">${calculateCustomTableSum(goodsInCustoms, 'dollars').toLocaleString('en-US')}</td>
                                         {isEditMode && <td></td>}
                                     </tr>
                                 </tfoot>
@@ -2834,11 +2844,11 @@ export const WarehouseOverviewTab: React.FC = () => {
                             {purchasingGoods.length > 0 && (
                                 <tfoot>
                                     <tr className="bg-indigo-950 text-white font-extrabold border-t border-indigo-800">
-                                        <td className="py-3 px-3 text-right font-extrabold text-white" colSpan={2}>جمع کل بارهای در حال خرید و در راه</td>
-                                        <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(purchasingGoods, 'weight').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(purchasingGoods, 'cartons').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-center text-white">{calculateCustomTableSum(purchasingGoods, 'container').toLocaleString('fa-IR')}</td>
-                                        <td className="py-3 px-2 font-mono text-center text-emerald-300 font-bold">${calculateCustomTableSum(purchasingGoods, 'dollars').toLocaleString('en-US')}</td>
+                                        <td className="py-3 px-3 text-right" colSpan={2}>جمع کل بارهای در حال خرید و در راه</td>
+                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(purchasingGoods, 'weight').toLocaleString('fa-IR')}</td>
+                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(purchasingGoods, 'cartons').toLocaleString('fa-IR')}</td>
+                                        <td className="py-3 px-2 font-mono">{calculateCustomTableSum(purchasingGoods, 'container').toLocaleString('fa-IR')}</td>
+                                        <td className="py-3 px-2 font-mono text-emerald-300">${calculateCustomTableSum(purchasingGoods, 'dollars').toLocaleString('en-US')}</td>
                                         {isEditMode && <td></td>}
                                     </tr>
                                 </tfoot>

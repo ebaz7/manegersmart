@@ -1582,55 +1582,21 @@ html.has-preset-bg-aurora-light.dark aside {
 }
 
 /* Ensure that table cells in report panels have pristine text clarity and weight */
-html.has-custom-bg tbody td,
-html.has-preset-bg-cosmic-dark tbody td,
-html.has-preset-bg-cyan-cosmic tbody td,
-html.has-preset-bg-aurora-light tbody td,
-.theme-light-aurora tbody td {
+html.has-custom-bg td,
+html.has-preset-bg-cosmic-dark td,
+html.has-preset-bg-cyan-cosmic td,
+html.has-preset-bg-aurora-light td,
+.theme-light-aurora td {
   color: #1e293b !important;
   font-weight: 550 !important;
 }
 
-html.has-custom-bg.dark tbody td,
-html.has-preset-bg-cosmic-dark.dark tbody td,
-html.has-preset-bg-cyan-cosmic.dark tbody td,
-html.has-preset-bg-aurora-light.dark tbody td {
+html.has-custom-bg.dark td,
+html.has-preset-bg-cosmic-dark.dark td,
+html.has-preset-bg-cyan-cosmic.dark td,
+html.has-preset-bg-aurora-light.dark td {
   color: #cbd5e1 !important;
   font-weight: 500 !important;
-}
-
-/* Explicit high-contrast rules for table footers across all themes and hover states */
-tfoot tr,
-tfoot td,
-tfoot th {
-  font-weight: 800 !important;
-}
-
-tfoot tr.bg-slate-900 td,
-tfoot tr.bg-slate-950 td,
-tfoot tr.bg-blue-900 td,
-tfoot tr.bg-blue-950 td,
-tfoot tr.bg-indigo-900 td,
-tfoot tr.bg-indigo-950 td,
-tfoot tr.bg-sky-800 td,
-tfoot tr.bg-sky-900 td,
-tfoot tr.bg-sky-950 td,
-tfoot tr.bg-emerald-900 td,
-tfoot tr.bg-emerald-950 td,
-tfoot tr.text-white td {
-  color: #ffffff !important;
-}
-
-tfoot tr td.text-emerald-300,
-tfoot td.text-emerald-300,
-tfoot td.text-emerald-400 {
-  color: #6ee7b7 !important;
-}
-
-tfoot tr td.text-amber-300,
-tfoot td.text-amber-300,
-tfoot td.text-amber-400 {
-  color: #fcd34d !important;
 }
 
 /* 

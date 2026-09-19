@@ -102,11 +102,7 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-let PORT = process.env.PORT || 3000;
-const portArgIndex = process.argv.indexOf('--port');
-if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
-    PORT = parseInt(process.argv[portArgIndex + 1], 10) || PORT;
-}
+const PORT = process.argv.includes('--dev') ? 3000 : (process.env.PORT || 3000);
 
 app.disable('x-powered-by');
 app.use(cors()); 
@@ -4894,6 +4890,7 @@ app.post('/api/sayan/sales-remittance/explore', async (req, res) => {
             ORDER BY t10.Field_008 DESC, t10.Field_001 DESC
         `;
 
+        const { executeSayanQuery } = await import('./backend/sayan.js').catch(e => require('./backend/sayan.js'));
         const headers = await executeSayanQuery(db, sql);
         
         res.json({ success: true, headers: headers || [] });
@@ -11189,9 +11186,8 @@ app.post('/api/ai/sayan-send-bot', async (req, res) => {
 
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const isExplicitDev = process.argv.includes("--dev") || process.env.NODE_ENV === "development";
-const shouldLoadVite = isExplicitDev || (!fs.existsSync(DIST_DIR) && process.env.NODE_ENV !== "production" && !process.argv.includes("--prod"));
 
-if (shouldLoadVite) {
+if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
     console.log("Starting in Development mode with Vite Middleware...");
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -11199,22 +11195,6 @@ if (shouldLoadVite) {
         appType: "spa",
     });
     app.use(vite.middlewares);
-    // Development SPA Fallback: serve index.html transformed by Vite for client-side routing
-    app.use('*', async (req, res, next) => {
-        const url = req.originalUrl;
-        if (url.startsWith('/api')) {
-            return next();
-        }
-        try {
-            const templatePath = path.join(ROOT_DIR, 'index.html');
-            let template = fs.readFileSync(templatePath, 'utf-8');
-            template = await vite.transformIndexHtml(url, template);
-            res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-        } catch (e) {
-            vite.ssrFixStacktrace(e);
-            next(e);
-        }
-    });
 } else {
     let buildTime = "Unknown";
     try {
@@ -11222,9 +11202,6 @@ if (shouldLoadVite) {
         buildTime = stats.mtime.toLocaleString('fa-IR');
     } catch(e){}
     console.log(`Starting in Production mode serving built assets from dist (Build Date: ${buildTime})...`);
-    if (!fs.existsSync(DIST_DIR)) {
-        console.warn("⚠️ [PRODUCTION WARNING] 'dist' directory not found! Please make sure to run 'npm run build' to generate static assets.");
-    }
     app.use(express.static(DIST_DIR, {
         maxAge: '1d',
         setHeaders: (res, filePath) => {

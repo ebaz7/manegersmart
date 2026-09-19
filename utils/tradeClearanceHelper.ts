@@ -217,13 +217,21 @@ export const extractAllClearancePayments = (
         });
     }
 
-    // Step 5: Check transferredFrom source record in allRecords
-    if (record.transferredFrom && Array.isArray(allRecords)) {
+    // Step 5: Check transferredFrom source record in allRecords or proformaHistory
+    if (record.transferredFrom) {
         const tf = record.transferredFrom;
-        const sourceRec = allRecords.find(r => 
+        let sourceRec = Array.isArray(allRecords) ? allRecords.find(r => 
             (tf.recordId && r.id === tf.recordId) ||
             (tf.fileNumber && r.fileNumber === tf.fileNumber && r.id !== record.id)
-        );
+        ) : undefined;
+
+        if (!sourceRec && Array.isArray(record.proformaHistory)) {
+            const histSnap = record.proformaHistory.find(h => h.recordSnapshot && (h.recordSnapshot.id === tf.recordId || h.recordSnapshot.fileNumber === tf.fileNumber));
+            if (histSnap?.recordSnapshot) {
+                sourceRec = histSnap.recordSnapshot;
+            }
+        }
+
         if (sourceRec) {
             if (sourceRec.agentData && Array.isArray(sourceRec.agentData.payments)) {
                 mergeSecondaryList(sourceRec.agentData.payments, true);

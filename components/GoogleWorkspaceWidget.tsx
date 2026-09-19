@@ -5,17 +5,18 @@ import {
   ExternalLink, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Link2,
   Settings, Eye, EyeOff, LayoutGrid, ListFilter, Globe, CalendarDays, Maximize2,
   ChevronRight, ChevronLeft, MapPin, Plus, Check, CalendarCheck, X, Trash2, Edit3,
-  Search, Bell, FileText, DollarSign, BookOpen, Layers
+  Search, Bell, FileText, DollarSign, BookOpen, Layers, Pin, Copy, Square
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { 
   signInWithGoogleWorkspace, logoutGoogleWorkspace, getGoogleAccessToken,
   fetchGoogleCalendarEvents, fetchGoogleTasks, fetchGoogleCalendarList, GoogleCalendarEvent, GoogleTaskItem,
-  createGoogleCalendarEvent, getCustomCalendarItems, saveCustomCalendarItems,
+  createGoogleCalendarEvent, getCustomCalendarItems, saveCustomCalendarItems, syncCalendarEventsWithServer,
   CustomCalendarItem, removeGoogleTokenForUser 
 } from '../services/googleWorkspaceService';
+import { getNotes, saveNote, updateNote, deleteNote } from '../services/storageService';
 import { updateUser } from '../services/authService';
-import { User } from '../types';
+import { User, Note } from '../types';
 
 interface GoogleWorkspaceWidgetProps {
   currentUser?: User;
@@ -104,6 +105,19 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
   const [modalDescription, setModalDescription] = useState('');
   const [syncToGoogle, setSyncToGoogle] = useState(true);
   const [isSavingEvent, setIsSavingEvent] = useState(false);
+
+  // System Notes & Agenda states
+  const [systemNotes, setSystemNotes] = useState<Note[]>([]);
+  const [notesSearch, setNotesSearch] = useState('');
+  const [notesCategoryFilter, setNotesCategoryFilter] = useState<'all' | 'notes' | 'loans' | 'tasks'>('all');
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [newNoteDate, setNewNoteDate] = useState('');
+  const [newNoteColor, setNewNoteColor] = useState('#10b981');
+  const [newNoteTasks, setNewNoteTasks] = useState<string[]>([]);
+  const [newTaskInput, setNewTaskInput] = useState('');
+  const [showNewNoteModal, setShowNewNoteModal] = useState(false);
 
   // Selected event popover
   const [selectedItem, setSelectedItem] = useState<{
@@ -218,6 +232,18 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     // 4. Load Google token and calendar events for this user
     checkTokenAndLoad(currentUserId);
 
+    // 5. Load System Notes & Server Events
+    loadSystemNotes();
+    syncCalendarEventsWithServer(currentUserId).then(items => {
+      if (items && items.length > 0) {
+        setCustomItems(items);
+      }
+    });
+
+    const handleNotesUpdate = () => {
+      loadSystemNotes();
+    };
+
     const handleAuthSync = (e: any) => {
       // Strictly prevent cross-user token contamination
       if (e?.detail?.userId && currentUserId && String(e.detail.userId) !== currentUserId) {
@@ -247,12 +273,28 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
 
     window.addEventListener('google-auth-sync', handleAuthSync);
     window.addEventListener('custom-calendar-events-updated', handleCustomUpdate);
+    window.addEventListener('notes-updated', handleNotesUpdate);
+    window.addEventListener('REFRESH_UI', handleNotesUpdate);
 
     return () => {
       window.removeEventListener('google-auth-sync', handleAuthSync);
       window.removeEventListener('custom-calendar-events-updated', handleCustomUpdate);
+      window.removeEventListener('notes-updated', handleNotesUpdate);
+      window.removeEventListener('REFRESH_UI', handleNotesUpdate);
     };
   }, [currentUserId, currentUser?.googleLinkedEmail]);
+
+  const loadSystemNotes = async () => {
+    try {
+      const all = await getNotes();
+      if (Array.isArray(all)) {
+        const userNotes = all.filter(n => n && (!n.userId || String(n.userId) === String(currentUserId)));
+        setSystemNotes(userNotes);
+      }
+    } catch (e) {
+      console.debug('Failed to load notes in widget', e);
+    }
+  };
 
   const loadGoogleData = async (tok: string, forUserId?: string) => {
     // Abort if target user is no longer active
@@ -433,6 +475,68 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     return days;
   }, [currentDate]);
 
+  // Helper: Get Month grid days for the month containing `currentDate`
+  const monthDays = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startingDay = firstDay.getDay(); // 0 = Sunday
+    const totalDays = lastDay.getDate();
+
+    const days = [];
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    // Leading days from previous month
+    for (let i = 0; i < startingDay; i++) {
+      const prevDate = new Date(year, month, 1 - (startingDay - i));
+      const j = jalaali.toJalaali(prevDate.getFullYear(), prevDate.getMonth() + 1, prevDate.getDate());
+      days.push({
+        date: prevDate,
+        dayNumber: prevDate.getDate(),
+        isoDate: `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`,
+        jalaali: j,
+        shamsiDayStr: `${j.jd} ${PERSIAN_MONTH_NAMES[j.jm - 1]}`,
+        isCurrentMonth: false,
+        isToday: false
+      });
+    }
+
+    // Days of current month
+    for (let day = 1; day <= totalDays; day++) {
+      const date = new Date(year, month, day);
+      const isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const j = jalaali.toJalaali(year, month + 1, day);
+      days.push({
+        date,
+        dayNumber: day,
+        isoDate,
+        jalaali: j,
+        shamsiDayStr: `${j.jd} ${PERSIAN_MONTH_NAMES[j.jm - 1]}`,
+        isCurrentMonth: true,
+        isToday: isoDate === todayIso
+      });
+    }
+
+    // Trailing days to fill the 7-column grid
+    const remaining = (7 - (days.length % 7)) % 7;
+    for (let i = 1; i <= remaining; i++) {
+      const nextDate = new Date(year, month + 1, i);
+      const j = jalaali.toJalaali(nextDate.getFullYear(), nextDate.getMonth() + 1, nextDate.getDate());
+      days.push({
+        date: nextDate,
+        dayNumber: nextDate.getDate(),
+        isoDate: `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`,
+        jalaali: j,
+        shamsiDayStr: `${j.jd} ${PERSIAN_MONTH_NAMES[j.jm - 1]}`,
+        isCurrentMonth: false,
+        isToday: false
+      });
+    }
+
+    return days;
+  }, [currentDate]);
+
   // Current header title (e.g. "September 2026 / شهریور ۱۴۰۵")
   const currentHeaderTitle = useMemo(() => {
     const gMonth = GREGORIAN_MONTH_NAMES[currentDate.getMonth()];
@@ -448,7 +552,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
   const handlePrev = () => {
     const d = new Date(currentDate);
     if (currentView === 'week') d.setDate(d.getDate() - 7);
-    else if (currentView === 'month') d.setMonth(d.getMonth() - 1);
+    else if (currentView === 'month' || currentView === 'agenda') d.setMonth(d.getMonth() - 1);
     else if (currentView === 'day') d.setDate(d.getDate() - 1);
     setCurrentDate(d);
   };
@@ -456,7 +560,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
   const handleNext = () => {
     const d = new Date(currentDate);
     if (currentView === 'week') d.setDate(d.getDate() + 7);
-    else if (currentView === 'month') d.setMonth(d.getMonth() + 1);
+    else if (currentView === 'month' || currentView === 'agenda') d.setMonth(d.getMonth() + 1);
     else if (currentView === 'day') d.setDate(d.getDate() + 1);
     setCurrentDate(d);
   };
@@ -574,8 +678,43 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
       });
     }
 
+    // 4. System Notes (یادداشت‌های کاربر و یادآوری‌ها)
+    if (enabledCategories.has('reminders')) {
+      systemNotes.forEach(note => {
+        let iso = '';
+        let startHour = 9;
+        if (note.reminderTime) {
+          const d = new Date(note.reminderTime);
+          if (!isNaN(d.getTime())) {
+            iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            startHour = d.getHours() + d.getMinutes() / 60;
+          }
+        } else if (note.createdAt) {
+          const d = new Date(note.createdAt);
+          if (!isNaN(d.getTime())) {
+            iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            startHour = 9;
+          }
+        }
+
+        if (iso) {
+          list.push({
+            id: note.id,
+            title: note.title || 'یادداشت',
+            isoDate: iso,
+            startHour: Math.max(7, Math.min(21, startHour)),
+            durationHours: 1,
+            color: note.color || '#10b981',
+            category: 'reminders',
+            description: note.content || '',
+            isGoogle: false
+          });
+        }
+      });
+    }
+
     return list;
-  }, [customItems, googleEvents, googleTasks, calendarFilters]);
+  }, [customItems, googleEvents, googleTasks, calendarFilters, systemNotes]);
 
   // Open Quick Add Modal
   const openQuickAdd = (isoDate?: string, startHour?: number) => {
@@ -630,6 +769,26 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
         }
       }
 
+      // If category is reminder / note, also persist as Note
+      if (modalCategory === 'reminders') {
+        try {
+          const newNote: Note = {
+            id: newItem.id,
+            userId: currentUserId || '',
+            title: modalTitle.trim(),
+            content: modalDescription.trim(),
+            color: modalColor,
+            reminderTime: new Date(modalDate).getTime(),
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          await saveNote(newNote);
+          setSystemNotes(prev => [newNote, ...prev]);
+        } catch (nErr) {
+          console.debug('Failed to sync to system notes', nErr);
+        }
+      }
+
       handleSaveCustomItems([newItem, ...customItems]);
       setShowAddModal(false);
       setModalTitle('');
@@ -641,11 +800,139 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
   };
 
   // Delete an item
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
     if (!confirm('آیا از حذف این یادداشت/رویداد اطمینان دارید؟')) return;
+    if (id.startsWith('note_')) {
+      try {
+        await deleteNote(id);
+        setSystemNotes(prev => prev.filter(n => n.id !== id));
+      } catch (e) {
+        console.error('Failed to delete note', e);
+      }
+    }
     const filtered = customItems.filter(item => item.id !== id);
     handleSaveCustomItems(filtered);
     setSelectedItem(null);
+  };
+
+  // Save / Update System Note
+  const handleSaveSystemNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteTitle.trim() && !newNoteContent.trim()) return;
+
+    try {
+      const noteDate = newNoteDate ? new Date(newNoteDate).getTime() : Date.now();
+      const taskObjects = newNoteTasks.filter(t => t.trim()).map((t, idx) => ({
+        id: `task_${Date.now()}_${idx}`,
+        text: t.trim(),
+        isCompleted: false
+      }));
+
+      if (editingNote) {
+        const updated: Note = {
+          ...editingNote,
+          title: newNoteTitle.trim() || 'یادداشت',
+          content: newNoteContent.trim(),
+          color: newNoteColor,
+          reminderTime: noteDate,
+          tasks: taskObjects.length > 0 ? taskObjects : editingNote.tasks,
+          updatedAt: Date.now()
+        };
+        await updateNote(updated);
+        setSystemNotes(prev => prev.map(n => n.id === updated.id ? updated : n));
+      } else {
+        const newNote: Note = {
+          id: `note_${Date.now()}`,
+          userId: currentUserId || '',
+          title: newNoteTitle.trim() || 'یادداشت جدید',
+          content: newNoteContent.trim(),
+          color: newNoteColor,
+          reminderTime: noteDate,
+          tasks: taskObjects,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        await saveNote(newNote);
+        setSystemNotes(prev => [newNote, ...prev]);
+
+        // Also add to customItems for calendar time slot
+        const iso = newNoteDate || new Date().toISOString().split('T')[0];
+        const calItem: CustomCalendarItem = {
+          id: newNote.id,
+          title: newNote.title,
+          category: 'reminders',
+          color: newNote.color || '#10b981',
+          startDate: iso,
+          startHour: 9,
+          durationHours: 1,
+          description: newNote.content
+        };
+        handleSaveCustomItems([calItem, ...customItems]);
+      }
+
+      setShowNewNoteModal(false);
+      setEditingNote(null);
+      setNewNoteTitle('');
+      setNewNoteContent('');
+      setNewNoteDate('');
+      setNewNoteTasks([]);
+      setNewTaskInput('');
+    } catch (err: any) {
+      alert('خطا در ثبت یادداشت: ' + err?.message);
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    if (!confirm('آیا از حذف این یادداشت اطمینان دارید؟')) return;
+    try {
+      await deleteNote(id);
+      setSystemNotes(prev => prev.filter(n => n.id !== id));
+      const filtered = customItems.filter(item => item.id !== id);
+      handleSaveCustomItems(filtered);
+      if (selectedItem?.id === id) setSelectedItem(null);
+    } catch (e) {
+      console.error('Failed to delete note', e);
+    }
+  };
+
+  const handleToggleNoteTask = async (noteId: string, taskId: string) => {
+    const note = systemNotes.find(n => n.id === noteId);
+    if (!note || !note.tasks) return;
+    const updatedTasks = note.tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t);
+    const updatedNote = { ...note, tasks: updatedTasks, updatedAt: Date.now() };
+    setSystemNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n));
+    try {
+      await updateNote(updatedNote);
+    } catch (e) {
+      console.error('Failed to update note task', e);
+    }
+  };
+
+  const handleToggleNotePin = async (noteId: string) => {
+    const note = systemNotes.find(n => n.id === noteId);
+    if (!note) return;
+    const updatedNote = { ...note, isPinned: !note.isPinned, updatedAt: Date.now() };
+    setSystemNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n));
+    try {
+      await updateNote(updatedNote);
+    } catch (e) {
+      console.error('Failed to update note pin', e);
+    }
+  };
+
+  const handleEditNote = (note: Note) => {
+    setEditingNote(note);
+    setNewNoteTitle(note.title);
+    setNewNoteContent(note.content || '');
+    setNewNoteColor(note.color || '#10b981');
+    if (note.reminderTime) {
+      const d = new Date(note.reminderTime);
+      setNewNoteDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    } else {
+      setNewNoteDate('');
+    }
+    setNewNoteTasks((note.tasks || []).map(t => t.text));
+    setShowNewNoteModal(true);
   };
 
   // Today summary for collapsed banner
@@ -660,6 +947,55 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
     const todayIso = new Date().toISOString().split('T')[0];
     return allEventsForWeek.filter(e => e.isoDate === todayIso).length;
   }, [allEventsForWeek]);
+
+  // Filtered system notes for Agenda view
+  const filteredSystemNotes = useMemo(() => {
+    let list = [...systemNotes];
+    if (notesSearch.trim()) {
+      const q = notesSearch.trim().toLowerCase();
+      list = list.filter(n => 
+        (n.title && n.title.toLowerCase().includes(q)) || 
+        (n.content && n.content.toLowerCase().includes(q)) ||
+        (n.tasks && n.tasks.some(t => t.text.toLowerCase().includes(q)))
+      );
+    }
+    // Sort: pinned first, then latest
+    list.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+    });
+    return list;
+  }, [systemNotes, notesSearch]);
+
+  // Filtered timeline of events and tasks for Agenda view
+  const filteredAgendaTimeline = useMemo(() => {
+    let list = allEventsForWeek.map(ev => {
+      const parts = ev.isoDate.split('-').map(Number);
+      let shamsiDateStr = '';
+      if (parts.length === 3) {
+        try {
+          const j = jalaali.toJalaali(parts[0], parts[1], parts[2]);
+          shamsiDateStr = `${j.jd} ${PERSIAN_MONTH_NAMES[j.jm - 1]} ${j.jy}`;
+        } catch {}
+      }
+      return { ...ev, shamsiDateStr };
+    });
+
+    if (notesSearch.trim()) {
+      const q = notesSearch.trim().toLowerCase();
+      list = list.filter(e => (e.title && e.title.toLowerCase().includes(q)) || (e.description && e.description.toLowerCase().includes(q)));
+    }
+
+    if (notesCategoryFilter === 'loans') {
+      list = list.filter(e => e.category === 'loans');
+    } else if (notesCategoryFilter === 'tasks') {
+      list = list.filter(e => e.category === 'tasks');
+    }
+
+    list.sort((a, b) => a.isoDate.localeCompare(b.isoDate) || a.startHour - b.startHour);
+    return list;
+  }, [allEventsForWeek, notesSearch, notesCategoryFilter]);
 
   return (
     <div className="glass-panel rounded-2xl border border-gray-200/90 dark:border-zinc-800 p-2.5 sm:p-4 shadow-md relative overflow-hidden transition-all bg-white dark:bg-zinc-950 font-sans">
@@ -723,13 +1059,32 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
         {/* Right Side: View Selector, Search, Google Connect & Action Controls */}
         <div className="flex items-center gap-2 self-end md:self-center flex-wrap shrink-0">
           
-          {/* Create Button */}
+          {/* Create Event Button */}
           <button
             onClick={() => openQuickAdd()}
             className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
           >
             <Plus size={15} />
             <span>ثبت رویداد / قسط وام</span>
+          </button>
+
+          {/* Add Note Button */}
+          <button
+            onClick={() => {
+              setEditingNote(null);
+              setNewNoteTitle('');
+              setNewNoteContent('');
+              setNewNoteDate(new Date().toISOString().split('T')[0]);
+              setNewNoteColor('#10b981');
+              setNewNoteTasks([]);
+              setNewTaskInput('');
+              setShowNewNoteModal(true);
+            }}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
+            title="ثبت سریع یادداشت یا چک‌لیست جدید"
+          >
+            <Edit3 size={14} />
+            <span>ثبت یادداشت</span>
           </button>
 
           {/* View Dropdown */}
@@ -969,8 +1324,387 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
             </div>
           )}
 
-          {/* MAIN WEEK TIME GRID (دقیقاً مطابق با تصویر با روبان‌های قرمز شمسی و ساعت‌ها) */}
-          <div className="flex-1 min-w-0 overflow-x-auto bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-inner">
+          {/* 2. MAIN VIEW AREA (SWITCH BETWEEN WEEK, MONTH, AND AGENDA/NOTES) */}
+          {currentView === 'agenda' ? (
+            /* AGENDA / NOTES VIEW (بخش اختصاصی یادداشت‌ها، چک‌لیست‌ها و اقساط وام) */
+            <div className="flex-1 min-w-0 bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-inner p-3 sm:p-5 flex flex-col gap-4 overflow-y-auto max-h-[640px]">
+              {/* Agenda Top Controls: Search, Tabs, Add Note */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-zinc-800">
+                {/* Search Input */}
+                <div className="relative flex-1 max-w-md">
+                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={notesSearch}
+                    onChange={(e) => setNotesSearch(e.target.value)}
+                    placeholder="جستجو در متن یا عنوان یادداشت‌ها و رویدادها..."
+                    className="w-full pr-9 pl-8 py-2 rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {notesSearch && (
+                    <button
+                      onClick={() => setNotesSearch('')}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-zinc-800 p-1 rounded-xl text-xs font-bold overflow-x-auto">
+                  <button
+                    onClick={() => setNotesCategoryFilter('all')}
+                    className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                      notesCategoryFilter === 'all'
+                        ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                    }`}
+                  >
+                    همه موارد ({systemNotes.length + customItems.length})
+                  </button>
+                  <button
+                    onClick={() => setNotesCategoryFilter('notes')}
+                    className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                      notesCategoryFilter === 'notes'
+                        ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                    }`}
+                  >
+                    یادداشت‌ها ({systemNotes.length})
+                  </button>
+                  <button
+                    onClick={() => setNotesCategoryFilter('loans')}
+                    className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                      notesCategoryFilter === 'loans'
+                        ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                    }`}
+                  >
+                    اقساط وام ({customItems.filter(i => i.category === 'loans').length})
+                  </button>
+                  <button
+                    onClick={() => setNotesCategoryFilter('tasks')}
+                    className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                      notesCategoryFilter === 'tasks'
+                        ? 'bg-white dark:bg-zinc-900 text-amber-600 dark:text-amber-400 shadow-xs'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                    }`}
+                  >
+                    وظایف ({googleTasks.length})
+                  </button>
+                </div>
+
+                {/* New Note Button */}
+                <button
+                  onClick={() => {
+                    setEditingNote(null);
+                    setNewNoteTitle('');
+                    setNewNoteContent('');
+                    setNewNoteDate(new Date().toISOString().split('T')[0]);
+                    setNewNoteColor('#10b981');
+                    setNewNoteTasks([]);
+                    setNewTaskInput('');
+                    setShowNewNoteModal(true);
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all shrink-0 cursor-pointer"
+                >
+                  <Plus size={14} />
+                  <span>یادداشت جدید</span>
+                </button>
+              </div>
+
+              {/* Section 1: Notes Cards */}
+              {(notesCategoryFilter === 'all' || notesCategoryFilter === 'notes') && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                      <BookOpen size={14} className="text-emerald-600" />
+                      <span>یادداشت‌ها و چک‌لیست‌های من ({filteredSystemNotes.length})</span>
+                    </h3>
+                  </div>
+
+                  {filteredSystemNotes.length === 0 ? (
+                    <div className="text-center py-8 px-4 bg-gray-50/60 dark:bg-zinc-800/40 rounded-xl border border-dashed border-gray-200 dark:border-zinc-700">
+                      <FileText size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                      <p className="text-xs font-bold text-gray-500 dark:text-gray-400">یادداشتی وجود ندارد</p>
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">برای ثبت اولین یادداشت یا چک‌لیست روی دکمه «یادداشت جدید» کلیک کنید.</p>
+                      <button
+                        onClick={() => {
+                          setEditingNote(null);
+                          setNewNoteTitle('');
+                          setNewNoteContent('');
+                          setNewNoteDate(new Date().toISOString().split('T')[0]);
+                          setNewNoteColor('#10b981');
+                          setNewNoteTasks([]);
+                          setShowNewNoteModal(true);
+                        }}
+                        className="mt-3 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus size={13} />
+                        <span>ایجاد اولین یادداشت</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {filteredSystemNotes.map(note => {
+                        const noteDateStr = note.reminderTime 
+                          ? (() => {
+                              const d = new Date(note.reminderTime);
+                              const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+                              return `${j.jy}/${j.jm}/${j.jd}`;
+                            })()
+                          : note.createdAt
+                          ? (() => {
+                              const d = new Date(note.createdAt);
+                              const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+                              return `${j.jy}/${j.jm}/${j.jd}`;
+                            })()
+                          : '';
+
+                        return (
+                          <div
+                            key={note.id}
+                            className="rounded-xl border border-gray-200 dark:border-zinc-800 p-3.5 bg-white dark:bg-zinc-900/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group relative overflow-hidden"
+                            style={{ borderTopWidth: '4px', borderTopColor: note.color || '#10b981' }}
+                          >
+                            {/* Note Card Header */}
+                            <div>
+                              <div className="flex items-start justify-between gap-2 mb-1.5">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: note.color || '#10b981' }} />
+                                  <h4 className="text-xs font-black text-gray-900 dark:text-gray-100 truncate">
+                                    {note.title || 'یادداشت'}
+                                  </h4>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    onClick={() => handleToggleNotePin(note.id)}
+                                    className={`p-1 rounded-md transition-colors cursor-pointer ${
+                                      note.isPinned 
+                                        ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/50' 
+                                        : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                                    }`}
+                                    title={note.isPinned ? 'برداشتن پین' : 'پین کردن در بالا'}
+                                  >
+                                    <Pin size={12} className={note.isPinned ? 'fill-current' : ''} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Date badge */}
+                              {noteDateStr && (
+                                <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex items-center gap-1 mb-2">
+                                  <Clock size={10} />
+                                  <span>{noteDateStr}</span>
+                                </div>
+                              )}
+
+                              {/* Note Content */}
+                              {note.content && (
+                                <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed mb-3 line-clamp-6">
+                                  {note.content}
+                                </p>
+                              )}
+
+                              {/* Tasks Checklist */}
+                              {Array.isArray(note.tasks) && note.tasks.length > 0 && (
+                                <div className="space-y-1 my-2 pt-2 border-t border-gray-100 dark:border-zinc-800/80">
+                                  <div className="text-[10px] font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-1">
+                                    <CheckSquare size={11} />
+                                    <span>چک‌لیست ({note.tasks.filter(t => t.isCompleted).length}/{note.tasks.length})</span>
+                                  </div>
+                                  {note.tasks.map(task => (
+                                    <div
+                                      key={task.id}
+                                      onClick={() => handleToggleNoteTask(note.id, task.id)}
+                                      className="flex items-center gap-1.5 p-1 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer text-[11px] select-none transition-colors"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={task.isCompleted}
+                                        onChange={() => {}}
+                                        className="rounded text-emerald-600 focus:ring-0 cursor-pointer pointer-events-none"
+                                      />
+                                      <span className={`truncate ${task.isCompleted ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-200'}`}>
+                                        {task.text}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Note Card Footer Actions */}
+                            <div className="flex items-center justify-between pt-2.5 mt-2 border-t border-gray-100 dark:border-zinc-800 text-gray-400">
+                              <button
+                                onClick={() => {
+                                  const txt = `${note.title}\n\n${note.content || ''}`;
+                                  navigator.clipboard.writeText(txt);
+                                  alert('متن یادداشت در کلیپ‌بورد کپی شد.');
+                                }}
+                                className="p-1 rounded-md hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                                title="کپی متن یادداشت"
+                              >
+                                <Copy size={13} />
+                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleEditNote(note)}
+                                  className="p-1 rounded-md text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                                  title="ویرایش یادداشت"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteNote(note.id)}
+                                  className="p-1 rounded-md text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                  title="حذف یادداشت"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Section 2: Timeline of Events, Loans & Tasks */}
+              {(notesCategoryFilter === 'all' || notesCategoryFilter === 'loans' || notesCategoryFilter === 'tasks') && (
+                <div className="space-y-2 pt-3 border-t border-gray-100 dark:border-zinc-800">
+                  <h3 className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                    <CalendarCheck size={14} className="text-blue-600" />
+                    <span>رویدادها، اقساط وام و وظایف ({filteredAgendaTimeline.length})</span>
+                  </h3>
+                  {filteredAgendaTimeline.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-4">موردی برای نمایش یافت نشد.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {filteredAgendaTimeline.map(item => (
+                        <div
+                          key={item.id}
+                          onClick={() => setSelectedItem({
+                            id: item.id,
+                            title: item.title,
+                            timeStr: `ساعت ${Math.floor(item.startHour)}:00`,
+                            dateStr: item.isoDate,
+                            shamsiDateStr: item.shamsiDateStr || item.isoDate,
+                            color: item.color,
+                            category: item.category,
+                            description: item.description,
+                            isGoogle: item.isGoogle,
+                            googleLink: item.googleLink
+                          })}
+                          className="flex items-center justify-between p-2.5 rounded-xl border border-gray-100 dark:border-zinc-800 bg-gray-50/70 dark:bg-zinc-800/40 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <div className="min-w-0">
+                              <div className="font-bold text-gray-900 dark:text-gray-100 truncate">{item.title}</div>
+                              {item.description && (
+                                <div className="text-[11px] text-gray-500 truncate">{item.description}</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 text-[11px] text-gray-500 font-mono">
+                            <span>{item.shamsiDateStr || item.isoDate}</span>
+                            <span className="text-gray-300">•</span>
+                            <span>{Math.floor(item.startHour)}:00</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : currentView === 'month' ? (
+            /* MONTH VIEW (نمای ماهانه با تقویم کامل شمسی) */
+            <div className="flex-1 min-w-0 overflow-x-auto bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-inner p-2 sm:p-3">
+              <div className="min-w-[700px]">
+                <div className="grid grid-cols-7 border-b border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-900/80 pb-2 mb-1">
+                  {GREGORIAN_DAYS_SHORT.map((name, i) => (
+                    <div key={name} className="text-center">
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 block">{name}</span>
+                      <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 block">{PERSIAN_DAYS_FULL[i]}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {monthDays.map((day, idx) => {
+                    const dayEvents = allEventsForWeek.filter(e => e.isoDate === day.isoDate);
+                    return (
+                      <div
+                        key={`${day.isoDate}-${idx}`}
+                        onClick={() => openQuickAdd(day.isoDate, 9)}
+                        className={`min-h-[85px] p-1.5 rounded-lg border transition-all cursor-pointer flex flex-col justify-between group ${
+                          day.isToday
+                            ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-400 dark:border-blue-700'
+                            : day.isCurrentMonth
+                            ? 'bg-white dark:bg-zinc-900 border-gray-100 dark:border-zinc-800 hover:border-blue-200 dark:hover:border-zinc-700'
+                            : 'bg-gray-50/40 dark:bg-zinc-950/40 border-gray-100/50 dark:border-zinc-800/40 opacity-40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-bold ${day.isToday ? 'w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px]' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {day.dayNumber}
+                          </span>
+                          <span className="text-[10px] font-mono text-red-600 dark:text-red-400 font-bold truncate max-w-[65px]">
+                            {day.shamsiDayStr}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1 my-1 flex-1 overflow-hidden">
+                          {dayEvents.slice(0, 3).map(ev => (
+                            <div
+                              key={ev.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedItem({
+                                  id: ev.id,
+                                  title: ev.title,
+                                  timeStr: `ساعت ${Math.floor(ev.startHour)}:00`,
+                                  dateStr: ev.isoDate,
+                                  shamsiDateStr: day.shamsiDayStr,
+                                  color: ev.color,
+                                  category: ev.category,
+                                  description: ev.description,
+                                  isGoogle: ev.isGoogle,
+                                  googleLink: ev.googleLink
+                                });
+                              }}
+                              className="text-[9px] px-1 py-0.5 rounded truncate font-bold text-white shadow-2xs cursor-pointer hover:opacity-90"
+                              style={{ backgroundColor: ev.color }}
+                              title={ev.title}
+                            >
+                              {ev.title}
+                            </div>
+                          ))}
+                          {dayEvents.length > 3 && (
+                            <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold block">
+                              +{dayEvents.length - 3} مورد دیگر
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-0.5">
+                            <Plus size={10} />
+                            <span>ثبت</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* MAIN WEEK TIME GRID (دقیقاً مطابق با تصویر با روبان‌های قرمز شمسی و ساعت‌ها) */
+            <div className="flex-1 min-w-0 overflow-x-auto bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 shadow-inner">
             
             {/* 2.1 WEEK HEADER (Day Names + Day Numbers + RED SHAMSI EXTENSION BANNER) */}
             <div className="min-w-[760px]">
@@ -1138,6 +1872,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
             </div>
 
           </div>
+          )}
 
         </div>
       )}
@@ -1340,6 +2075,206 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
                 </button>
               </div>
 
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 3.1 DEDICATED NEW / EDIT NOTE MODAL */}
+      {showNewNoteModal && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[99999] overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 flex justify-center items-start sm:items-center animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowNewNoteModal(false);
+              setEditingNote(null);
+            }
+          }}
+        >
+          <div 
+            className="relative bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 w-full max-w-lg shadow-2xl flex flex-col my-auto max-h-[85vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 px-5 py-3.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between shrink-0 bg-white dark:bg-zinc-900">
+              <h3 className="text-sm font-black text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Edit3 size={17} className="text-emerald-600" />
+                <span>{editingNote ? 'ویرایش یادداشت' : 'ثبت یادداشت یا چک‌لیست جدید'}</span>
+              </h3>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowNewNoteModal(false);
+                  setEditingNote(null);
+                }} 
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSystemNote} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs overscroll-contain min-h-0">
+                {/* Title */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    عنوان یادداشت
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newNoteTitle}
+                    onChange={(e) => setNewNoteTitle(e.target.value)}
+                    placeholder="مثال: پیگیری تسویه‌حساب مشتری، یادداشت جلسه، لیست کارها..."
+                    className="w-full p-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* Content */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    متن توضیحات یادداشت
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={newNoteContent}
+                    onChange={(e) => setNewNoteContent(e.target.value)}
+                    placeholder="متن کامل یادداشت یا شرح جزئیات را در اینجا بنویسید..."
+                    className="w-full p-2.5 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed"
+                  />
+                </div>
+
+                {/* Date & Color */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      تاریخ یادآوری / تقویم (اختیاری)
+                    </label>
+                    <input
+                      type="date"
+                      value={newNoteDate}
+                      onChange={(e) => setNewNoteDate(e.target.value)}
+                      className="w-full p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs font-mono"
+                    />
+                    {newNoteDate && (() => {
+                      try {
+                        const [y, m, d] = newNoteDate.split('-').map(Number);
+                        if (y && m && d) {
+                          const j = jalaali.toJalaali(y, m, d);
+                          const dayOfWeek = new Date(y, m - 1, d).getDay();
+                          return (
+                            <div className="mt-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                              📅 {PERSIAN_DAYS_FULL[dayOfWeek]} {j.jd} {PERSIAN_MONTH_NAMES[j.jm - 1]} {j.jy}
+                            </div>
+                          );
+                        }
+                      } catch {}
+                      return null;
+                    })()}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      برچسب رنگی
+                    </label>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {[
+                        { color: '#10b981', label: 'سبز' },
+                        { color: '#3b82f6', label: 'آبی' },
+                        { color: '#f59e0b', label: 'نارنجی' },
+                        { color: '#ef4444', label: 'قرمز' },
+                        { color: '#8b5cf6', label: 'بنفش' },
+                        { color: '#ec4899', label: 'صورتی' }
+                      ].map(c => (
+                        <button
+                          key={c.color}
+                          type="button"
+                          onClick={() => setNewNoteColor(c.color)}
+                          className={`w-6 h-6 rounded-full transition-transform cursor-pointer ${
+                            newNoteColor === c.color ? 'scale-125 ring-2 ring-offset-2 ring-gray-400' : 'hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: c.color }}
+                          title={c.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Checklist items */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+                    افزودن گزینه‌های چک‌لیست (اختیاری)
+                  </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={newTaskInput}
+                      onChange={(e) => setNewTaskInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (newTaskInput.trim()) {
+                            setNewNoteTasks(prev => [...prev, newTaskInput.trim()]);
+                            setNewTaskInput('');
+                          }
+                        }
+                      }}
+                      placeholder="عنوان کار یا مورد را تایپ کنید..."
+                      className="flex-1 p-2 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newTaskInput.trim()) {
+                          setNewNoteTasks(prev => [...prev, newTaskInput.trim()]);
+                          setNewTaskInput('');
+                        }
+                      }}
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-800 dark:text-gray-200 font-bold rounded-xl text-xs transition-colors shrink-0 cursor-pointer"
+                    >
+                      + افزودن
+                    </button>
+                  </div>
+
+                  {newNoteTasks.length > 0 && (
+                    <div className="space-y-1.5 p-2 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-200 dark:border-zinc-700 max-h-36 overflow-y-auto">
+                      {newNoteTasks.map((taskText, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-1.5 rounded-lg bg-white dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700 text-xs">
+                          <span className="truncate text-gray-800 dark:text-gray-200">{taskText}</span>
+                          <button
+                            type="button"
+                            onClick={() => setNewNoteTasks(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-rose-500 hover:text-rose-700 p-0.5"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="sticky bottom-0 z-10 px-5 py-3 border-t border-gray-100 dark:border-zinc-800 flex items-center justify-end gap-2 shrink-0 bg-gray-50 dark:bg-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewNoteModal(false);
+                    setEditingNote(null);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-500/20 transition-colors cursor-pointer"
+                >
+                  {editingNote ? 'بروزرسانی یادداشت' : 'ثبت و ذخیره یادداشت'}
+                </button>
+              </div>
             </form>
           </div>
         </div>,

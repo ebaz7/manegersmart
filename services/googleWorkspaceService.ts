@@ -547,7 +547,43 @@ export const saveCustomCalendarItems = (items: CustomCalendarItem[], userId?: st
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('custom-calendar-events-updated', { detail: { items, userId: uid } }));
     }
+    // Persist to server in background if items changed
+    if (items.length > 0) {
+      fetch('/api/calendar-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(items[0])
+      }).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to save custom calendar items', err);
   }
+};
+
+export const syncCalendarEventsWithServer = async (userId?: string | number): Promise<CustomCalendarItem[]> => {
+  const uid = userId ? String(userId) : '';
+  try {
+    const res = await fetch(`/api/calendar-events${uid ? `?userId=${encodeURIComponent(uid)}` : ''}`);
+    if (res.ok) {
+      const serverEvents: CustomCalendarItem[] = await res.json();
+      if (Array.isArray(serverEvents) && serverEvents.length > 0) {
+        const local = getCustomCalendarItems(uid);
+        const map = new Map<string, CustomCalendarItem>();
+        serverEvents.forEach(item => { if (item?.id) map.set(item.id, item); });
+        local.forEach(item => { if (item?.id) map.set(item.id, item); });
+        const merged = Array.from(map.values());
+        if (uid) {
+          localStorage.setItem(`gw_custom_events_${uid}`, JSON.stringify(merged));
+        }
+        localStorage.setItem('gw_custom_events', JSON.stringify(merged));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('custom-calendar-events-updated', { detail: { items: merged, userId: uid } }));
+        }
+        return merged;
+      }
+    }
+  } catch (e) {
+    console.debug('Failed to sync calendar events with server', e);
+  }
+  return getCustomCalendarItems(uid);
 };

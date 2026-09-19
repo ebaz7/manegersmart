@@ -8007,6 +8007,75 @@ app.get('/api/announcements', (req, res) => res.json(getDb().announcements || []
 app.post('/api/announcements', (req, res) => { const db = getDb(); if(!db.announcements) db.announcements=[]; db.announcements.push(req.body); saveDb(db); res.json(db.announcements); });
 app.delete('/api/announcements/:id', (req, res) => { const db = getDb(); db.announcements = db.announcements.filter(a => a.id !== req.params.id); saveDb(db); res.json(db.announcements); });
 
+// Notes Endpoints
+app.get('/api/notes', (req, res) => {
+    const db = getDb();
+    res.json(db.notes || []);
+});
+app.post('/api/notes', (req, res) => {
+    const db = getDb();
+    if (!db.notes) db.notes = [];
+    const note = req.body;
+    if (!note.id) note.id = 'note_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const existingIdx = db.notes.findIndex(n => n.id === note.id);
+    if (existingIdx >= 0) {
+        db.notes[existingIdx] = { ...db.notes[existingIdx], ...note, updatedAt: Date.now() };
+    } else {
+        db.notes.unshift({ ...note, createdAt: note.createdAt || Date.now(), updatedAt: Date.now() });
+    }
+    saveDb(db);
+    res.json(db.notes);
+});
+app.put('/api/notes/:id', (req, res) => {
+    const db = getDb();
+    if (!db.notes) db.notes = [];
+    const idx = db.notes.findIndex(n => n.id === req.params.id);
+    if (idx > -1) {
+        db.notes[idx] = { ...db.notes[idx], ...req.body, updatedAt: Date.now() };
+    } else {
+        db.notes.unshift({ ...req.body, id: req.params.id, createdAt: Date.now(), updatedAt: Date.now() });
+    }
+    saveDb(db);
+    res.json(db.notes);
+});
+app.delete('/api/notes/:id', (req, res) => {
+    const db = getDb();
+    db.notes = (db.notes || []).filter(n => n.id !== req.params.id);
+    saveDb(db);
+    res.json(db.notes);
+});
+
+// Custom Calendar Events & Reminders Endpoints
+app.get('/api/calendar-events', (req, res) => {
+    const db = getDb();
+    const userId = req.query.userId;
+    let events = db.customCalendarEvents || [];
+    if (userId) {
+        events = events.filter(e => !e.userId || String(e.userId) === String(userId));
+    }
+    res.json(events);
+});
+app.post('/api/calendar-events', (req, res) => {
+    const db = getDb();
+    if (!db.customCalendarEvents) db.customCalendarEvents = [];
+    const item = req.body;
+    if (!item.id) item.id = 'cal_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const idx = db.customCalendarEvents.findIndex(e => e.id === item.id);
+    if (idx >= 0) {
+        db.customCalendarEvents[idx] = { ...db.customCalendarEvents[idx], ...item };
+    } else {
+        db.customCalendarEvents.unshift(item);
+    }
+    saveDb(db);
+    res.json(db.customCalendarEvents);
+});
+app.delete('/api/calendar-events/:id', (req, res) => {
+    const db = getDb();
+    db.customCalendarEvents = (db.customCalendarEvents || []).filter(e => e.id !== req.params.id);
+    saveDb(db);
+    res.json(db.customCalendarEvents);
+});
+
 // 9. FILE UPLOAD (Base64 JSON Endpoint)
 app.post('/api/upload', (req, res) => {
     try {

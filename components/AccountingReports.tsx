@@ -174,8 +174,39 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const [salesDateToB, setSalesDateToB] = useState('');
     const [compareSalesDataA, setCompareSalesDataA] = useState<any[]>([]);
     const [compareSalesDataB, setCompareSalesDataB] = useState<any[]>([]);
+    const [excludedSalesGroups, setExcludedSalesGroups] = useState<string[]>([]);
     const [isSendingSalesBot, setIsSendingSalesBot] = useState(false);
     const [isAiSalesAdvisorOpen, setIsAiSalesAdvisorOpen] = useState(false);
+
+    // Extract unique product groups present in sales comparison datasets
+    const availableSalesGroups = useMemo(() => {
+        const groups = new Set<string>();
+        compareSalesDataA.forEach(row => {
+            const g = (row.GroupName || 'سایر گروه‌ها').trim();
+            if (g) groups.add(g);
+        });
+        compareSalesDataB.forEach(row => {
+            const g = (row.GroupName || 'سایر گروه‌ها').trim();
+            if (g) groups.add(g);
+        });
+        salesData.forEach(row => {
+            const g = (row.GroupName || 'سایر گروه‌ها').trim();
+            if (g) groups.add(g);
+        });
+        return Array.from(groups).sort((a, b) => a.localeCompare(b, 'fa'));
+    }, [compareSalesDataA, compareSalesDataB, salesData]);
+
+    const toggleExcludeSalesGroup = (groupName: string) => {
+        setExcludedSalesGroups(prev => 
+            prev.includes(groupName) 
+                ? prev.filter(g => g !== groupName) 
+                : [...prev, groupName]
+        );
+    };
+
+    const clearExcludedSalesGroups = () => {
+        setExcludedSalesGroups([]);
+    };
 
     // --- UNIVERSAL SAYAN AI STRATEGIC REPORT MODAL STATE ---
     const [isUniversalAiModalOpen, setIsUniversalAiModalOpen] = useState(false);
@@ -2210,6 +2241,11 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         <strong>رشد مبلغ کل:</strong> <span class="${totalAmountDiff >= 0 ? 'pos' : 'neg'}">${totalAmountDiff >= 0 ? '+' : ''}${totalAmountDiff.toFixed(1)}%</span>
                     </div>
                 </div>
+                ${excludedSalesGroups.length > 0 ? `
+                <div style="margin-bottom: 15px; padding: 8px 14px; background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; color: #be123c; font-size: 11px;">
+                    <strong>گروه‌های کالایی مستثنی شده از این گزارش:</strong> ${excludedSalesGroups.join('، ')}
+                </div>
+                ` : ''}
 
                 <table>
                     <thead>
@@ -2685,6 +2721,11 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         };
 
         compareSalesDataA.forEach(row => {
+            const rawGroup = (row.GroupName || 'سایر گروه‌ها').trim();
+            if (excludedSalesGroups.includes(rawGroup)) {
+                return;
+            }
+
             const key = compareGroupBy === 'item' 
                 ? `${row.GroupName || 'سایر'} | ${row.ItemName || 'کالای بدون نام'}` 
                 : (row.GroupName || 'سایر گروه‌ها');
@@ -2709,6 +2750,11 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         });
 
         compareSalesDataB.forEach(row => {
+            const rawGroup = (row.GroupName || 'سایر گروه‌ها').trim();
+            if (excludedSalesGroups.includes(rawGroup)) {
+                return;
+            }
+
             const key = compareGroupBy === 'item' 
                 ? `${row.GroupName || 'سایر'} | ${row.ItemName || 'کالای بدون نام'}` 
                 : (row.GroupName || 'سایر گروه‌ها');
@@ -5159,6 +5205,86 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                         فصل قبل
                                     </button>
                                 </div>
+
+                                {/* Product Groups Filter / Exclusion Option */}
+                                <div className="pt-3 border-t border-blue-200/70 space-y-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-6 h-6 rounded-md bg-white border border-blue-200 text-blue-700 flex items-center justify-center shadow-2xs">
+                                                <Filter className="w-3.5 h-3.5" />
+                                            </span>
+                                            <div>
+                                                <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                                    <span>استثنا کردن گروه کالاهای اصلی از گزارش مقایسه‌ای</span>
+                                                    {excludedSalesGroups.length > 0 && (
+                                                        <span className="bg-rose-100 text-rose-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-rose-200">
+                                                            {excludedSalesGroups.length} گروه مستثنی شده
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-slate-500">
+                                                    روی هر گروه کالا کلیک کنید تا از محاسبات، نمودارها، جدول مقایسه و فایل چاپی حذف شود:
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {excludedSalesGroups.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={clearExcludedSalesGroups}
+                                                className="text-[11px] text-blue-700 hover:text-blue-900 font-bold flex items-center gap-1 bg-white hover:bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 transition-all cursor-pointer shadow-2xs"
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                <span>نمایش مجدد همه گروه‌ها</span>
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Groups list / chips */}
+                                    {availableSalesGroups.length === 0 ? (
+                                        <div className="text-[11px] text-slate-400 py-1 font-medium bg-white/60 rounded-lg px-3 border border-dashed border-slate-200">
+                                            داده‌ای برای استخراج گروه‌های کالا یافت نشد. بازه‌های زمانی را بررسی نمایید.
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                            {availableSalesGroups.map(group => {
+                                                const isExcluded = excludedSalesGroups.includes(group);
+                                                return (
+                                                    <button
+                                                        key={group}
+                                                        type="button"
+                                                        onClick={() => toggleExcludeSalesGroup(group)}
+                                                        className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                                                            isExcluded
+                                                                ? 'bg-rose-50 text-rose-700 border border-rose-300 line-through opacity-85 hover:opacity-100 shadow-2xs'
+                                                                : 'bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 shadow-2xs'
+                                                        }`}
+                                                        title={isExcluded ? `گروه «${group}» حذف شده است (برای نمایش مجدد کلیک کنید)` : `برای حذف «${group}» از مقایسه کلیک کنید`}
+                                                    >
+                                                        {isExcluded ? (
+                                                            <EyeOff className="w-3 h-3 text-rose-600 shrink-0" />
+                                                        ) : (
+                                                            <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                        )}
+                                                        <span>{group}</span>
+                                                        {isExcluded && (
+                                                            <span className="text-[9px] bg-rose-200 text-rose-800 px-1 rounded font-normal no-underline">حذف</span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {excludedSalesGroups.length > 0 && (
+                                        <div className="text-[10px] text-rose-700 bg-rose-50/80 rounded-lg p-2 border border-rose-200 flex items-center gap-1.5 font-medium">
+                                            <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                            <span>
+                                                گروه‌های مستثنی شده: <strong>{excludedSalesGroups.join('، ')}</strong> — از نمودارها، ردیف‌های جدول مقایسه، جمع کل و پرینت کنار گذاشته شده‌اند.
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -5770,6 +5896,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                                             if (!printWindow) return;
                                                             let html = '<html dir="rtl"><head><title>چاپ مقایسه فروش</title><style>body{font-family:Tahoma,sans-serif;margin:20px;direction:rtl}table{width:100%;border-collapse:collapse;margin-top:20px;font-size:12px}th,td{border:1px solid #ccc;padding:8px;text-align:right}th{background:#f1f5f9}.diff{direction:ltr;display:inline-block}.ret{color:#e11d48;font-size:10px}</style></head><body>';
                                                             html += '<h2>گزارش مقایسه ای فروش</h2>';
+                                                            if (excludedSalesGroups.length > 0) {
+                                                                html += `<p style="color: #be123c; background: #fff1f2; padding: 6px 10px; border: 1px solid #fecdd3; border-radius: 4px; font-size: 11px;"><strong>گروه‌های کالایی مستثنی شده از این گزارش:</strong> ${excludedSalesGroups.join('، ')}</p>`;
+                                                            }
                                                             html += '<table><thead><tr><th>گروه کالا</th><th>خالص A (kg)</th><th>مبلغ A (ریال)</th><th>خالص B (kg)</th><th>مبلغ B (ریال)</th><th>رشد مبلغ</th></tr></thead><tbody>';
                                                             let sumA = 0, sumB = 0;
                                                             chartData.forEach(row => {

@@ -505,7 +505,17 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             const data = await getTradeRecords(); 
             // Safety Check: Ensure records is always an array and auto-heal invalid year formats
             const rawList = Array.isArray(data) ? data : [];
-            const sanitizedList = rawList.map(r => {
+
+            // Purge any old records that were transferred out so they NEVER linger in the old group or in archive
+            const transferredOut = rawList.filter(r => !!r.transferredTo);
+            if (transferredOut.length > 0) {
+                transferredOut.forEach(r => {
+                    deleteTradeRecord(r.id).catch(err => console.error("Error purging transferred record", err));
+                });
+            }
+
+            const activeList = rawList.filter(r => !r.transferredTo);
+            const sanitizedList = activeList.map(r => {
                 let changed = false;
                 let regDate = r.registrationDate;
                 let expDate = r.registrationExpiry;
@@ -567,8 +577,11 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const goCompany = (company: string) => { setSelectedCompany(company); setNavLevel('COMPANY'); setSelectedGroup(null); setSearchTerm(''); };
     const goGroup = (group: string) => { setSelectedGroup(group); setNavLevel('GROUP'); setSearchTerm(''); };
 
-    // SAFE RECORDS ACCESS
-    const safeRecords = Array.isArray(records) ? records : [];
+    // SAFE RECORDS ACCESS - strictly exclude transferred-out records so they NEVER appear in the old group or in archive
+    const safeRecords = useMemo(() => {
+        const list = Array.isArray(records) ? records : [];
+        return list.filter(r => !r.transferredTo);
+    }, [records]);
 
     const groupedData = useMemo(() => {
         const currentRecords = safeRecords.filter(r => showArchived ? r.isArchived : !r.isArchived);
@@ -2170,28 +2183,26 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
             ]
         };
 
-        const updatedOldRecord: TradeRecord = {
-            ...selectedRecord,
-            status: 'Completed' as const,
-            isArchived: true,
-            transferredTo: {
-                fileNumber: transferForm.newFileNumber.trim(),
-                goodsName: newGoodsNameClean,
-                commodityGroup: transferForm.targetCommodityGroup.trim(),
-                recordId: newRecord.id,
-                proformaNumber: newRecord.proformaNumber,
-                registrationNumber: newRecord.registrationNumber
-            }
-        };
-
-        await persistRecordUpdate(updatedOldRecord);
+        // Delete the previous record from database completely so it NEVER remains in the old group or in archive!
+        const oldRecordId = selectedRecord.id;
+        try {
+            await deleteTradeRecord(oldRecordId);
+        } catch (err) {
+            console.error("Failed to delete transferred old record:", err);
+        }
         await saveTradeRecord(newRecord);
 
+        // Update local state immediately
+        setRecords(prev => prev.filter(r => r.id !== oldRecordId && !r.transferredTo).concat(newRecord));
+
         setShowTransferModal(false);
-        alert('پرونده با موفقیت به گروه جدید منتقل شد و پروفرم جدید ثبت گردید.');
+        alert('پرونده با موفقیت به گروه جدید منتقل شد و پروفرم جدید ثبت گردید. پرونده قبلی از گروه و بایگانی گذشته حذف شد.');
         setSelectedRecord(newRecord);
+        setSelectedGroup(transferForm.targetCommodityGroup.trim());
+        setNavLevel('GROUP');
+        setShowArchived(false);
         setViewMode('dashboard');
-        loadRecords();
+        await loadRecords();
     };
     const handleStageClick = (stage: TradeStage) => { 
         if (stage === TradeStage.ALLOCATION_QUEUE || stage === TradeStage.ALLOCATION_APPROVED) {
@@ -2348,7 +2359,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     const renderReportContent = useMemo(() => {
         const safeSettings = settings || { currentTrackingNumber: 1000, currentExitPermitNumber: 1000, companyNames: [], companies: [], defaultCompany: '', bankNames: [], operatingBankNames: [], commodityGroups: [], rolePermissions: {}, savedContacts: [], warehouseSequences: {}, companyNotifications: {}, insuranceCompanies: [] };
 
-        const currentList = Array.isArray(records) ? records : [];
+        const currentList = (Array.isArray(records) ? records : []).filter(r => !r.transferredTo);
         const searchedList = reportSearchTerm.trim()
             ? currentList.filter(r => matchesTradeRecord(r, reportSearchTerm))
             : currentList;
@@ -5301,6 +5312,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 ) : (
                     safeRecords
                         .filter(r => {
+                            // Transferred-out records MUST NEVER be shown anywhere in the grid (not in active, not in archive)
+                            if (r.transferredTo) return false;
+
                             const isSearching = searchTerm.trim() !== '';
                             const matchSearch = !isSearching || matchesTradeRecord(r, searchTerm);
 
@@ -5386,12 +5400,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                         <span className="line-clamp-2">انتقال از پروفرم {record.transferredFrom.fileNumber} (گروه {record.transferredFrom.commodityGroup}) به این پروفرم</span>
                                     </div>
                                 )}
-                                {record.transferredTo && (
-                                    <div className="mt-3 pt-2.5 border-t border-blue-200/80 dark:border-blue-900/50 text-[11px] text-blue-800 dark:text-blue-300 bg-blue-50/90 dark:bg-blue-950/40 p-2 rounded-xl flex items-center gap-1.5 font-medium">
-                                        <ArrowRightLeft size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
-                                        <span className="line-clamp-2">منتقل شده به پروفرم {record.transferredTo.fileNumber} (گروه {record.transferredTo.commodityGroup})</span>
-                                    </div>
-                                )}
+
                             </div>
                         );
                     })

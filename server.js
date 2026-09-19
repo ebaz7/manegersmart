@@ -4890,7 +4890,6 @@ app.post('/api/sayan/sales-remittance/explore', async (req, res) => {
             ORDER BY t10.Field_008 DESC, t10.Field_001 DESC
         `;
 
-        const { executeSayanQuery } = await import('./backend/sayan.js').catch(e => require('./backend/sayan.js'));
         const headers = await executeSayanQuery(db, sql);
         
         res.json({ success: true, headers: headers || [] });
@@ -11186,8 +11185,9 @@ app.post('/api/ai/sayan-send-bot', async (req, res) => {
 
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const isExplicitDev = process.argv.includes("--dev") || process.env.NODE_ENV === "development";
+const shouldLoadVite = isExplicitDev || (!fs.existsSync(DIST_DIR) && process.env.NODE_ENV !== "production" && !process.argv.includes("--prod"));
 
-if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
+if (shouldLoadVite) {
     console.log("Starting in Development mode with Vite Middleware...");
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -11218,6 +11218,9 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
         buildTime = stats.mtime.toLocaleString('fa-IR');
     } catch(e){}
     console.log(`Starting in Production mode serving built assets from dist (Build Date: ${buildTime})...`);
+    if (!fs.existsSync(DIST_DIR)) {
+        console.warn("⚠️ [PRODUCTION WARNING] 'dist' directory not found! Please make sure to run 'npm run build' to generate static assets.");
+    }
     app.use(express.static(DIST_DIR, {
         maxAge: '1d',
         setHeaders: (res, filePath) => {

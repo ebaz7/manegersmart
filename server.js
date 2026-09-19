@@ -2296,14 +2296,31 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             });
         }
 
-        const isYearClosed = settings.sayanYearClosed === true;
+        const overview = db.warehouseOverview || {};
+        const meta = overview.meta || {};
+        const isCumulative = meta.cumulativeFromLastYear !== undefined ? meta.cumulativeFromLastYear : true;
 
-        const lastYearDateFrom = '2024-03-20';
-        const lastYearDateTo = '2025-03-20';
-        // If year is closed, an opening balance (افتتاحیه) is struck for 1405 (2025-03-21) and we shouldn't pull 1404 data
-        // If not closed, we must sum from 1404 (2024-03-20) to get cumulative total stock!
-        const currentYearDateFrom = isYearClosed ? '2025-03-21' : '2024-03-20';
-        const currentYearDateTo = new Date().toISOString().split('T')[0];
+        const getJalaliYear = (jalaliStr) => {
+            const clean = String(jalaliStr || '').trim()
+                .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+                .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+            const match = clean.match(/^(\d{4})/);
+            return match ? parseInt(match[1]) : 1404;
+        };
+
+        const getJalaliYearStartMiladi = (year) => {
+            if (year < 1404) return '2024-03-20';
+            return '2025-03-21';
+        };
+
+        const y1 = getJalaliYear(meta.report1Jalali || "۱۴۰۳/۱۲/۳۰");
+        const y2 = getJalaliYear(meta.report2Jalali || "۱۴۰۴/۰۸/۲۲");
+
+        const lastYearDateFrom = getJalaliYearStartMiladi(y1);
+        const lastYearDateTo = meta.report1Miladi || '2025-03-20';
+
+        const currentYearDateFrom = isCumulative ? getJalaliYearStartMiladi(y1) : getJalaliYearStartMiladi(y2);
+        const currentYearDateTo = meta.report2Miladi || new Date().toISOString().split('T')[0];
 
         const getStockWeights = async (targetDate, fromDate) => {
             const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
@@ -2318,8 +2335,8 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
                         END) as StockQty
                     FROM STR_TBL_011 t11
                     INNER JOIN STR_TBL_010 t10 ON t11.Field_004 = t10.Field_005 
-                                              AND t11.Field_003 = t10.Field_004 
-                                              AND t11.Field_012 = t10.Field_018
+                                               AND t11.Field_003 = t10.Field_004 
+                                               AND t11.Field_012 = t10.Field_018
                     WHERE t10.Field_008 <= '${targetDate}T23:59:59.000Z'
                       ${dateFromFilter}
                     GROUP BY t11.Field_005
@@ -2347,42 +2364,160 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             if (code) currentMap[code] = parseFloat(item.StockQty || 0);
         });
 
-        const allCodes = new Set([...Object.keys(lastYearMap), ...Object.keys(currentMap)]);
+        const MANUFACTURED_GROUPS = [
+            { code: '0401', name: 'اسپاندکس (کاور)' },
+            { code: '0402', name: 'کش' },
+            { code: '0403', name: 'اسپاندکس جوشی ( ساپورت )' },
+            { code: '0405', name: 'پلی استر شوایتر' },
+            { code: '0407', name: 'نایلون' },
+            { code: '0408', name: 'نخ ملت' },
+            { code: '0409', name: 'الیاف' },
+            { code: '0410', name: 'FDY' }
+        ];
 
-        let totalCurrentAllWeight = 0;
-        let totalLastYearAllWeight = 0;
+        const RAW_MATERIAL_GROUPS = [
+            { code: '0101', name: 'چیپس' },
+            { code: '0102', name: 'POY' },
+            { code: '0103', name: 'dty یا پلی استر' },
+            { code: '0104', name: 'لاستیک' },
+            { code: '0105', name: 'لاکرا' },
+            { code: '0106', name: 'پلی استر اسپان' },
+            { code: '0107', name: 'مستر بچ' },
+            { code: '0108', name: 'نایلون' }
+        ];
+
+        const getSectionGroups = (isProduction, predefinedGroups) => {
+            const set = new Set();
+            predefinedGroups.forEach(g => set.add(g.code));
+
+            const otherPredefined = isProduction ? RAW_MATERIAL_GROUPS : MANUFACTURED_GROUPS;
+            const otherPredefinedCodes = new Set(otherPredefined.map(g => g.code));
+
+            const matchesSection = (code) => {
+                const prefix4 = code.substring(0, 4);
+                if (set.has(prefix4)) return true;
+                if (otherPredefinedCodes.has(prefix4)) return false;
+                if (isProduction) {
+                    return code.startsWith('04');
+                } else {
+                    return code.startsWith('01');
+                }
+            };
+
+            lastYearStock.forEach(r => {
+                const code = String(r.ItemCode || '');
+                if (code.length >= 4 && matchesSection(code)) {
+                    set.add(code.substring(0, 4));
+                }
+            });
+            currentStock.forEach(r => {
+                const code = String(r.ItemCode || '');
+                if (code.length >= 4 && matchesSection(code)) {
+                    set.add(code.substring(0, 4));
+                }
+            });
+
+            const list = Array.from(set).map(prefix => {
+                const predefined = predefinedGroups.find(g => g.code === prefix);
+                if (predefined) return predefined;
+
+                let discoveredName = '';
+                const found = [...currentStock, ...lastYearStock].find(r => {
+                    const c = String(r.ItemCode || '');
+                    return c.startsWith(prefix) && r.ItemName;
+                });
+                if (found) {
+                    discoveredName = found.ItemName || '';
+                }
+                return {
+                    code: prefix,
+                    name: discoveredName || `گروه ${prefix}`
+                };
+            });
+
+            return list.sort((a, b) => a.code.localeCompare(b.code));
+        };
+
+        const alignedYarns = getSectionGroups(true, MANUFACTURED_GROUPS);
+        const alignedImported = getSectionGroups(false, RAW_MATERIAL_GROUPS);
+
+        const getSayanGroupSum = (groupCode, isLastYear) => {
+            const map = isLastYear ? lastYearMap : currentMap;
+            let sum = 0;
+            Object.keys(map).forEach(code => {
+                if (code.startsWith(groupCode)) {
+                    sum += map[code];
+                }
+            });
+            return sum;
+        };
+
+        const currentOverrides = overview.currentOverrides || {};
+        const lastYearOverrides = overview.lastYearOverrides || {};
+
+        const getItemValue = (groupCode, isLastYear) => {
+            const overrides = isLastYear ? lastYearOverrides : currentOverrides;
+            if (overrides[groupCode] && overrides[groupCode].weight !== undefined && overrides[groupCode].weight !== '') {
+                return parseFloat(overrides[groupCode].weight) || 0;
+            }
+            return getSayanGroupSum(groupCode, isLastYear);
+        };
+
+        const itemCategories = overview.itemCategories || {};
+        const filteredYarns = alignedYarns.filter(g => itemCategories[g.code] !== 'other');
+        const filteredImported = alignedImported.filter(g => itemCategories[g.code] !== 'other');
+
+        // Calculate Enterprise Weights
+        const totalLastYearYarnsWeight = filteredYarns.reduce((sum, item) => sum + getItemValue(item.code, true), 0);
+        const totalCurrentYarnsWeight = filteredYarns.reduce((sum, item) => sum + getItemValue(item.code, false), 0);
+
+        const totalLastYearRawWeight = filteredImported.reduce((sum, item) => sum + getItemValue(item.code, true), 0);
+
+        const bg = filteredImported.reduce((sum, item) => sum + getItemValue(item.code, false), 0);
+        
+        const calculateCustomTableSum = (items, field) => (items || []).reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
+        const transit = calculateCustomTableSum(overview.goodsInTransit, 'weight');
+        const customs = calculateCustomTableSum(overview.goodsInCustoms, 'weight');
+        const purchase = calculateCustomTableSum(overview.purchasingGoods, 'weight');
+        
+        const totalCurrentRawWeight = bg + transit + customs + purchase;
+
+        const totalLastYearAllWeight = totalLastYearYarnsWeight + totalLastYearRawWeight;
+        const totalCurrentAllWeight = totalCurrentYarnsWeight + totalCurrentRawWeight;
+        const diffAllWeight = totalCurrentAllWeight - totalLastYearAllWeight;
+        const ratioAllWeight = totalLastYearAllWeight > 0 ? (diffAllWeight / totalLastYearAllWeight) * 100 : 0;
+
         let totalPositiveWeight = 0;
         let totalNegativeWeight = 0;
 
-        allCodes.forEach(code => {
-            if (!code.startsWith('01') && !code.startsWith('04')) return;
-
-            const wLast = lastYearMap[code] || 0;
-            const wCurr = currentMap[code] || 0;
+        // Cumulative positive/negative trend analyses
+        filteredYarns.forEach(group => {
+            const wLast = getItemValue(group.code, true);
+            const wCurr = getItemValue(group.code, false);
             const diff = wCurr - wLast;
-
-            totalCurrentAllWeight += wCurr;
-            totalLastYearAllWeight += wLast;
-
-            if (diff > 0) {
-                totalPositiveWeight += diff;
-            } else if (diff < 0) {
-                totalNegativeWeight += diff;
-            }
+            if (diff > 0) totalPositiveWeight += diff;
+            else if (diff < 0) totalNegativeWeight += diff;
         });
 
-        // Add goods in transit, customs, and purchasing to the current weight
-        const overview = db.warehouseOverview || {};
-        const calculateCustomTableSum = (items, field) => (items || []).reduce((sum, r) => sum + (parseFloat(r[field]) || 0), 0);
-        const extraWeight = calculateCustomTableSum(overview.goodsInTransit, 'weight')
-                          + calculateCustomTableSum(overview.goodsInCustoms, 'weight')
-                          + calculateCustomTableSum(overview.purchasingGoods, 'weight');
-        
-        totalCurrentAllWeight += extraWeight;
-        totalPositiveWeight += extraWeight; // These are additions to the current stock
+        filteredImported.forEach(group => {
+            const wLast = getItemValue(group.code, true);
+            const wCurr = getItemValue(group.code, false);
+            const diff = wCurr - wLast;
+            if (diff > 0) totalPositiveWeight += diff;
+            else if (diff < 0) totalNegativeWeight += diff;
+        });
 
-        const diffAllWeight = totalCurrentAllWeight - totalLastYearAllWeight;
-        const ratioAllWeight = totalLastYearAllWeight > 0 ? (diffAllWeight / totalLastYearAllWeight) * 100 : 0;
+        (overview.goodsInCustoms || []).forEach(item => {
+            const wCurr = parseFloat(item.weight) || 0;
+            if (wCurr > 0) totalPositiveWeight += wCurr;
+            else if (wCurr < 0) totalNegativeWeight += wCurr;
+        });
+
+        (overview.purchasingGoods || []).forEach(item => {
+            const wCurr = parseFloat(item.weight) || 0;
+            if (wCurr > 0) totalPositiveWeight += wCurr;
+            else if (wCurr < 0) totalNegativeWeight += wCurr;
+        });
 
         const today = new Date();
         const option = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };

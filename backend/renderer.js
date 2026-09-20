@@ -2,6 +2,7 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { PDFDocument } from "pdf-lib";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2383,7 +2384,6 @@ export const generateSecretariatLetterPDF = async (
 
     if (isPdfLetterhead) {
       try {
-        const { PDFDocument } = await import("pdf-lib");
         const parts = effectivePdfLetterheadUrl.split("/uploads/");
         const fileName = parts[parts.length - 1].split("?")[0];
         const fullPath = path.join(process.cwd(), "uploads", fileName);
@@ -2399,7 +2399,14 @@ export const generateSecretariatLetterPDF = async (
           for (let i = 0; i < mainPdfDoc.getPageCount(); i++) {
             // Copy letterhead page as background (page 0 or corresponding page)
             const bgPageIndex = Math.min(i, letterheadPageCount - 1);
-            const [bgPage] = await finalPdfDoc.copyPages(letterheadDoc, [bgPageIndex]);
+            let bgPage;
+            try {
+              const pages = await finalPdfDoc.copyPages(letterheadDoc, [bgPageIndex]);
+              bgPage = pages[0];
+            } catch (err) {
+              console.error("Error during copyPages in PDF merge:", err);
+              throw err;
+            }
             finalPdfDoc.addPage(bgPage);
 
             // Embed the rendered text content (rendered with transparent background) on top
@@ -2418,7 +2425,7 @@ export const generateSecretariatLetterPDF = async (
           pdf = Buffer.from(await finalPdfDoc.save());
         }
       } catch (mergeErr) {
-        console.error("PDF Merge Error:", mergeErr);
+        console.error("PDF Merge Error:", mergeErr, mergeErr.stack);
       }
     }
 

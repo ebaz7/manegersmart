@@ -1768,20 +1768,43 @@ export interface SecretariatCompanySettings {
     factoryAccessTokens: string[];     // List of user IDs with access
     editAccessTokens?: string[];       // List of user IDs with edit access
     deleteAccessTokens?: string[];     // List of user IDs with delete access
-    letterheadUrl?: string;            // سربرگ
+    
+    // Auto-numbering Configuration
+    autoNumberingEnabled?: boolean;          // فعال/غیرفعال بودن شماره‌گذاری خودکار
+    numberingPrefixHeadquarters?: string;    // پیشوند شماره‌گذاری دفتر مرکزی (مثلا HQ یا د-م)
+    numberingPrefixFactory?: string;         // پیشوند شماره‌گذاری کارخانه (مثلا FAC یا ک-ت)
+    numberingFormat?: string;                // الگوی شماره‌گذاری (مثلا {PREFIX}-{YEAR}/{NUM})
+    numberingStartCounter?: number;          // شماره شروع شمارنده (مثلا ۱ یا ۱۰۰۱)
+    numberingPadLength?: number;             // طول ارقام با صفر (مثلا ۴ رقم: ۰۰۰۱)
+
+    // Letterhead Calibration & Margins (All in mm)
+    letterheadUrl?: string;            // تصویر سربرگ
     wordLetterheadUrl?: string;        // سربرگ اختصاصی فایل ورد
     pdfLetterheadUrl?: string;         // سربرگ اختصاصی فایل PDF
-    meetingMinutesTemplate?: string;   // قالب صورتجلسه
-    companyStampUrl?: string;          // تصویر مهر رسمی شرکت
-    companyStampSize?: number;         // اندازه مهر رسمی (پیکسل)
-    companyStampOpacity?: number;      // شفافیت مهر رسمی (درصد)
-    hideAutoFooter?: boolean;          // عدم نمایش خودکار پاورقی در صورت داشتن سربرگ
-    letterheadFontFamily?: string;     // نوع فونت بدنه نامه
+    marginTop?: number;                // حاشیه شروع متن از بالای سربرگ (میلی‌متر)
+    marginBottom?: number;             // حاشیه پایین صفحه (میلی‌متر)
+    marginLeft?: number;               // حاشیه سمت چپ صفحه (میلی‌متر)
+    marginRight?: number;              // حاشیه سمت راست صفحه (میلی‌متر)
+    
+    // Header Metadata Block Calibration (شماره، تاریخ، پیوست)
     metadataTop?: number;              // فاصله از بالای سربرگ (میلی‌متر)
     metadataLeft?: number;             // فاصله از چپ سربرگ (میلی‌متر)
     metadataFontSize?: number;         // اندازه قلم اطلاعات سربرگ (پیکسل)
     metadataOpacity?: number;          // میزان پررنگی اطلاعات سربرگ (درصد، از ۱۰ تا ۱۰۰)
     metadataFontWeight?: 'normal' | 'bold' | 'bolder' | 'black'; // میزان ضخامت متون سربرگ
+    metadataColor?: string;            // رنگ متن مشخصات سربرگ (کد رنگ)
+    metadataLineHeight?: number;       // فاصله بین خطوط مشخصات سربرگ (مثلا 1.8)
+    
+    // Stamp Settings
+    companyStampUrl?: string;          // تصویر مهر رسمی شرکت
+    companyStampSize?: number;         // اندازه مهر رسمی (پیکسل)
+    companyStampOpacity?: number;      // شفافیت مهر رسمی (درصد)
+    companyStampPosition?: 'bottom_left' | 'bottom_center' | 'bottom_right'; // جایگاه پیش‌فرض مهر
+    
+    // General Letter Styles & Templates
+    meetingMinutesTemplate?: string;   // قالب صورتجلسه
+    hideAutoFooter?: boolean;          // عدم نمایش خودکار پاورقی در صورت داشتن سربرگ
+    letterheadFontFamily?: string;     // نوع فونت بدنه نامه
 }
 
 export interface SecretariatTemplate {

@@ -49,6 +49,7 @@ const saveDb = dbManager.saveDb;
 const findNextGapNumber = utils.findNextGapNumber;
 const findNextMaxNumber = utils.findNextMaxNumber;
 const checkForDuplicate = utils.checkForDuplicate;
+const generateUUID = utils.generateUUID || (() => Date.now().toString(36) + Math.random().toString(36).substr(2));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -7384,6 +7385,9 @@ app.get('/search-everything', handleSearchEverything);
 // Helper to save base64 string to file in uploads and strip base64 from database record
 function saveBase64ToUploadFile(fileName, base64Str) {
     if (!base64Str) return null;
+    if (!fs.existsSync(UPLOADS_DIR)) {
+        try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch (_) {}
+    }
     let safeName = 'file';
     try {
         safeName = getSafeFileName(fileName || 'file');
@@ -7597,7 +7601,8 @@ app.post('/api/orders/:id/archive-attachments', async (req, res) => {
     try {
         const db = getDb();
         if (!db.orders) db.orders = [];
-        const idx = db.orders.findIndex(x => x.id === req.params.id);
+        const reqId = String(req.params.id);
+        const idx = db.orders.findIndex(x => String(x.id) === reqId || (x.trackingNumber && String(x.trackingNumber) === reqId));
         if (idx === -1) {
             return res.status(404).json({ error: 'دستور پرداخت یافت نشد' });
         }
@@ -7617,7 +7622,7 @@ app.post('/api/orders/:id/archive-attachments', async (req, res) => {
         }
 
         const newAttachment = {
-            id: generateUUID(),
+            id: generateUUID ? generateUUID() : Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
             fileName: fileName || 'پیوست بایگانی',
             name: fileName || 'پیوست بایگانی',
             url: finalUrl,
@@ -7647,14 +7652,16 @@ app.delete('/api/orders/:id/archive-attachments/:attachmentId', async (req, res)
     try {
         const db = getDb();
         if (!db.orders) db.orders = [];
-        const idx = db.orders.findIndex(x => x.id === req.params.id);
+        const reqId = String(req.params.id);
+        const idx = db.orders.findIndex(x => String(x.id) === reqId || (x.trackingNumber && String(x.trackingNumber) === reqId));
         if (idx === -1) {
             return res.status(404).json({ error: 'دستور پرداخت یافت نشد' });
         }
 
         const order = db.orders[idx];
+        const attId = String(req.params.attachmentId);
         if (Array.isArray(order.archiveAttachments)) {
-            order.archiveAttachments = order.archiveAttachments.filter(a => a.id !== req.params.attachmentId);
+            order.archiveAttachments = order.archiveAttachments.filter(a => String(a.id) !== attId);
         }
         saveDb(db);
 
@@ -8073,7 +8080,79 @@ app.post(['/api/purchase/send-rfq-message', '/api/api/purchase/send-rfq-message'
     }
 });
 
-// Dedicated Secretariat Letters Endpoints with Automated Notifications
+// Dedicated Secretariat Letters Endpoints with Automated Notifications & Numbering
+function generateNextSecretariatLetterNumber(db, companyId, section = 'headquarters', customYear) {
+    const settings = (db.secretariatSettings || []).find(s => s.companyId === companyId) || {};
+    let year = customYear;
+    if (!year) {
+        try {
+            const now = new Date();
+            const j = jalaali.toJalaali ? jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate()) : { jy: 1404 };
+            year = String(j.jy);
+        } catch (e) {
+            year = '1404';
+        }
+    }
+
+    const isHQ = section === 'headquarters';
+    const prefix = isHQ 
+        ? (settings.numberingPrefixHeadquarters || 'HQ') 
+        : (settings.numberingPrefixFactory || 'FAC');
+    const startCounter = Number(settings.numberingStartCounter) || 1;
+    const padLength = Number(settings.numberingPadLength) || 4;
+    const format = settings.numberingFormat || '{PREFIX}-{YEAR}/{NUM}';
+
+    // Count or find max sequence among existing letters for this company and section
+    const relevantLetters = (db.secretariatLetters || []).filter(l => {
+        if (l.companyId !== companyId) return false;
+        if (l.section && l.section !== section) return false;
+        return true;
+    });
+
+    let maxSeq = 0;
+    relevantLetters.forEach(l => {
+        if (!l.letterNumber) return;
+        const numMatches = l.letterNumber.match(/\d+/g);
+        if (numMatches && numMatches.length > 0) {
+            const lastNum = parseInt(numMatches[numMatches.length - 1], 10);
+            if (!isNaN(lastNum) && lastNum >= maxSeq && lastNum < 1000000) {
+                maxSeq = lastNum;
+            }
+        }
+    });
+
+    const nextSeq = Math.max(maxSeq + 1, startCounter, relevantLetters.length + 1);
+    const paddedNum = String(nextSeq).padStart(padLength, '0');
+
+    let formatted = format
+        .replace('{PREFIX}', prefix)
+        .replace('{YEAR}', year)
+        .replace('{NUM}', paddedNum)
+        .replace('{SECTION}', isHQ ? 'HQ' : 'FAC');
+
+    return {
+        nextNumber: formatted,
+        sequence: nextSeq,
+        prefix,
+        year
+    };
+}
+
+app.get('/api/secretariat/next-number', (req, res) => {
+    try {
+        const db = getDb();
+        const { companyId, section, year } = req.query;
+        if (!companyId) {
+            return res.status(400).json({ error: 'companyId is required' });
+        }
+        const result = generateNextSecretariatLetterNumber(db, String(companyId), String(section || 'headquarters'), year ? String(year) : undefined);
+        res.json(result);
+    } catch (e) {
+        console.error("GET /api/secretariat/next-number error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/secretariat-letters', (req, res) => {
     const db = getDb();
     res.json(db.secretariatLetters || []);
@@ -8085,6 +8164,12 @@ app.post('/api/secretariat-letters', async (req, res) => {
         if (!db.secretariatLetters) db.secretariatLetters = [];
         const item = req.body;
         if (!item.createdAt) item.createdAt = Date.now();
+
+        // Auto-assign letterNumber if missing or set to 'auto'
+        if (!item.letterNumber || item.letterNumber === 'auto' || String(item.letterNumber).trim() === '') {
+            const generated = generateNextSecretariatLetterNumber(db, item.companyId, item.section || 'headquarters');
+            item.letterNumber = generated.nextNumber;
+        }
 
         const existingIdx = db.secretariatLetters.findIndex(x => x.id === item.id);
         const isEdit = existingIdx > -1;

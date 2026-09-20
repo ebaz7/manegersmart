@@ -869,6 +869,16 @@ export const saveSecretariatSettings = async (settings: SecretariatCompanySettin
     return await apiCall<SecretariatCompanySettings[]>('/secretariat-settings', 'POST', settings);
 };
 
+export const getNextSecretariatLetterNumber = async (params: {
+    companyId: string;
+    section?: 'headquarters' | 'factory';
+    year?: string;
+}): Promise<{ nextNumber: string; sequence: number; prefix?: string; year?: string }> => {
+    return await apiCall<{ nextNumber: string; sequence: number; prefix?: string; year?: string }>(
+        `/secretariat/next-number?companyId=${params.companyId}&section=${params.section || 'headquarters'}${params.year ? `&year=${params.year}` : ''}`
+    );
+};
+
 // Secretariat Templates & Word Import APIs
 export const getSecretariatTemplates = async (): Promise<SecretariatTemplate[]> => {
     const res = await apiCall<SecretariatTemplate[]>('/secretariat-templates');

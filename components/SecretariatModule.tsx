@@ -137,6 +137,24 @@ import {
   Eye,
   Volume2,
   Sliders,
+  Shield,
+  BookOpen,
+  Stamp,
+  Move,
+  Ruler,
+  RefreshCw,
+  Hash,
+  Copy,
+  CheckSquare,
+  Square,
+  Users,
+  Layers,
+  LayoutTemplate,
+  HelpCircle,
+  Sparkles,
+  Filter,
+  CheckCheck,
+  XSquare,
 } from "lucide-react";
 
 import {
@@ -209,8 +227,13 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     "headquarters" | "factory" | null
   >(null);
   const [activeTab, setActiveTab] = useState<
-    "cartable" | "archive" | "settings"
+    "cartable" | "archive" | "templates" | "settings"
   >("cartable");
+  const [settingsSubTab, setSettingsSubTab] = useState<
+    "permissions" | "numbering" | "letterhead" | "stamp" | "word"
+  >("permissions");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState("all");
 
   // --- Search & Filters ---
   const [searchQuery, setSearchQuery] = useState("");
@@ -399,12 +422,33 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       companyId: "",
       headquartersAccessTokens: [],
       factoryAccessTokens: [],
+      editAccessTokens: [],
+      deleteAccessTokens: [],
       letterheadUrl: "",
+      wordLetterheadUrl: "",
+      letterheadFontFamily: "Vazirmatn",
       meetingMinutesTemplate: "",
       companyStampUrl: "",
-      metadataTop: undefined,
-      metadataLeft: undefined,
-      metadataFontSize: undefined,
+      companyStampSize: 120,
+      companyStampOpacity: 75,
+      companyStampPosition: "bottom_left",
+      marginTop: 40,
+      marginBottom: 25,
+      marginLeft: 20,
+      marginRight: 20,
+      metadataTop: 25,
+      metadataLeft: 20,
+      metadataFontSize: 11,
+      metadataColor: "#0f172a",
+      metadataFontWeight: "bold",
+      metadataLineHeight: 1.8,
+      autoNumberingEnabled: true,
+      numberingPrefixHeadquarters: "HQ",
+      numberingPrefixFactory: "FC",
+      numberingFormat: "{PREFIX}-{YEAR}/{NUM}",
+      numberingStartCounter: 1,
+      numberingPadLength: 4,
+      hideAutoFooter: false,
     });
   const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
   const letterheadInputRef = useRef<HTMLInputElement>(null);
@@ -456,14 +500,61 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         companyId: selectedCompany.id,
         headquartersAccessTokens: [],
         factoryAccessTokens: [],
+        editAccessTokens: [],
+        deleteAccessTokens: [],
         letterheadUrl: "",
+        wordLetterheadUrl: "",
+        letterheadFontFamily: "Vazirmatn",
         meetingMinutesTemplate: "",
         companyStampUrl: "",
-        metadataTop: undefined,
-        metadataLeft: undefined,
-        metadataFontSize: undefined,
+        companyStampSize: 120,
+        companyStampOpacity: 75,
+        companyStampPosition: "bottom_left",
+        marginTop: 40,
+        marginBottom: 25,
+        marginLeft: 20,
+        marginRight: 20,
+        metadataTop: 25,
+        metadataLeft: 20,
+        metadataFontSize: 11,
+        metadataColor: "#0f172a",
+        metadataFontWeight: "bold",
+        metadataLineHeight: 1.8,
+        autoNumberingEnabled: true,
+        numberingPrefixHeadquarters: "HQ",
+        numberingPrefixFactory: "FC",
+        numberingFormat: "{PREFIX}-{YEAR}/{NUM}",
+        numberingStartCounter: 1,
+        numberingPadLength: 4,
+        hideAutoFooter: false,
       };
-      setCompanySettingsForm(activeSettings);
+      setCompanySettingsForm({
+        ...activeSettings,
+        headquartersAccessTokens: activeSettings.headquartersAccessTokens || [],
+        factoryAccessTokens: activeSettings.factoryAccessTokens || [],
+        editAccessTokens: activeSettings.editAccessTokens || [],
+        deleteAccessTokens: activeSettings.deleteAccessTokens || [],
+        autoNumberingEnabled: activeSettings.autoNumberingEnabled ?? true,
+        numberingPrefixHeadquarters: activeSettings.numberingPrefixHeadquarters || "HQ",
+        numberingPrefixFactory: activeSettings.numberingPrefixFactory || "FC",
+        numberingFormat: activeSettings.numberingFormat || "{PREFIX}-{YEAR}/{NUM}",
+        numberingStartCounter: activeSettings.numberingStartCounter ?? 1,
+        numberingPadLength: activeSettings.numberingPadLength ?? 4,
+        marginTop: activeSettings.marginTop ?? 40,
+        marginBottom: activeSettings.marginBottom ?? 25,
+        marginLeft: activeSettings.marginLeft ?? 20,
+        marginRight: activeSettings.marginRight ?? 20,
+        metadataTop: activeSettings.metadataTop ?? 25,
+        metadataLeft: activeSettings.metadataLeft ?? 20,
+        metadataFontSize: activeSettings.metadataFontSize ?? 11,
+        metadataColor: activeSettings.metadataColor || "#0f172a",
+        metadataFontWeight: activeSettings.metadataFontWeight || "bold",
+        metadataLineHeight: activeSettings.metadataLineHeight ?? 1.8,
+        companyStampSize: activeSettings.companyStampSize ?? 120,
+        companyStampOpacity: activeSettings.companyStampOpacity ?? 75,
+        companyStampPosition: activeSettings.companyStampPosition || "bottom_left",
+        letterheadFontFamily: activeSettings.letterheadFontFamily || "Vazirmatn",
+      });
     }
   }, [selectedCompany, secSettings]);
 
@@ -577,20 +668,34 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     return true;
   });
 
-  // Calculate Sequential Auto-Letter Number
+  // Calculate Sequential Auto-Letter Number based on Company Settings
   const getNextLetterNumber = (
     company: Company,
     section: "headquarters" | "factory",
+    customSettings?: SecretariatCompanySettings,
   ) => {
-    const prefix = section === "headquarters" ? "HQ" : "FC";
-    // Match letters of this company & section to find latest sequence
+    const settings = customSettings || companySettingsForm;
+    const prefix =
+      section === "headquarters"
+        ? settings.numberingPrefixHeadquarters || "HQ"
+        : settings.numberingPrefixFactory || "FC";
+
     const matchedLetters = letters.filter(
       (l) => l.companyId === company.id && l.section === section,
     );
-    const count = matchedLetters.length + 1;
+    const startCounter = settings.numberingStartCounter ?? 1;
+    const count = matchedLetters.length + startCounter;
+    const padLen = settings.numberingPadLength ?? 4;
+    const seq = String(count).padStart(padLen, "0");
     const year = String(getCurrentShamsiDate().year);
-    const seq = String(count).padStart(4, "0");
-    return `${prefix}/${year}/${seq}`;
+
+    const format = settings.numberingFormat || "{PREFIX}-{YEAR}/{NUM}";
+    return format
+      .replace(/{PREFIX}/g, prefix)
+      .replace(/{YEAR}/g, year)
+      .replace(/{NUM}/g, seq)
+      .replace(/{SECTION}/g, section === "headquarters" ? "HQ" : "FC")
+      .replace(/{COMPANY_CODE}/g, company.nationalId ? company.nationalId.slice(-3) : "01");
   };
 
   const handleOpenNewLetterModal = () => {
@@ -1683,21 +1788,53 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       </div>
 
       {/* Tabs Row */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b pb-2">
-        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl self-start">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b dark:border-slate-800 pb-2">
+        <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800 p-1 rounded-xl self-start flex-wrap">
           <button
             onClick={() => setActiveTab("cartable")}
-            className={`flex items-center gap-1.5 text-xs font-black px-4 py-2 rounded-lg transition-all ${activeTab === "cartable" ? "bg-white text-purple-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            className={`flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-lg transition-all ${
+              activeTab === "cartable"
+                ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
           >
             <FileText size={15} /> کارتابل اداری
           </button>
 
           <button
             onClick={() => setActiveTab("archive")}
-            className={`flex items-center gap-1.5 text-xs font-black px-4 py-2 rounded-lg transition-all ${activeTab === "archive" ? "bg-white text-purple-700 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            className={`flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-lg transition-all ${
+              activeTab === "archive"
+                ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
           >
             <Archive size={15} /> آرشیو و بایگانی
           </button>
+
+          <button
+            onClick={() => setActiveTab("templates")}
+            className={`flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-lg transition-all ${
+              activeTab === "templates"
+                ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            <BookOpen size={15} /> قالب‌ها و نمونه‌نامه‌ها
+          </button>
+
+          {isSuperUser && (
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-lg transition-all ${
+                activeTab === "settings"
+                  ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-sm"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <Settings2 size={15} /> تنظیمات، دسترسی‌ها و سربرگ
+            </button>
+          )}
         </div>
 
         <button
@@ -1887,6 +2024,1278 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* B. TEMPLATES VIEW */}
+      {activeTab === "templates" && (
+        <div className="space-y-4 animate-fade-in" dir="rtl">
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border dark:border-slate-700 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="flex-1 relative">
+              <span className="absolute inset-y-0 right-3 flex items-center text-slate-400">
+                <Search size={16} />
+              </span>
+              <input
+                type="text"
+                value={templateSearchTerm}
+                onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                placeholder="جستجو در عناوین و متن قالب‌های نمونه نامه..."
+                className="w-full pl-4 pr-10 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-purple-500/20"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setEditingTemplate({
+                    id: generateUUID(),
+                    title: "",
+                    category: "اداری",
+                    content: "",
+                    createdAt: Date.now(),
+                  });
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Plus size={15} /> افزودن قالب نمونه نامه جدید
+              </button>
+            </div>
+          </div>
+
+          {/* Templates Grid */}
+          {templates.filter(
+            (t) =>
+              !templateSearchTerm ||
+              t.title.toLowerCase().includes(templateSearchTerm.toLowerCase()) ||
+              t.content.toLowerCase().includes(templateSearchTerm.toLowerCase()),
+          ).length === 0 ? (
+            <div className="glass-panel text-center py-16 px-4 rounded-2xl border border-dashed border-slate-200 bg-white dark:bg-slate-800/50">
+              <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <h3 className="font-bold text-slate-700 dark:text-slate-300 text-sm mb-1">
+                قالب نمونه نامه‌ای ثبت نشده است
+              </h3>
+              <p className="text-xs text-slate-400 mb-4">
+                شما می‌توانید قالب‌های استاندارد اداری، احکام و صورتجلسات را ایجاد کنید تا در هنگام نگارش نامه به سرعت بارگذاری شوند.
+              </p>
+              <button
+                onClick={() => {
+                  setEditingTemplate({
+                    id: generateUUID(),
+                    title: "",
+                    category: "اداری",
+                    content: "",
+                    createdAt: Date.now(),
+                  });
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs px-4 py-2 rounded-xl"
+              >
+                ایجاد اولین قالب
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templates
+                .filter(
+                  (t) =>
+                    !templateSearchTerm ||
+                    t.title.toLowerCase().includes(templateSearchTerm.toLowerCase()) ||
+                    t.content.toLowerCase().includes(templateSearchTerm.toLowerCase()),
+                )
+                .map((tmpl) => (
+                  <div
+                    key={tmpl.id}
+                    className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-2xl p-4 flex flex-col justify-between shadow-xs hover:shadow-md transition-all space-y-3"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between border-b dark:border-slate-700/80 pb-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-100 dark:border-purple-800">
+                          {tmpl.category || "عمومی"}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setEditingTemplate(tmpl)}
+                            className="p-1 text-slate-400 hover:text-purple-600 rounded transition-colors"
+                            title="ویرایش قالب"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTemplate(tmpl.id)}
+                            className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
+                            title="حذف قالب"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                        {tmpl.title}
+                      </h4>
+
+                      <div
+                        className="text-xs text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800"
+                        dangerouslySetInnerHTML={{
+                          __html: tmpl.content?.replace(/<[^>]*>?/gm, "") || "",
+                        }}
+                      />
+                    </div>
+
+                    <div className="border-t dark:border-slate-700/80 pt-3 flex justify-end">
+                      <button
+                        onClick={() => {
+                          resetForm();
+                          const currentDate = getCurrentShamsiDate();
+                          setNewLetterForm((prev) => ({
+                            ...prev,
+                            date: `${currentDate.year}/${String(currentDate.month).padStart(2, "0")}/${String(currentDate.day).padStart(2, "0")}`,
+                            subject: tmpl.title,
+                            content: tmpl.content,
+                          }));
+                          setShowNewLetterModal(true);
+                        }}
+                        className="w-full bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold py-2 rounded-xl transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <FileCheck size={14} /> استفاده در نگارش نامه جدید
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* C. SETTINGS & CALIBRATION VIEW */}
+      {activeTab === "settings" && isSuperUser && (
+        <div className="space-y-6 animate-fade-in" dir="rtl">
+          {/* Settings Sub-Tab Navigation Bar */}
+          <div className="bg-white dark:bg-slate-800 p-2 rounded-2xl border dark:border-slate-700 shadow-xs flex items-center gap-1.5 flex-wrap">
+            {[
+              { id: "permissions", label: "ماتریس دسترسی پرسنل", icon: Shield },
+              { id: "numbering", label: "شماره‌گذاری هوشمند خودکار", icon: Hash },
+              { id: "letterhead", label: "کالیبراسیون سربرگ و حاشیه‌ها", icon: Ruler },
+              { id: "stamp", label: "مهر رسمی شرکت و امضاها", icon: Stamp },
+              { id: "word", label: "قالب‌ها و سربرگ ورد", icon: LayoutTemplate },
+            ].map((st) => {
+              const IconComp = st.icon;
+              const isActive = settingsSubTab === st.id;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => setSettingsSubTab(st.id as any)}
+                  className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl transition-all ${
+                    isActive
+                      ? "bg-purple-600 text-white shadow-sm"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                  }`}
+                >
+                  <IconComp size={15} /> {st.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <form onSubmit={handleSaveSettings} className="space-y-6">
+            {/* 1. PERMISSIONS MATRIX */}
+            {settingsSubTab === "permissions" && (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-xs p-4 sm:p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b dark:border-slate-700/80 pb-4">
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                      <Shield className="text-purple-600" size={18} />
+                      ماتریس تفکیک دسترسی پرسنل دبیرخانه ({selectedCompany?.name})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      در این بخش مشخص کنید کدام پرسنل به بخش دفتر مرکزی یا کارخانه دسترسی داشته باشند و چه کسانی مجاز به ویرایش یا حذف نامه‌ها هستند.
+                    </p>
+                  </div>
+
+                  <div className="w-full sm:w-64 relative">
+                    <span className="absolute inset-y-0 right-3 flex items-center text-slate-400">
+                      <Search size={14} />
+                    </span>
+                    <input
+                      type="text"
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      placeholder="جستجوی نام پرسنل..."
+                      className="w-full pl-3 pr-8 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border dark:border-slate-700 rounded-lg focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Permissions Stats Ribbon */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-purple-50/60 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-800 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-purple-700 dark:text-purple-300">
+                        دسترسی دفتر مرکزی
+                      </div>
+                      <div className="text-lg font-black text-purple-900 dark:text-purple-100">
+                        {toPersianDigits(companySettingsForm.headquartersAccessTokens?.length || 0)} نفر
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = users.map((u) => u.id);
+                        const isAll = (companySettingsForm.headquartersAccessTokens || []).length === users.length;
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          headquartersAccessTokens: isAll ? [] : allIds,
+                        }));
+                      }}
+                      className="text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:underline"
+                    >
+                      {(companySettingsForm.headquartersAccessTokens || []).length === users.length ? "لغو همه" : "انتخاب همه"}
+                    </button>
+                  </div>
+
+                  <div className="bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                        دسترسی کارخانه
+                      </div>
+                      <div className="text-lg font-black text-indigo-900 dark:text-indigo-100">
+                        {toPersianDigits(companySettingsForm.factoryAccessTokens?.length || 0)} نفر
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = users.map((u) => u.id);
+                        const isAll = (companySettingsForm.factoryAccessTokens || []).length === users.length;
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          factoryAccessTokens: isAll ? [] : allIds,
+                        }));
+                      }}
+                      className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      {(companySettingsForm.factoryAccessTokens || []).length === users.length ? "لغو همه" : "انتخاب همه"}
+                    </button>
+                  </div>
+
+                  <div className="bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-800 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                        مجوز ویرایش نامه‌ها
+                      </div>
+                      <div className="text-lg font-black text-amber-900 dark:text-amber-100">
+                        {toPersianDigits(companySettingsForm.editAccessTokens?.length || 0)} نفر
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = users.map((u) => u.id);
+                        const isAll = (companySettingsForm.editAccessTokens || []).length === users.length;
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          editAccessTokens: isAll ? [] : allIds,
+                        }));
+                      }}
+                      className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline"
+                    >
+                      {(companySettingsForm.editAccessTokens || []).length === users.length ? "لغو همه" : "انتخاب همه"}
+                    </button>
+                  </div>
+
+                  <div className="bg-rose-50/60 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-800 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                        مجوز حذف نامه‌ها
+                      </div>
+                      <div className="text-lg font-black text-rose-900 dark:text-rose-100">
+                        {toPersianDigits(companySettingsForm.deleteAccessTokens?.length || 0)} نفر
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = users.map((u) => u.id);
+                        const isAll = (companySettingsForm.deleteAccessTokens || []).length === users.length;
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          deleteAccessTokens: isAll ? [] : allIds,
+                        }));
+                      }}
+                      className="text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:underline"
+                    >
+                      {(companySettingsForm.deleteAccessTokens || []).length === users.length ? "لغو همه" : "انتخاب همه"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Personnel Table */}
+                <div className="border dark:border-slate-700 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-900/80 border-b dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold">
+                        <tr>
+                          <th className="p-3 w-1/3">نام و سمت کاربر</th>
+                          <th className="p-3 text-center">دسترسی دفتر مرکزی</th>
+                          <th className="p-3 text-center">دسترسی کارخانه</th>
+                          <th className="p-3 text-center">مجوز ویرایش</th>
+                          <th className="p-3 text-center">مجوز حذف</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y dark:divide-slate-700">
+                        {users
+                          .filter(
+                            (u) =>
+                              !userSearchQuery ||
+                              u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                              u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                              u.role?.toLowerCase().includes(userSearchQuery.toLowerCase()),
+                          )
+                          .map((u) => {
+                            const hasHQ = companySettingsForm.headquartersAccessTokens?.includes(u.id);
+                            const hasFC = companySettingsForm.factoryAccessTokens?.includes(u.id);
+                            const hasEdit = companySettingsForm.editAccessTokens?.includes(u.id);
+                            const hasDel = companySettingsForm.deleteAccessTokens?.includes(u.id);
+
+                            return (
+                              <tr
+                                key={u.id}
+                                className="hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors"
+                              >
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center font-bold text-[11px] text-slate-700 dark:text-slate-200 shrink-0">
+                                      {u.fullName.charAt(0)}
+                                    </div>
+                                    <div>
+                                      <div className="font-bold text-slate-800 dark:text-white">
+                                        {u.fullName}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400">
+                                        {u.username} • {u.role || "کاربر"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* HQ Checkbox */}
+                                <td className="p-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = companySettingsForm.headquartersAccessTokens || [];
+                                      const next = hasHQ
+                                        ? current.filter((id) => id !== u.id)
+                                        : [...current, u.id];
+                                      setCompanySettingsForm((prev) => ({
+                                        ...prev,
+                                        headquartersAccessTokens: next,
+                                      }));
+                                    }}
+                                    className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition-all ${
+                                      hasHQ
+                                        ? "bg-purple-600 text-white shadow-xs"
+                                        : "bg-slate-100 dark:bg-slate-700 text-transparent border dark:border-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    <Check size={14} strokeWidth={3} />
+                                  </button>
+                                </td>
+
+                                {/* FC Checkbox */}
+                                <td className="p-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = companySettingsForm.factoryAccessTokens || [];
+                                      const next = hasFC
+                                        ? current.filter((id) => id !== u.id)
+                                        : [...current, u.id];
+                                      setCompanySettingsForm((prev) => ({
+                                        ...prev,
+                                        factoryAccessTokens: next,
+                                      }));
+                                    }}
+                                    className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition-all ${
+                                      hasFC
+                                        ? "bg-indigo-600 text-white shadow-xs"
+                                        : "bg-slate-100 dark:bg-slate-700 text-transparent border dark:border-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    <Check size={14} strokeWidth={3} />
+                                  </button>
+                                </td>
+
+                                {/* Edit Checkbox */}
+                                <td className="p-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = companySettingsForm.editAccessTokens || [];
+                                      const next = hasEdit
+                                        ? current.filter((id) => id !== u.id)
+                                        : [...current, u.id];
+                                      setCompanySettingsForm((prev) => ({
+                                        ...prev,
+                                        editAccessTokens: next,
+                                      }));
+                                    }}
+                                    className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition-all ${
+                                      hasEdit
+                                        ? "bg-amber-500 text-white shadow-xs"
+                                        : "bg-slate-100 dark:bg-slate-700 text-transparent border dark:border-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    <Check size={14} strokeWidth={3} />
+                                  </button>
+                                </td>
+
+                                {/* Delete Checkbox */}
+                                <td className="p-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = companySettingsForm.deleteAccessTokens || [];
+                                      const next = hasDel
+                                        ? current.filter((id) => id !== u.id)
+                                        : [...current, u.id];
+                                      setCompanySettingsForm((prev) => ({
+                                        ...prev,
+                                        deleteAccessTokens: next,
+                                      }));
+                                    }}
+                                    className={`w-7 h-7 rounded-lg inline-flex items-center justify-center transition-all ${
+                                      hasDel
+                                        ? "bg-rose-600 text-white shadow-xs"
+                                        : "bg-slate-100 dark:bg-slate-700 text-transparent border dark:border-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    <Check size={14} strokeWidth={3} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. AUTOMATED NUMBERING ENGINE */}
+            {settingsSubTab === "numbering" && (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-xs p-4 sm:p-6 space-y-6">
+                <div className="flex items-center justify-between border-b dark:border-slate-700/80 pb-4">
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                      <Hash className="text-purple-600" size={18} />
+                      سیستم شماره‌گذاری هوشمند خودکار نامه‌ها
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      فرمت و ساختار شماره‌گذاری نامه‌ها بر اساس بخش، سال شمسی و شمارنده متوالی تعریف می‌شود.
+                    </p>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={companySettingsForm.autoNumberingEnabled ?? true}
+                      onChange={(e) =>
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          autoNumberingEnabled: e.target.checked,
+                        }))
+                      }
+                      className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4"
+                    />
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      فعال‌سازی شماره‌گذاری خودکار
+                    </span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Settings Inputs */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        پیشوند دفتر مرکزی (Headquarters Prefix)
+                      </label>
+                      <input
+                        type="text"
+                        value={companySettingsForm.numberingPrefixHeadquarters || ""}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            numberingPrefixHeadquarters: e.target.value,
+                          }))
+                        }
+                        placeholder="مثال: HQ یا د-م"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        پیشوند کارخانه (Factory Prefix)
+                      </label>
+                      <input
+                        type="text"
+                        value={companySettingsForm.numberingPrefixFactory || ""}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            numberingPrefixFactory: e.target.value,
+                          }))
+                        }
+                        placeholder="مثال: FC یا ک-ت"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        الگوی ساختار شماره نامه (Numbering Pattern)
+                      </label>
+                      <input
+                        type="text"
+                        value={companySettingsForm.numberingFormat || ""}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            numberingFormat: e.target.value,
+                          }))
+                        }
+                        placeholder="{PREFIX}-{YEAR}/{NUM}"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs font-mono"
+                      />
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-slate-400">تگ‌های سریع:</span>
+                        {["{PREFIX}", "{YEAR}", "{NUM}", "{SECTION}", "{COMPANY_CODE}"].map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              const cur = companySettingsForm.numberingFormat || "";
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                numberingFormat: cur + tag,
+                              }));
+                            }}
+                            className="text-[10px] font-mono bg-slate-100 dark:bg-slate-700 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded border dark:border-slate-600 hover:bg-purple-50"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          شمارنده شروع
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={companySettingsForm.numberingStartCounter ?? 1}
+                          onChange={(e) =>
+                            setCompanySettingsForm((prev) => ({
+                              ...prev,
+                              numberingStartCounter: parseInt(e.target.value) || 1,
+                            }))
+                          }
+                          className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs font-mono text-center"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          طول رقم (صفر پرکننده)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="8"
+                          value={companySettingsForm.numberingPadLength ?? 4}
+                          onChange={(e) =>
+                            setCompanySettingsForm((prev) => ({
+                              ...prev,
+                              numberingPadLength: parseInt(e.target.value) || 4,
+                            }))
+                          }
+                          className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs font-mono text-center"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Numbering Preview Box */}
+                  <div className="bg-slate-50 dark:bg-slate-900/80 border dark:border-slate-700 rounded-2xl p-5 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
+                        <Sparkles size={15} className="text-amber-500" />
+                        پیش‌نمایش زنده شماره‌گذاری خودکار
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                        نمونه شماره‌های تولید شده با توجه به تنظیمات انتخابی شما به شرح زیر خواهند بود:
+                      </p>
+
+                      <div className="space-y-2.5 pt-2">
+                        <div className="p-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                            نامه دفتر مرکزی (HQ):
+                          </span>
+                          <span className="font-mono text-xs font-black text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-100 dark:border-purple-800">
+                            {getNextLetterNumber(selectedCompany, "headquarters", companySettingsForm)}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                            نامه کارخانه (Factory):
+                          </span>
+                          <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                            {getNextLetterNumber(selectedCompany, "factory", companySettingsForm)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5 font-bold">
+                      <CheckCircle size={14} /> شماره‌گذاری متوالی و یکتا به ازای هر شرکت تضمین می‌گردد.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. LETTERHEAD CALIBRATION & MARGIN VISUALIZER */}
+            {settingsSubTab === "letterhead" && (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-xs p-4 sm:p-6 space-y-6">
+                <div className="border-b dark:border-slate-700/80 pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                      <Ruler className="text-purple-600" size={18} />
+                      کالیبراسیون میلی‌متری سربرگ و فواصل چاپ و PDF
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      حاشیه‌های متن و موقعیت دقیق شماره/تاریخ را با پیش‌نمایش بلادرنگ تنظیم کنید تا در چاپ و خروجی PDF بدون کمترین خطا بنشیند.
+                    </p>
+                  </div>
+
+                  {/* Letterhead Upload Actions */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      ref={letterheadInputRef}
+                      onChange={handleLetterheadUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => letterheadInputRef.current?.click()}
+                      disabled={uploadingLetterhead}
+                      className="bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5"
+                    >
+                      {uploadingLetterhead ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Upload size={14} />
+                      )}
+                      آپلود تصویر سربرگ شرکت
+                    </button>
+
+                    {companySettingsForm.letterheadUrl && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            letterheadUrl: "",
+                          }))
+                        }
+                        className="text-red-500 hover:text-red-700 text-xs font-bold p-2 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl"
+                        title="حذف تصویر سربرگ"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Column: Interactive Live Preview Sheet (5 Cols) */}
+                  <div className="lg:col-span-5 bg-slate-100 dark:bg-slate-900/90 p-4 rounded-2xl border dark:border-slate-700 flex flex-col items-center justify-center space-y-3">
+                    <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                      <Eye size={13} /> شبیه‌ساز برگه چاپ A4 (مقیاس زنده)
+                    </div>
+
+                    {/* Miniature A4 Sheet (210 x 297 ratio) */}
+                    <div
+                      className="w-[260px] h-[368px] bg-white border border-slate-300 shadow-md relative overflow-hidden rounded text-right select-none"
+                      style={{
+                        fontFamily: companySettingsForm.letterheadFontFamily || "sans-serif",
+                      }}
+                    >
+                      {/* Letterhead Background if uploaded */}
+                      {companySettingsForm.letterheadUrl ? (
+                        <img
+                          src={companySettingsForm.letterheadUrl}
+                          className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                        />
+                      ) : (
+                        /* Default Minimal Corporate Header simulation */
+                        <div className="p-3 border-b border-slate-200 flex justify-between items-center text-[8px] text-slate-600 font-bold">
+                          <span>{selectedCompany.name}</span>
+                          <span className="text-[7px]">دبیرخانه مرکزی</span>
+                        </div>
+                      )}
+
+                      {/* Metadata Box Guide */}
+                      <div
+                        className="absolute border border-blue-400 bg-blue-50/70 p-1 rounded z-20"
+                        style={{
+                          top: `${((companySettingsForm.metadataTop ?? 25) / 297) * 100}%`,
+                          left: `${((companySettingsForm.metadataLeft ?? 20) / 210) * 100}%`,
+                          fontSize: `${Math.max(6, (companySettingsForm.metadataFontSize ?? 11) * 0.55)}px`,
+                          color: companySettingsForm.metadataColor || "#0f172a",
+                          fontWeight: companySettingsForm.metadataFontWeight || "bold",
+                          lineHeight: "1.2",
+                          transform: "translate(0, 0)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <div>شماره: ۱۴۰۴/۰۱</div>
+                        <div>تاریخ: ۱۴۰۴/۰۴/۰۶</div>
+                        <div>پیوست: ندارد</div>
+                      </div>
+
+                      {/* Body Content Simulation Area */}
+                      <div
+                        className="absolute border border-dashed border-red-300 bg-red-50/10 flex flex-col justify-between overflow-hidden"
+                        style={{
+                          top: `${((companySettingsForm.marginTop ?? 40) / 297) * 100}%`,
+                          bottom: `${((companySettingsForm.marginBottom ?? 25) / 297) * 100}%`,
+                          left: `${((companySettingsForm.marginLeft ?? 20) / 210) * 100}%`,
+                          right: `${((companySettingsForm.marginRight ?? 20) / 210) * 100}%`,
+                        }}
+                      >
+                        <div className="p-1 space-y-1 text-[7px] text-slate-600 leading-tight">
+                          <div className="font-bold">موضوع: نامه اداری</div>
+                          <div>با سلام و احترام،</div>
+                          <div className="text-justify text-slate-400 text-[6px]">
+                            متن نامه اداری دقیقا در این محدوده با رعایت حاشیه‌های سربرگ نمایش داده خواهد شد...
+                          </div>
+                        </div>
+
+                        {/* Stamp simulation */}
+                        {companySettingsForm.companyStampUrl && (
+                          <div
+                            className={`p-1 flex ${
+                              companySettingsForm.companyStampPosition === "bottom_left"
+                                ? "justify-start"
+                                : companySettingsForm.companyStampPosition === "bottom_center"
+                                  ? "justify-center"
+                                  : "justify-end"
+                            }`}
+                          >
+                            <img
+                              src={companySettingsForm.companyStampUrl}
+                              className="w-8 h-8 object-contain mix-blend-multiply"
+                              style={{
+                                opacity: (companySettingsForm.companyStampOpacity ?? 75) / 100,
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-slate-400 text-center">
+                      مستطیل قرمز = محدوده متن | کادر آبی = مشخصات نامه
+                    </div>
+                  </div>
+
+                  {/* Right Column: Calibration Controls (7 Cols) */}
+                  <div className="lg:col-span-7 space-y-5">
+                    {/* 1. Page Margins */}
+                    <div className="space-y-3 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border dark:border-slate-700">
+                      <h4 className="text-xs font-black text-slate-800 dark:text-white">
+                        حاشیه‌های متن نامه از لبه‌های برگه (میلی‌متر)
+                      </h4>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>حاشیه بالا (فاصله از سربرگ):</span>
+                            <span className="font-mono text-purple-600 font-black">
+                              {companySettingsForm.marginTop ?? 40} mm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="120"
+                            value={companySettingsForm.marginTop ?? 40}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                marginTop: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-purple-600"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>حاشیه پایین صفحه:</span>
+                            <span className="font-mono text-purple-600 font-black">
+                              {companySettingsForm.marginBottom ?? 25} mm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="70"
+                            value={companySettingsForm.marginBottom ?? 25}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                marginBottom: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-purple-600"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>حاشیه راست متن:</span>
+                            <span className="font-mono text-purple-600 font-black">
+                              {companySettingsForm.marginRight ?? 20} mm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="50"
+                            value={companySettingsForm.marginRight ?? 20}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                marginRight: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-purple-600"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>حاشیه چپ متن:</span>
+                            <span className="font-mono text-purple-600 font-black">
+                              {companySettingsForm.marginLeft ?? 20} mm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="50"
+                            value={companySettingsForm.marginLeft ?? 20}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                marginLeft: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-purple-600"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Metadata Block Coordinates & Typography */}
+                    <div className="space-y-3 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border dark:border-slate-700">
+                      <h4 className="text-xs font-black text-slate-800 dark:text-white">
+                        موقعیت و قلم مشخصات سربرگ (شماره، تاریخ، پیوست)
+                      </h4>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>فاصله از بالای سربرگ:</span>
+                            <span className="font-mono text-blue-600 font-black">
+                              {companySettingsForm.metadataTop ?? 25} mm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="80"
+                            value={companySettingsForm.metadataTop ?? 25}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                metadataTop: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-blue-600"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>فاصله از چپ سربرگ:</span>
+                            <span className="font-mono text-blue-600 font-black">
+                              {companySettingsForm.metadataLeft ?? 20} mm
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="80"
+                            value={companySettingsForm.metadataLeft ?? 20}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                metadataLeft: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-blue-600"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            <span>اندازه فونت مشخصات:</span>
+                            <span className="font-mono text-blue-600 font-black">
+                              {companySettingsForm.metadataFontSize ?? 11} px
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="8"
+                            max="18"
+                            value={companySettingsForm.metadataFontSize ?? 11}
+                            onChange={(e) =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                metadataFontSize: parseInt(e.target.value),
+                              }))
+                            }
+                            className="w-full accent-blue-600"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                            رنگ فونت مشخصات
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={companySettingsForm.metadataColor || "#0f172a"}
+                              onChange={(e) =>
+                                setCompanySettingsForm((prev) => ({
+                                  ...prev,
+                                  metadataColor: e.target.value,
+                                }))
+                              }
+                              className="w-8 h-8 rounded border dark:border-slate-700 cursor-pointer p-0.5"
+                            />
+                            <span className="text-xs font-mono">
+                              {companySettingsForm.metadataColor || "#0f172a"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 4. COMPANY STAMP & SIGNATURE CONFIGURATION */}
+            {settingsSubTab === "stamp" && (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-xs p-4 sm:p-6 space-y-6">
+                <div className="border-b dark:border-slate-700/80 pb-4">
+                  <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <Stamp className="text-purple-600" size={18} />
+                    تنظیمات مهر رسمی شرکت و جایگاه امضاها
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    تصویر مهر حقوقی شرکت را آپلود کرده و اندازه، شفافیت و جایگاه پیش‌فرض آن را تعیین کنید.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                  {/* Stamp Upload & Controls */}
+                  <div className="space-y-4">
+                    <div className="p-4 border dark:border-slate-700 rounded-xl space-y-3 bg-slate-50 dark:bg-slate-900/60">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        تصویر مهر رسمی شرکت (PNG بدون پس‌زمینه)
+                      </label>
+                      <input
+                        type="file"
+                        ref={stampInputRef}
+                        onChange={handleStampUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => stampInputRef.current?.click()}
+                          disabled={uploadingStamp}
+                          className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5"
+                        >
+                          {uploadingStamp ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Upload size={14} />
+                          )}
+                          انتخاب و آپلود تصویر مهر
+                        </button>
+                        {companySettingsForm.companyStampUrl && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCompanySettingsForm((prev) => ({
+                                ...prev,
+                                companyStampUrl: "",
+                              }))
+                            }
+                            className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-2 rounded-xl text-xs font-bold"
+                          >
+                            حذف مهر
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span>اندازه مهر در چاپ:</span>
+                        <span className="font-mono text-purple-600 font-black">
+                          {companySettingsForm.companyStampSize ?? 120} px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="60"
+                        max="220"
+                        value={companySettingsForm.companyStampSize ?? 120}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            companyStampSize: parseInt(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-purple-600"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span>شفافیت مهر (Opacity):</span>
+                        <span className="font-mono text-purple-600 font-black">
+                          {companySettingsForm.companyStampOpacity ?? 75}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="100"
+                        value={companySettingsForm.companyStampOpacity ?? 75}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            companyStampOpacity: parseInt(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-purple-600"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        جایگاه پیش‌فرض مهر در زیر نامه
+                      </label>
+                      <select
+                        value={companySettingsForm.companyStampPosition || "bottom_left"}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            companyStampPosition: e.target.value as any,
+                          }))
+                        }
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs"
+                      >
+                        <option value="bottom_left">پایین چپ (استاندارد اداری)</option>
+                        <option value="bottom_center">پایین وسط</option>
+                        <option value="bottom_right">پایین راست</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Stamp Live Preview */}
+                  <div className="bg-slate-50 dark:bg-slate-900/60 p-6 rounded-2xl border dark:border-slate-700 flex flex-col items-center justify-center space-y-3 min-h-[260px]">
+                    <div className="text-xs font-bold text-slate-500">پیش‌نمایش مهر رسمی</div>
+                    {companySettingsForm.companyStampUrl ? (
+                      <div className="p-4 bg-white dark:bg-slate-800 border rounded-2xl shadow-inner flex items-center justify-center">
+                        <img
+                          src={companySettingsForm.companyStampUrl}
+                          className="object-contain mix-blend-multiply"
+                          style={{
+                            height: `${companySettingsForm.companyStampSize ?? 120}px`,
+                            width: `${companySettingsForm.companyStampSize ?? 120}px`,
+                            opacity: (companySettingsForm.companyStampOpacity ?? 75) / 100,
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 text-center">
+                        هنوز تصویری برای مهر آپلود نشده است.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5. WORD & TEMPLATES SETTINGS */}
+            {settingsSubTab === "word" && (
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-xs p-4 sm:p-6 space-y-6">
+                <div className="border-b dark:border-slate-700/80 pb-4">
+                  <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <LayoutTemplate className="text-purple-600" size={18} />
+                    قالب‌ها، سربرگ فایل ورد و فونت پیش‌فرض
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    تنظیم سربرگ خروجی Word (.docx) و متن پیش‌فرض صورتجلسات اداری این شرکت.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        فونت پیش‌فرض متن نامه‌ها و چاپ
+                      </label>
+                      <select
+                        value={companySettingsForm.letterheadFontFamily || "Vazirmatn"}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            letterheadFontFamily: e.target.value,
+                          }))
+                        }
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs"
+                      >
+                        <option value="Vazirmatn">وزیرمتن (Vazirmatn - استاندارد رسمی)</option>
+                        <option value="Shabnam">شبنم (Shabnam)</option>
+                        <option value="Sahel">ساحل (Sahel)</option>
+                        <option value="Gandom">گندم (Gandom)</option>
+                        <option value="Estedad">استعداد (Estedad)</option>
+                        <option value="Samim">صمیم (Samim)</option>
+                        <option value="Tanha">تنها (Tanha)</option>
+                        <option value="Tahoma">تاهوما (Tahoma)</option>
+                        <option value="Arial">آریال (Arial)</option>
+                      </select>
+                    </div>
+
+                    <div className="p-4 border dark:border-slate-700 rounded-xl space-y-3 bg-slate-50 dark:bg-slate-900/60">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        فایل سربرگ اختصاصی خروجی ورد (.docx)
+                      </label>
+                      <input
+                        type="file"
+                        ref={wordLetterheadInputRef}
+                        onChange={handleWordLetterheadUpload}
+                        accept=".docx"
+                        className="hidden"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => wordLetterheadInputRef.current?.click()}
+                          disabled={uploadingWordLetterhead}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5"
+                        >
+                          {uploadingWordLetterhead ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Upload size={14} />
+                          )}
+                          آپلود فایل سربرگ Word (.docx)
+                        </button>
+                        {companySettingsForm.wordLetterheadUrl && (
+                          <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
+                            <CheckCircle size={13} /> فایل فعال است
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer pt-2">
+                      <input
+                        type="checkbox"
+                        checked={companySettingsForm.hideAutoFooter || false}
+                        onChange={(e) =>
+                          setCompanySettingsForm((prev) => ({
+                            ...prev,
+                            hideAutoFooter: e.target.checked,
+                          }))
+                        }
+                        className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4"
+                      />
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                        عدم درج خودکار آدرس و شماره ثبت در پاورقی (هنگام استفاده از سربرگ کامل)
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      قالب متن پیش‌فرض صورتجلسات این شرکت
+                    </label>
+                    <textarea
+                      rows={8}
+                      value={companySettingsForm.meetingMinutesTemplate || ""}
+                      onChange={(e) =>
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          meetingMinutesTemplate: e.target.value,
+                        }))
+                      }
+                      placeholder="متن ساختار استاندارد صورتجلسات هیئت مدیره یا جلسات داخلی..."
+                      className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl p-3 text-xs leading-relaxed"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STICKY SAVE BAR */}
+            <div className="sticky bottom-4 z-30 bg-slate-900/90 text-white p-3 sm:p-4 rounded-2xl shadow-xl backdrop-blur-md flex items-center justify-between gap-4 border border-slate-700">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>تنظیمات برای <b>{selectedCompany?.name}</b> ذخیره خواهد شد.</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm flex items-center gap-1.5 transition-all"
+                >
+                  <Save size={16} /> ذخیره کلیه تنظیمات، دسترسی‌ها و کالیبراسیون
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 
@@ -3944,8 +5353,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       top: `${companySettingsForm.metadataTop ?? 25}mm`,
                       left: `${companySettingsForm.metadataLeft ?? 20}mm`,
                       fontSize: `${companySettingsForm.metadataFontSize ?? 11}px`,
+                      color: companySettingsForm.metadataColor || "#0f172a",
                       lineHeight: "1.8",
-                      fontWeight: "bold",
+                      fontWeight: companySettingsForm.metadataFontWeight || "bold",
                       textAlign: "right",
                       direction: "rtl",
                       zIndex: 50,
@@ -4059,10 +5469,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                 {/* Letter Body Context */}
                 <div
-                  className={`space-y-4 text-sm leading-loose text-slate-800 px-12 relative z-10 
-                   ${companySettingsForm.letterheadUrl ? "pt-40" : "pt-4"}
-                   ${isPrintMode.paperSize === "A5" ? "min-h-[250px]" : "min-h-[450px]"}
-                `}
+                  className="space-y-4 text-sm leading-loose text-slate-800 relative z-10"
+                  style={{
+                    paddingTop: companySettingsForm.letterheadUrl
+                      ? `${companySettingsForm.marginTop ?? 40}mm`
+                      : "12px",
+                    paddingBottom: `${companySettingsForm.marginBottom ?? 25}mm`,
+                    paddingRight: `${companySettingsForm.marginRight ?? 20}mm`,
+                    paddingLeft: `${companySettingsForm.marginLeft ?? 20}mm`,
+                    minHeight: isPrintMode.paperSize === "A5" ? "250px" : "450px",
+                  }}
                 >
                   {/* Salutations */}
                   {(!isPrintMode.hideSubjectInLetter ||

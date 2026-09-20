@@ -8274,6 +8274,62 @@ app.delete('/api/secretariat-letters/:id', (req, res) => {
     }
 });
 
+// Helper to safely resolve Secretariat Company Settings from DB
+const resolveSecretariatCompanySettings = (db, companyId) => {
+    const allSecSettings = db.secretariatCompanySettings || {};
+    if (companyId && allSecSettings[companyId]) {
+        return allSecSettings[companyId];
+    }
+    if (Array.isArray(db.secretariatSettings)) {
+        if (companyId) {
+            const found = db.secretariatSettings.find(s => String(s.companyId) === String(companyId))
+                || db.secretariatSettings.find(s => s.companyId == companyId);
+            if (found) return found;
+        }
+        return db.secretariatSettings[0] || {};
+    }
+    if (db.secretariatSettings && typeof db.secretariatSettings === 'object' && !Array.isArray(db.secretariatSettings)) {
+        return db.secretariatSettings[companyId] || db.secretariatSettings;
+    }
+    return {};
+};
+
+// Dynamic PDF Letterhead page preview (renders first page as high-res PNG for browsers)
+app.get('/api/secretariat/pdf-preview', async (req, res) => {
+    try {
+        const fileUrl = req.query.url;
+        if (!fileUrl || typeof fileUrl !== 'string') {
+            return res.status(400).send('Missing url parameter');
+        }
+        const parts = fileUrl.split('/uploads/');
+        const fileName = parts[parts.length - 1].split('?')[0];
+        const safeName = path.basename(fileName);
+        const fullPdfPath = path.join(process.cwd(), 'uploads', safeName);
+
+        if (!fs.existsSync(fullPdfPath)) {
+            return res.status(404).send('PDF file not found');
+        }
+
+        const previewFileName = `preview_${safeName.replace(/\.pdf$/i, '')}.png`;
+        const previewFullPath = path.join(process.cwd(), 'uploads', previewFileName);
+
+        if (fs.existsSync(previewFullPath)) {
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.sendFile(previewFullPath);
+        }
+
+        await Renderer.renderPdfPreviewImage(fullPdfPath, previewFullPath);
+
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.sendFile(previewFullPath);
+    } catch (err) {
+        console.error("PDF Preview generation error:", err);
+        res.status(500).send('Error generating PDF preview');
+    }
+});
+
 // Download Secretariat Letter as Vector PDF (high-resolution print with optional PDF letterhead)
 app.get('/api/secretariat/letters/:id/pdf', async (req, res) => {
     try {
@@ -8284,8 +8340,7 @@ app.get('/api/secretariat/letters/:id/pdf', async (req, res) => {
         }
         const company = (db.companies || []).find(c => c.id === letter.companyId) || (db.settings?.companies || []).find(c => c.id === letter.companyId);
         const companyName = company ? company.name : '';
-        const allSecSettings = db.secretariatCompanySettings || {};
-        const companySettings = allSecSettings[letter.companyId] || (Array.isArray(db.secretariatSettings) ? db.secretariatSettings.find(s => s.companyId === letter.companyId) : db.secretariatSettings) || {};
+        const companySettings = resolveSecretariatCompanySettings(db, letter.companyId);
         const noLetterhead = req.query.noLetterhead === 'true';
 
         const pdfBuffer = await Renderer.generateSecretariatLetterPDF(
@@ -8297,8 +8352,10 @@ app.get('/api/secretariat/letters/:id/pdf', async (req, res) => {
         );
 
         res.setHeader('Content-Type', 'application/pdf');
-        const filename = encodeURIComponent(`Letter_${String(letter.letterNumber || letter.id).replace(/[\/\\]/g, '_')}.pdf`);
-        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        const safeNum = String(letter.letterNumber || letter.id).replace(/[\/\\]/g, '_');
+        const asciiFilename = `Letter_${safeNum}.pdf`;
+        const encodedFilename = encodeURIComponent(`Letter_${safeNum}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
         res.send(pdfBuffer);
     } catch (e) {
         console.error("GET /api/secretariat/letters/:id/pdf error:", e);
@@ -8316,8 +8373,7 @@ app.get('/api/secretariat/letters/:id/docx', async (req, res) => {
         }
         const company = (db.companies || []).find(c => c.id === letter.companyId) || (db.settings?.companies || []).find(c => c.id === letter.companyId);
         const companyName = company ? company.name : '';
-        const allSecSettings = db.secretariatCompanySettings || {};
-        const companySettings = allSecSettings[letter.companyId] || (Array.isArray(db.secretariatSettings) ? db.secretariatSettings.find(s => s.companyId === letter.companyId) : db.secretariatSettings) || {};
+        const companySettings = resolveSecretariatCompanySettings(db, letter.companyId);
         const noLetterhead = req.query.noLetterhead === 'true';
 
         const docBuffer = await Renderer.generateSecretariatLetterDoc(
@@ -8329,13 +8385,20 @@ app.get('/api/secretariat/letters/:id/docx', async (req, res) => {
         );
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        const filename = encodeURIComponent(`Letter_${String(letter.letterNumber || letter.id).replace(/[\/\\]/g, '_')}.docx`);
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        const safeNum = String(letter.letterNumber || letter.id).replace(/[\/\\]/g, '_');
+        const asciiFilename = `Letter_${safeNum}.docx`;
+        const encodedFilename = encodeURIComponent(`Letter_${safeNum}.docx`);
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
         res.send(docBuffer);
     } catch (e) {
         console.error("GET /api/secretariat/letters/:id/docx error:", e);
         res.status(500).json({ error: e.message });
     }
+});
+
+// Alias for word download
+app.get('/api/secretariat/letters/:id/word', (req, res) => {
+    res.redirect(307, `/api/secretariat/letters/${req.params.id}/docx${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`);
 });
 
 // Dedicated Exit Permits Endpoints with Automated Notifications

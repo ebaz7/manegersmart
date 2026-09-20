@@ -2403,7 +2403,7 @@ export const generateSecretariatLetterPDF = async (
             finalPdfDoc.addPage(bgPage);
 
             // Embed the rendered text content (rendered with transparent background) on top
-            const [contentPage] = await finalPdfDoc.embedPdf(pdf, [i]);
+            const [contentPage] = await finalPdfDoc.embedPdf(mainPdfDoc, [i]);
             const currentPage = finalPdfDoc.getPage(i);
             const { width, height } = currentPage.getSize();
 
@@ -2436,7 +2436,7 @@ export const generateSecretariatLetterDoc = async (
   company,
   noLetterhead = false,
 ) => {
-  // If a custom Word template (.docx) is uploaded, render using Docxtemplater
+  // If a custom Word template (.docx) is uploaded, render using Docxtemplater or OpenXML injection
   if (!noLetterhead && companySettings?.wordLetterheadUrl) {
     try {
       const parts = companySettings.wordLetterheadUrl.split("/uploads/");
@@ -2448,10 +2448,7 @@ export const generateSecretariatLetterDoc = async (
         const Docxtemplater = (await import("docxtemplater")).default;
         const contentBytes = fs.readFileSync(fullPath, "binary");
         const zip = new PizZip(contentBytes);
-        const doc = new Docxtemplater(zip, {
-          paragraphLoop: true,
-          linebreaks: true,
-        });
+        let docXml = zip.file("word/document.xml") ? zip.file("word/document.xml").asText() : "";
 
         const cleanContent = (letter.content || "")
           .replace(/<br\s*\/?>/gi, "\n")
@@ -2459,19 +2456,126 @@ export const generateSecretariatLetterDoc = async (
           .replace(/<[^>]+>/g, "")
           .trim();
 
-        doc.render({
-          letterNumber: letter.letterNumber || "",
-          date: letter.date || "",
-          attachments: letter.attachments?.length ? "دارد" : "ندارد",
-          section: letter.section === "headquarters" ? "دفتر مرکزی" : "کارخانه",
-          companyName: companyName || "",
-          receiver: letter.receiver || "",
-          sender: letter.sender || "",
-          subject: letter.subject || "",
-          content: cleanContent,
-        });
+        // Check if there are content-level tags in the template
+        const hasContentTag = /\{(content|متن|متن_نامه|body|letterContent)\}/i.test(docXml);
 
-        return doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+        const templateData = {
+          letterNumber: letter.letterNumber || "",
+          شماره: letter.letterNumber || "",
+          شماره_نامه: letter.letterNumber || "",
+          date: letter.date || "",
+          تاریخ: letter.date || "",
+          attachments: letter.attachments?.length ? "دارد" : "ندارد",
+          پیوست: letter.attachments?.length ? "دارد" : "ندارد",
+          section: letter.section === "headquarters" ? "دفتر مرکزی" : "کارخانه",
+          بخش: letter.section === "headquarters" ? "دفتر مرکزی" : "کارخانه",
+          companyName: companyName || "",
+          نام_شرکت: companyName || "",
+          receiver: letter.receiver || "",
+          گیرنده: letter.receiver || "",
+          به: letter.receiver || "",
+          sender: letter.sender || "",
+          فرستنده: letter.sender || "",
+          از: letter.sender || "",
+          subject: letter.subject || "",
+          موضوع: letter.subject || "",
+          content: cleanContent,
+          متن: cleanContent,
+          متن_نامه: cleanContent,
+        };
+
+        if (hasContentTag) {
+          // Standard Docxtemplater flow when template explicitly specifies where content belongs
+          const doc = new Docxtemplater(zip, {
+            paragraphLoop: true,
+            linebreaks: true,
+            nullGetter: () => "",
+          });
+          doc.render(templateData);
+          return doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+        } else {
+          // The template is a raw letterhead (header/footer with no {content} placeholder)
+          // First, run docxtemplater if any other tags exist (e.g. {date}, {letterNumber})
+          try {
+            const doc = new Docxtemplater(zip, {
+              paragraphLoop: true,
+              linebreaks: true,
+              nullGetter: () => "",
+            });
+            doc.render(templateData);
+            docXml = zip.file("word/document.xml").asText();
+          } catch (tErr) {
+            // Ignore template render errors if tags aren't standard
+          }
+
+          // Build complete Persian formatted letter paragraphs in OpenXML
+          const escapeXml = (unsafe) => {
+            return String(unsafe || "").replace(/[<>&'"]/g, (c) => {
+              switch (c) {
+                case "<": return "&lt;";
+                case ">": return "&gt;";
+                case "&": return "&amp;";
+                case "'": return "&apos;";
+                case '"': return "&quot;";
+                default: return c;
+              }
+            });
+          };
+
+          const createRtlP = (text, isBold = false, fontSize = 26, align = "both", spaceAfter = 160) => {
+            const bold = isBold ? "<w:b/><w:bCs/>" : "";
+            return `<w:p><w:pPr><w:bidi/><w:jc w:val="${align}"/><w:spacing w:line="360" w:lineRule="auto" w:after="${spaceAfter}"/><w:rPr><w:rFonts w:ascii="B Nazanin" w:hAnsi="B Nazanin" w:cs="B Nazanin"/>${bold}<w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/><w:rtl/></w:rPr></w:pPr><w:r><w:rPr><w:rFonts w:ascii="B Nazanin" w:hAnsi="B Nazanin" w:cs="B Nazanin"/>${bold}<w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/><w:rtl/></w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+          };
+
+          const pList = [];
+
+          // If letterNumber wasn't already in document XML
+          if (!docXml.includes(letter.letterNumber || "NON_EXISTENT_STRING")) {
+            pList.push(createRtlP(`شماره: ${letter.letterNumber || "---"}   |   تاریخ: ${letter.date || "---"}   |   پیوست: ${letter.attachments?.length ? "دارد" : "ندارد"}`, false, 22, "left", 240));
+          }
+
+          if (letter.receiver) {
+            pList.push(createRtlP(`به: ${letter.receiver}`, true, 26, "right", 100));
+          }
+          if (letter.sender) {
+            pList.push(createRtlP(`از: ${letter.sender}`, false, 24, "right", 140));
+          }
+          if (letter.subject && !letter.hideSubjectInLetter) {
+            pList.push(createRtlP(`موضوع: ${letter.subject}`, true, 26, "right", 200));
+          }
+          if (!letter.hideSalutationInLetter) {
+            pList.push(createRtlP("با سلام و احترام،", true, 26, "right", 200));
+          }
+
+          // Body paragraphs
+          const rawParagraphs = cleanContent.split(/\n+/);
+          for (const rawP of rawParagraphs) {
+            const trimmed = rawP.trim();
+            if (trimmed) {
+              pList.push(createRtlP(trimmed, false, 26, "both", 180));
+            }
+          }
+
+          // Signers block
+          if (letter.signers && letter.signers.length > 0) {
+            pList.push(createRtlP("با تشکر و تجدید احترام", true, 24, "left", 120));
+            for (const s of letter.signers) {
+              pList.push(createRtlP(`${s.name || ""}${s.title ? ` (${s.title})` : ""}`, true, 24, "left", 80));
+            }
+          }
+
+          const injectedContent = pList.join("");
+          const sectPrIdx = docXml.lastIndexOf("<w:sectPr");
+          let updatedXml;
+          if (sectPrIdx !== -1) {
+            updatedXml = docXml.substring(0, sectPrIdx) + injectedContent + docXml.substring(sectPrIdx);
+          } else {
+            updatedXml = docXml.replace("</w:body>", injectedContent + "</w:body>");
+          }
+
+          zip.file("word/document.xml", updatedXml);
+          return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+        }
       }
     } catch (docxErr) {
       console.error("Word template render error, falling back to html-to-docx:", docxErr);
@@ -2484,13 +2588,31 @@ export const generateSecretariatLetterDoc = async (
 
   let letterheadHtml = "";
   if (!noLetterhead) {
+    let effectiveImgUrl = "";
     if (
       companySettings?.letterheadUrl &&
       !companySettings.letterheadUrl.toLowerCase().endsWith(".pdf")
     ) {
+      effectiveImgUrl = companySettings.letterheadUrl;
+    } else {
+      const pdfUrl = companySettings?.pdfLetterheadUrl || (companySettings?.letterheadUrl?.toLowerCase().endsWith(".pdf") ? companySettings.letterheadUrl : "");
+      if (pdfUrl) {
+        const parts = pdfUrl.split("/uploads/");
+        const basePdfName = parts[parts.length - 1].split("?")[0];
+        const previewName = `preview_${basePdfName.replace(/\.pdf$/i, "")}.png`;
+        const previewPath = path.join(process.cwd(), "uploads", previewName);
+        if (fs.existsSync(previewPath)) {
+          effectiveImgUrl = `/uploads/${previewName}`;
+        } else {
+          effectiveImgUrl = `/api/secretariat/pdf-preview?url=${encodeURIComponent(pdfUrl)}`;
+        }
+      }
+    }
+
+    if (effectiveImgUrl) {
       letterheadHtml = `
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="${makeAbsolute(companySettings.letterheadUrl)}" style="width: 100%; object-fit: contain;" />
+                    <img src="${makeAbsolute(effectiveImgUrl)}" style="width: 100%; object-fit: contain;" />
                 </div>
                 <table style="width: 100%; margin-bottom: 25px; border-bottom: 1px solid #ddd; padding-bottom: 10px; font-size: 11pt; font-family: '${fontFamily}', 'Tahoma', sans-serif; direction: rtl;">
                     <tr>
@@ -3807,6 +3929,22 @@ export const generateSayanAiReportPDF = async (reportData = {}) => {
       } catch (err) {
         // ignore
       }
+    }
+  }
+};
+
+export const renderPdfPreviewImage = async (pdfFullPath, previewFullPath) => {
+  const browserInstance = await getBrowser();
+  const page = await browserInstance.newPage();
+  try {
+    await page.setViewport({ width: 1240, height: 1754, deviceScaleFactor: 1 });
+    await page.goto(`file://${pdfFullPath}`, { waitUntil: "networkidle0" });
+    await page.screenshot({ path: previewFullPath, type: "png" });
+  } finally {
+    try {
+      await page.close();
+    } catch (e) {
+      // ignore
     }
   }
 };

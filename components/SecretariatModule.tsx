@@ -204,6 +204,18 @@ const toPersianDigits = (str: string | number | undefined | null): string => {
   return result;
 };
 
+const getEffectiveLetterheadDisplayUrl = (settings?: SecretariatCompanySettings | null) => {
+  if (!settings) return "";
+  if (settings.letterheadUrl && !settings.letterheadUrl.toLowerCase().endsWith(".pdf")) {
+    return settings.letterheadUrl;
+  }
+  const pdfUrl = settings.pdfLetterheadUrl || (settings.letterheadUrl?.toLowerCase().endsWith(".pdf") ? settings.letterheadUrl : "");
+  if (pdfUrl) {
+    return `/api/secretariat/pdf-preview?url=${encodeURIComponent(pdfUrl)}`;
+  }
+  return "";
+};
+
 interface SecretariatModuleProps {
   currentUser: User;
 }
@@ -1160,15 +1172,17 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       const base64 = ev.target?.result as string;
       try {
         const res = await uploadFile(file.name, base64);
+        const previewUrl = `/api/secretariat/pdf-preview?url=${encodeURIComponent(res.url)}`;
         const updatedForm: SecretariatCompanySettings = {
           ...companySettingsForm,
           companyId: selectedCompany.id,
           pdfLetterheadUrl: res.url,
+          letterheadUrl: companySettingsForm.letterheadUrl && !companySettingsForm.letterheadUrl.toLowerCase().endsWith(".pdf") ? companySettingsForm.letterheadUrl : previewUrl,
         };
         setCompanySettingsForm(updatedForm);
         const updatedSettings = await saveSecretariatSettings(updatedForm);
         setSecSettings(updatedSettings);
-        alert("فایل سربرگ برداری PDF با موفقیت بارگذاری شد. از این پس خروجی‌های PDF با حداکثر کیفیت برداری چاپ (۳۰۰ DPI) تولید می‌شوند.");
+        alert("فایل سربرگ برداری PDF با موفقیت بارگذاری و ذخیره شد. از این پس خروجی‌های PDF با حداکثر کیفیت برداری چاپ (۳۰۰ DPI) تولید می‌شوند.");
       } catch (err) {
         console.error("Error uploading PDF letterhead:", err);
         alert("خطا در آپلود و ذخیره سربرگ برداری PDF");
@@ -1248,11 +1262,15 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       const base64 = ev.target?.result as string;
       try {
         const res = await uploadFile(file.name, base64);
-        setCompanySettingsForm((prev) => ({
-          ...prev,
+        const updatedForm: SecretariatCompanySettings = {
+          ...companySettingsForm,
+          companyId: selectedCompany.id,
           wordLetterheadUrl: res.url,
-        }));
-        alert("فایل سربرگ ورد (.docx) با موفقیت بارگذاری شد.");
+        };
+        setCompanySettingsForm(updatedForm);
+        const updatedSettings = await saveSecretariatSettings(updatedForm);
+        setSecSettings(updatedSettings);
+        alert("فایل سربرگ ورد (.docx) با موفقیت بارگذاری و ذخیره شد.");
       } catch (err) {
         console.error(err);
         alert("خطا در آپلود فایل سربرگ ورد");
@@ -3012,9 +3030,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       title="برای انتقال مشخصات، روی هر نقطه از سربرگ کلیک کنید"
                     >
                       {/* Letterhead Background if uploaded */}
-                      {companySettingsForm.letterheadUrl ? (
+                      {getEffectiveLetterheadDisplayUrl(companySettingsForm) ? (
                         <img
-                          src={companySettingsForm.letterheadUrl}
+                          src={getEffectiveLetterheadDisplayUrl(companySettingsForm)}
                           className="absolute inset-0 w-full h-full object-fill pointer-events-none"
                         />
                       ) : (
@@ -3893,9 +3911,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                               <hr className="my-1 border-slate-100 dark:border-slate-700" />
                               <a
                                 href={`/api/secretariat/letters/${editingLetterId}/pdf`}
+                                download={`Letter_${editingLetterId}.pdf`}
                                 className="w-full text-right px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between text-rose-600 font-bold"
-                                target="_blank"
-                                rel="noreferrer"
                                 onClick={() => setActiveMenu(null)}
                               >
                                 <span>دانلود خروجی PDF</span>
@@ -3918,10 +3935,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                 <MessageSquare size={12} className="text-emerald-500" />
                               </button>
                               <a
-                                href={`/api/secretariat/letters/${editingLetterId}/word`}
+                                href={`/api/secretariat/letters/${editingLetterId}/docx`}
+                                download={`Letter_${editingLetterId}.docx`}
                                 className="w-full text-right px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between text-indigo-600 font-bold"
-                                target="_blank"
-                                rel="noreferrer"
                                 onClick={() => setActiveMenu(null)}
                               >
                                 <span>دانلود خروجی Word</span>
@@ -5150,16 +5166,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                           }}
                         >
                           {/* Background Letterhead if uploaded */}
-                          {viewCompanySettings.letterheadUrl && (
+                          {getEffectiveLetterheadDisplayUrl(viewCompanySettings) && (
                             <img
-                              src={viewCompanySettings.letterheadUrl}
+                              src={getEffectiveLetterheadDisplayUrl(viewCompanySettings)}
                               alt="سربرگ شرکت"
                               className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0 select-none"
                             />
                           )}
 
                           {/* Top-left metadata block for letterhead */}
-                          {viewCompanySettings.letterheadUrl ? (
+                          {getEffectiveLetterheadDisplayUrl(viewCompanySettings) ? (
                             <div
                               style={{
                                 position: "absolute",
@@ -5753,8 +5769,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     <a
                       href={`/api/secretariat/letters/${isPrintMode.id}/pdf`}
-                      target="_blank"
-                      rel="noreferrer"
+                      download={`Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.pdf`}
                       className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="دانلود و چاپ مستقیم فایل PDF با سربرگ برداری با کیفیت فوق‌العاده ۳۰۰ DPI"
                     >
@@ -5763,8 +5778,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     <a
                       href={`/api/secretariat/letters/${isPrintMode.id}/docx`}
-                      target="_blank"
-                      rel="noreferrer"
+                      download={`Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.docx`}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="دانلود فایل رسمی Word بر اساس قالب سربرگ ورد"
                     >
@@ -5854,9 +5868,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     )}
 
                     {/* Custom Image Letterhead Background or Corporate Header */}
-                    {printSettings.letterheadUrl ? (
+                    {getEffectiveLetterheadDisplayUrl(printSettings) ? (
                       <img
-                        src={printSettings.letterheadUrl}
+                        src={getEffectiveLetterheadDisplayUrl(printSettings)}
                         alt="سربرگ رسمی"
                         className="absolute inset-0 w-full h-full object-fill opacity-100 z-0 pointer-events-none select-none"
                       />

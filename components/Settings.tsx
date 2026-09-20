@@ -1843,9 +1843,11 @@ const Settings: React.FC<SettingsProps> = ({
     reader.onload = async (ev) => {
       try {
         const result = await uploadFile(file.name, ev.target?.result as string);
+        const previewUrl = `/api/secretariat/pdf-preview?url=${encodeURIComponent(result.url)}`;
         setSecSettingsForm((prev) => ({
           ...prev,
           pdfLetterheadUrl: result.url,
+          letterheadUrl: prev.letterheadUrl && !prev.letterheadUrl.toLowerCase().endsWith(".pdf") ? prev.letterheadUrl : previewUrl,
         }));
         alert("فایل سربرگ PDF با موفقیت آپلود شد.");
       } catch (error) {
@@ -6789,9 +6791,13 @@ const Settings: React.FC<SettingsProps> = ({
                                 }}
                                 title="برای انتقال مشخصات، روی هر نقطه از سربرگ کلیک کنید"
                               >
-                                {secSettingsForm.letterheadUrl ? (
+                                {secSettingsForm.letterheadUrl || secSettingsForm.pdfLetterheadUrl ? (
                                   <img
-                                    src={secSettingsForm.letterheadUrl}
+                                    src={
+                                      secSettingsForm.letterheadUrl && !secSettingsForm.letterheadUrl.toLowerCase().endsWith(".pdf")
+                                        ? secSettingsForm.letterheadUrl
+                                        : `/api/secretariat/pdf-preview?url=${encodeURIComponent(secSettingsForm.pdfLetterheadUrl || secSettingsForm.letterheadUrl || "")}`
+                                    }
                                     alt="سربرگ شرکت"
                                     className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0"
                                   />

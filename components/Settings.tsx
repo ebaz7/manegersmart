@@ -6603,13 +6603,18 @@ const Settings: React.FC<SettingsProps> = ({
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             <div className="space-y-4">
                               <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1">
-                                  فاصله از بالا (میلی‌متر)
-                                </label>
+                                <div className="flex justify-between items-center mb-1">
+                                  <label className="text-xs font-bold text-gray-500">
+                                    فاصله از بالا (میلی‌متر)
+                                  </label>
+                                  <span className="text-[10px] text-slate-400">
+                                    (ارتفاع کل صفحه: ۲۹۷mm)
+                                  </span>
+                                </div>
                                 <input
                                   type="range"
                                   min="0"
-                                  max="150"
+                                  max="200"
                                   value={secSettingsForm.metadataTop}
                                   onChange={(e) =>
                                     setSecSettingsForm({
@@ -6624,13 +6629,18 @@ const Settings: React.FC<SettingsProps> = ({
                                 </div>
                               </div>
                               <div>
-                                <label className="text-xs font-bold text-gray-500 block mb-1">
-                                  فاصله از چپ (میلی‌متر)
-                                </label>
+                                <div className="flex justify-between items-center mb-1">
+                                  <label className="text-xs font-bold text-gray-500">
+                                    فاصله از چپ (میلی‌متر)
+                                  </label>
+                                  <span className="text-[10px] text-slate-400">
+                                    (عرض کل صفحه: ۲۱۰mm - سمت چپ: ۱۵ تا ۳۰mm)
+                                  </span>
+                                </div>
                                 <input
                                   type="range"
                                   min="0"
-                                  max="150"
+                                  max="190"
                                   value={secSettingsForm.metadataLeft}
                                   onChange={(e) =>
                                     setSecSettingsForm({
@@ -6752,38 +6762,73 @@ const Settings: React.FC<SettingsProps> = ({
                             </div>
 
                             {/* Live Preview Pane */}
-                            <div className="border border-gray-300 rounded-lg p-2 bg-gray-100 flex items-center justify-center overflow-hidden">
+                            <div className="border border-slate-300 dark:border-slate-700 rounded-2xl p-4 bg-slate-100 dark:bg-slate-900/80 flex flex-col items-center justify-center space-y-3 select-none">
+                              <div className="text-[11px] font-bold text-slate-500 flex items-center justify-between w-full">
+                                <span>شبیه‌ساز دقیق برگه A4 (مقیاس زنده)</span>
+                                <span className="text-[10px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded font-bold">
+                                  برای تنظیم سریع، روی برگه کلیک کنید
+                                </span>
+                              </div>
+
                               <div
-                                className="relative bg-white shadow-sm border border-gray-200 w-full"
+                                className="relative bg-white shadow-md border border-slate-300 dark:border-slate-600 w-full max-w-[280px] cursor-crosshair rounded overflow-hidden"
                                 style={{
-                                  aspectRatio: "1 / 1.414",
-                                  backgroundImage: secSettingsForm.letterheadUrl
-                                    ? `url(${secSettingsForm.letterheadUrl})`
-                                    : "none",
-                                  backgroundSize: "100% 100%",
+                                  aspectRatio: "210 / 297",
                                 }}
+                                onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const clickX = e.clientX - rect.left;
+                                  const clickY = e.clientY - rect.top;
+                                  const mmX = Math.round((clickX / rect.width) * 210);
+                                  const mmY = Math.round((clickY / rect.height) * 297);
+                                  setSecSettingsForm((prev) => ({
+                                    ...prev,
+                                    metadataLeft: Math.max(0, Math.min(190, mmX)),
+                                    metadataTop: Math.max(0, Math.min(270, mmY)),
+                                  }));
+                                }}
+                                title="برای انتقال مشخصات، روی هر نقطه از سربرگ کلیک کنید"
                               >
+                                {secSettingsForm.letterheadUrl ? (
+                                  <img
+                                    src={secSettingsForm.letterheadUrl}
+                                    alt="سربرگ شرکت"
+                                    className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0"
+                                  />
+                                ) : (
+                                  <div className="p-3 border-b border-slate-200 flex justify-between items-center text-[8px] text-slate-600 font-bold">
+                                    <span>سربرگ پیش‌فرض شرکت</span>
+                                    <span className="text-[7px]">دبیرخانه مرکزی</span>
+                                  </div>
+                                )}
+
                                 <div
-                                  className="absolute border border-dashed border-red-500 bg-white/50 text-right p-1"
+                                  className="absolute border border-dashed border-red-500 bg-white/80 text-right p-1 rounded shadow-xs z-20 transition-all pointer-events-none"
                                   style={{
-                                    top: `${secSettingsForm.metadataTop}mm`,
-                                    left: `${secSettingsForm.metadataLeft}mm`,
-                                    fontSize: `${secSettingsForm.metadataFontSize}px`,
+                                    top: `${((secSettingsForm.metadataTop ?? 25) / 297) * 100}%`,
+                                    left: `${((secSettingsForm.metadataLeft ?? 20) / 210) * 100}%`,
+                                    fontSize: `${Math.max(6, (secSettingsForm.metadataFontSize ?? 11) * 0.55)}px`,
                                     fontFamily:
-                                      secSettingsForm.letterheadFontFamily,
+                                      secSettingsForm.letterheadFontFamily ||
+                                      "Vazirmatn",
                                     opacity:
                                       (secSettingsForm.metadataOpacity ?? 100) /
                                       100,
                                     fontWeight:
                                       secSettingsForm.metadataFontWeight ||
                                       "bold",
-                                    lineHeight: "1.5",
+                                    lineHeight: "1.3",
+                                    whiteSpace: "nowrap",
                                   }}
                                 >
-                                  <div>شماره: ۱۲۳/۴۵۶</div>
-                                  <div>تاریخ: ۱۴۰۳/۰۱/۰۱</div>
-                                  <div>پیوست: دارد</div>
+                                  <div>شماره: ۱۴۰۴/۰۱</div>
+                                  <div>تاریخ: ۱۴۰۴/۰۶/۲۹</div>
+                                  <div>پیوست: ندارد</div>
                                 </div>
+                              </div>
+
+                              <div className="text-[10px] text-slate-400 text-center font-mono">
+                                فاصله از چپ: {secSettingsForm.metadataLeft ?? 20}mm | فاصله از بالا: {secSettingsForm.metadataTop ?? 25}mm
                               </div>
                             </div>
                           </div>

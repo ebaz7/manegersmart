@@ -577,24 +577,58 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     const compId =
       letter?.companyId || targetCompanyId || selectedCompany?.id || "";
     const fromSecSettings = secSettings.find((s) => s.companyId === compId);
+    
+    const baseSettings: SecretariatCompanySettings = fromSecSettings || {
+      companyId: compId,
+      headquartersAccessTokens: [],
+      factoryAccessTokens: [],
+      editAccessTokens: [],
+      deleteAccessTokens: [],
+      letterheadUrl: "",
+      wordLetterheadUrl: "",
+      letterheadFontFamily: "Vazirmatn",
+      meetingMinutesTemplate: "",
+      companyStampUrl: "",
+      companyStampSize: 120,
+      companyStampOpacity: 75,
+      companyStampPosition: "bottom_left",
+      marginTop: 40,
+      marginBottom: 25,
+      marginLeft: 20,
+      marginRight: 20,
+      metadataTop: 25,
+      metadataLeft: 20,
+      metadataFontSize: 11,
+      metadataColor: "#0f172a",
+      metadataFontWeight: "bold",
+      metadataLineHeight: 1.8,
+      autoNumberingEnabled: true,
+      numberingPrefixHeadquarters: "HQ",
+      numberingPrefixFactory: "FC",
+      numberingFormat: "{PREFIX}-{YEAR}/{NUM}",
+      numberingStartCounter: 1,
+      numberingPadLength: 4,
+      hideAutoFooter: false,
+    };
+
     if (
       selectedCompany?.id === compId &&
       companySettingsForm?.companyId === compId
     ) {
       return {
+        ...baseSettings,
         ...companySettingsForm,
-        ...(fromSecSettings || {}),
         letterheadUrl:
           companySettingsForm.letterheadUrl ||
-          fromSecSettings?.letterheadUrl ||
+          baseSettings.letterheadUrl ||
           "",
         companyStampUrl:
           companySettingsForm.companyStampUrl ||
-          fromSecSettings?.companyStampUrl ||
+          baseSettings.companyStampUrl ||
           "",
       };
     }
-    return fromSecSettings || companySettingsForm;
+    return baseSettings;
   };
   const canEditLetters =
     isSuperUser ||
@@ -729,10 +763,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const handleOpenNewLetterModal = () => {
     resetForm();
     const currentDate = getCurrentShamsiDate();
+    const defaultBody =
+      companySettingsForm.meetingMinutesTemplate ||
+      "<p>با سلام و احترام،</p><p><br></p><p><br></p><p>با تشکر</p>";
     setNewLetterForm((p) => ({
       ...p,
       date: `${currentDate.year}/${String(currentDate.month).padStart(2, "0")}/${String(currentDate.day).padStart(2, "0")}`,
-      content: companySettingsForm.meetingMinutesTemplate || "",
+      content: defaultBody,
+      signOffText: "با تشکر",
     }));
     setShowNewLetterModal(true);
   };
@@ -1525,24 +1563,35 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
           background-color: #f1f5f9 !important;
         }
         /* Style Quill toolbar */
-        .ql-toolbar.ql-snow {
+        .ql-toolbar.ql-snow,
+        #letter-custom-quill-toolbar.ql-toolbar.ql-snow {
           background: #f8fafc !important;
-          border: 1px solid #cbd5e1 !important;
-          border-top-left-radius: 12px !important;
-          border-top-right-radius: 12px !important;
-          padding: 8px 12px !important;
+          border: none !important;
+          border-bottom: 1px solid #cbd5e1 !important;
+          border-radius: 0px !important;
+          padding: 6px 12px !important;
           display: flex !important;
           flex-wrap: wrap !important;
           align-items: center !important;
           gap: 4px !important;
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 30 !important;
+        }
+        .dark #letter-custom-quill-toolbar.ql-toolbar.ql-snow {
+          background: #0f172a !important;
+          border-bottom: 1px solid #334155 !important;
         }
         /* Editor panel */
         .ql-container.ql-snow {
-          border: 1px solid #cbd5e1 !important;
-          border-top: none !important;
-          border-bottom-left-radius: 12px !important;
-          border-bottom-right-radius: 12px !important;
-          background: white !important;
+          border: none !important;
+          background: transparent !important;
+          font-family: inherit !important;
+          font-size: inherit !important;
+        }
+        .ql-editor {
+          min-height: 200px !important;
+          padding: 0 !important;
         }
         /* Custom toolbar icon sizes */
         .ql-snow .ql-toolbar button {
@@ -1569,6 +1618,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
           display: inline-flex !important;
           align-items: center;
           gap: 2px;
+        }
+        .dark .ql-snow .ql-toolbar .ql-formats {
+          border-left-color: #334155 !important;
         }
         .ql-snow .ql-toolbar .ql-formats:first-child {
           border-left: none;
@@ -2165,6 +2217,115 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                 ))}
             </div>
           )}
+
+          {/* Template Edit / Create Modal */}
+          <AnimatePresence>
+            {editingTemplate && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col text-right"
+                  dir="rtl"
+                >
+                  <div className="flex items-center justify-between border-b dark:border-slate-800 pb-3">
+                    <h4 className="text-sm font-black text-gray-800 dark:text-white flex items-center gap-2">
+                      <LayoutTemplate size={18} className="text-purple-600" />
+                      {editingTemplate.id ? "ویرایش قالب نامه" : "ایجاد قالب نمونه نامه جدید"}
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTemplate(null)}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 flex-1 overflow-y-auto">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        عنوان قالب <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={editingTemplate.title || ""}
+                        onChange={(e) =>
+                          setEditingTemplate((prev) => ({
+                            ...prev,
+                            title: e.target.value,
+                          }))
+                        }
+                        placeholder="مثال: دعوت به جلسه هیئت مدیره، گواهی اشتغال به کار..."
+                        className="w-full bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 text-xs rounded-xl p-2.5 outline-hidden focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          متن قالب نامه <span className="text-red-500">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => docxImportInputRef.current?.click()}
+                          className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 font-bold"
+                        >
+                          <Upload size={12} />
+                          وارد کردن از فایل ورد (.docx)
+                        </button>
+                      </div>
+                      <div className="border dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+                        <ReactQuill
+                          theme="snow"
+                          value={editingTemplate.content || ""}
+                          onChange={(content) =>
+                            setEditingTemplate((prev) => ({
+                              ...prev,
+                              content,
+                            }))
+                          }
+                          placeholder="متن قالب نامه را اینجا تایپ کنید یا از فایل ورد استخراج نمایید..."
+                          className="min-h-[180px]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setEditingTemplate(null)}
+                      className="px-4 py-2 text-xs font-bold rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      انصراف
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!editingTemplate.title?.trim()) {
+                          alert("لطفا عنوان قالب را وارد کنید.");
+                          return;
+                        }
+                        handleSaveTemplate({
+                          id: editingTemplate.id || generateUUID(),
+                          title: editingTemplate.title,
+                          subject: editingTemplate.title,
+                          content: editingTemplate.content || "",
+                          createdAt: editingTemplate.createdAt || Date.now(),
+                        });
+                      }}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                      <Save size={15} />
+                      ذخیره قالب
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -3340,12 +3501,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       {/* 1. REGISTER NEW LETTER MODAL */}
       <AnimatePresence>
         {showNewLetterModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-1 sm:p-3 backdrop-blur-xs overflow-hidden">
+          <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/70 p-0 sm:p-1.5 md:p-2 backdrop-blur-xs overflow-hidden">
             <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
+              initial={{ opacity: 0, scale: 0.99 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              className="bg-slate-100 dark:bg-slate-900 w-full h-full max-w-[1500px] rounded-2xl border border-slate-200 dark:border-slate-800 p-3 sm:p-4 flex flex-col overflow-hidden text-right shadow-2xl"
+              exit={{ opacity: 0, scale: 0.99 }}
+              className="bg-slate-100 dark:bg-slate-900 w-full h-full rounded-none sm:rounded-2xl border-0 sm:border border-slate-200 dark:border-slate-800 p-2.5 sm:p-3 flex flex-col overflow-hidden text-right shadow-2xl"
               dir="rtl"
             >
               <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2.5 shrink-0">
@@ -4323,10 +4484,90 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     </div>
                   )}
 
-                  {/* Virtual Google Docs Workspace Canvas */}
-                  <div className="bg-slate-100 dark:bg-slate-950 p-6 md:p-8 rounded-b-xl border border-slate-200 dark:border-slate-800 max-h-[550px] overflow-y-auto flex justify-center w-full relative">
+                  {/* Docked Fixed Formatting Ribbon Toolbar (Stationary above paper canvas) */}
+                  <div
+                    id="letter-custom-quill-toolbar"
+                    className="ql-toolbar ql-snow bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1 flex flex-wrap items-center gap-1 shrink-0 select-none z-30"
+                  >
+                    <span className="ql-formats">
+                      <select className="ql-font" defaultValue="Vazirmatn">
+                        <option value="Vazirmatn">وزیر متن</option>
+                        <option value="Shabnam">شبنم</option>
+                        <option value="Sahel">ساحل</option>
+                        <option value="Gandom">گندم</option>
+                        <option value="Estedad">استعداد</option>
+                        <option value="Samim">صمیم</option>
+                        <option value="Tanha">تنها</option>
+                        <option value="Tahoma">تاهوما</option>
+                        <option value="Arial">Arial</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Courier New">Courier New</option>
+                      </select>
+                      <select className="ql-size" defaultValue="14px">
+                        <option value="9px">۹ ریز</option>
+                        <option value="10px">۱۰</option>
+                        <option value="11px">۱۱</option>
+                        <option value="12px">۱۲</option>
+                        <option value="13px">۱۳</option>
+                        <option value="14px">۱۴ استاندارد</option>
+                        <option value="15px">۱۵</option>
+                        <option value="16px">۱۶ بزرگ</option>
+                        <option value="17px">۱۷</option>
+                        <option value="18px">۱۸ تیتر ریز</option>
+                        <option value="20px">۲۰ متوسط</option>
+                        <option value="22px">۲۲ سربرگ</option>
+                        <option value="24px">۲۴ تیتر</option>
+                        <option value="28px">۲۸</option>
+                        <option value="32px">۳۲</option>
+                        <option value="36px">۳۶</option>
+                        <option value="48px">۴۸</option>
+                      </select>
+                      <select className="ql-header" defaultValue="">
+                        <option value="1">تیتر ۱</option>
+                        <option value="2">تیتر ۲</option>
+                        <option value="3">تیتر ۳</option>
+                        <option value="">متن عادی</option>
+                      </select>
+                    </span>
+
+                    <span className="ql-formats">
+                      <button className="ql-bold" title="درشت (Bold)" />
+                      <button className="ql-italic" title="کج (Italic)" />
+                      <button className="ql-underline" title="زیرخط (Underline)" />
+                      <button className="ql-strike" title="خط‌خورده (Strike)" />
+                    </span>
+
+                    <span className="ql-formats">
+                      <select className="ql-color" title="رنگ متن" />
+                      <select className="ql-background" title="رنگ پس‌زمینه" />
+                    </span>
+
+                    <span className="ql-formats">
+                      <select className="ql-align" defaultValue="" title="چینش متن" />
+                      <button className="ql-direction" value="rtl" title="جهت راست به چپ" />
+                    </span>
+
+                    <span className="ql-formats">
+                      <button className="ql-list" value="ordered" title="لیست شماره‌دار" />
+                      <button className="ql-list" value="bullet" title="لیست نشانه‌دار" />
+                      <button className="ql-indent" value="-1" title="کاهش تورفتگی" />
+                      <button className="ql-indent" value="+1" title="افزایش تورفتگی" />
+                    </span>
+
+                    <span className="ql-formats">
+                      <button className="ql-script" value="sub" title="زیرنویس" />
+                      <button className="ql-script" value="super" title="بالانویس" />
+                      <button className="ql-blockquote" title="نقل قول" />
+                      <button className="ql-link" title="پیوند اینترنتی" />
+                      <button className="ql-image" title="درج تصویر" />
+                      <button className="ql-clean" title="حذف فرمت‌بندی" />
+                    </span>
+                  </div>
+
+                  {/* Virtual Paper Workspace Canvas - Maximized Full Area */}
+                  <div className="flex-1 min-h-0 bg-slate-200/90 dark:bg-slate-950 p-4 sm:p-8 overflow-y-auto flex justify-center w-full relative custom-scrollbar">
                     <div
-                      className="bg-white dark:bg-gray-900 shadow-xl border border-slate-300 dark:border-slate-800 rounded-sm p-[1.5cm] mx-auto transition-all duration-300 google-docs-paper text-right relative flex flex-col justify-between"
+                      className="bg-white dark:bg-gray-900 shadow-2xl border border-slate-300 dark:border-slate-800 rounded-sm p-[1.8cm] mx-auto transition-all duration-300 google-docs-paper text-right relative flex flex-col justify-between my-auto"
                       style={{
                         width:
                           newLetterForm.paperSize === "A5"
@@ -4344,7 +4585,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                             : newLetterForm.orientation === "landscape"
                               ? "210mm"
                               : "297mm",
-                        fontSize: `${14 * (editorZoom / 100)}px`,
+                        maxWidth: "100%",
+                        transform: editorZoom !== 100 ? `scale(${editorZoom / 100})` : undefined,
+                        transformOrigin: "top center",
                       }}
                       dir="rtl"
                     >
@@ -4371,66 +4614,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                               placeholder="متن رسمی و اداری خود را اینجا بنویسید..."
                               className="text-sm border-none ql-editor-borderless flex-1"
                               modules={{
-                                toolbar: [
-                                  [
-                                    {
-                                      font: [
-                                        "Vazirmatn",
-                                        "Shabnam",
-                                        "Sahel",
-                                        "Gandom",
-                                        "Estedad",
-                                        "Samim",
-                                        "Tanha",
-                                        "Tahoma",
-                                        "Arial",
-                                        "Times New Roman",
-                                        "Courier New",
-                                      ],
-                                    },
-                                    {
-                                      size: [
-                                        "9px",
-                                        "10px",
-                                        "11px",
-                                        "12px",
-                                        "13px",
-                                        "14px",
-                                        "15px",
-                                        "16px",
-                                        "17px",
-                                        "18px",
-                                        "19px",
-                                        "20px",
-                                        "22px",
-                                        "24px",
-                                        "28px",
-                                        "32px",
-                                        "36px",
-                                        "48px",
-                                      ],
-                                    },
-                                  ],
-                                  [{ header: [1, 2, 3, 4, 5, 6, false] }],
-                                  ["bold", "italic", "underline", "strike"],
-                                  [{ color: [] }, { background: [] }],
-                                  [{ script: "sub" }, { script: "super" }],
-                                  [
-                                    { list: "ordered" },
-                                    { list: "bullet" },
-                                    { indent: "-1" },
-                                    { indent: "+1" },
-                                  ],
-                                  [{ align: [] }, { direction: "rtl" }],
-                                  [
-                                    "link",
-                                    "image",
-                                    "video",
-                                    "formula",
-                                    "blockquote",
-                                  ],
-                                  ["clean"],
-                                ],
+                                toolbar: "#letter-custom-quill-toolbar",
                               }}
                             />
 
@@ -4505,7 +4689,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       {/* 1.1 ADVANCED SETTINGS & SIGNERS MODAL */}
       <AnimatePresence>
         {showAdvancedOptionsModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -5006,11 +5190,15 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                             {/* Sign-off text and Signatures */}
                             <div className="pt-6 border-t border-dashed border-slate-300 mt-6 space-y-3">
-                              {selectedLetterForView.signOffText && (
-                                <div className="text-xs font-bold text-slate-700">
-                                  {selectedLetterForView.signOffText}
-                                </div>
-                              )}
+                              {selectedLetterForView.signOffText &&
+                                (!selectedLetterForView.content ||
+                                  !selectedLetterForView.content.includes(
+                                    "با تشکر",
+                                  )) && (
+                                  <div className="text-xs font-bold text-slate-700">
+                                    {selectedLetterForView.signOffText}
+                                  </div>
+                                )}
 
                               <div className="flex flex-wrap items-end justify-between gap-4">
                                 {/* Company Stamp if enabled */}
@@ -5679,7 +5867,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                       {/* Signatures & Stamp block */}
                       <div
-                        className={`mt-16 w-64 text-center space-y-2 ${
+                        className={`mt-12 w-64 text-center space-y-2 break-inside-avoid ${
                           isPrintMode.signaturePosition === "bottom_left"
                             ? "mr-auto ml-0"
                             : isPrintMode.signaturePosition === "bottom_center"
@@ -5687,9 +5875,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                               : "ml-auto mr-0"
                         }`}
                       >
-                        <div className="font-bold text-sm mb-4 whitespace-pre-wrap leading-relaxed">
-                          {isPrintMode.signOffText || "با تشکر"}
-                        </div>
+                        {(!isPrintMode.content ||
+                          !isPrintMode.content.includes("با تشکر")) && (
+                          <div className="font-bold text-sm mb-4 whitespace-pre-wrap leading-relaxed">
+                            {isPrintMode.signOffText || "با تشکر"}
+                          </div>
+                        )}
 
                         {isPrintMode.signers && isPrintMode.signers.length > 0 && (
                           <div className="flex gap-4 justify-center flex-wrap mt-2">

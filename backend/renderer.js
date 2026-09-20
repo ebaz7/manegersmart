@@ -2073,6 +2073,8 @@ export const generateSecretariatLetterPDF = async (
   letter,
   companyName,
   companySettings,
+  company,
+  noLetterhead = false,
 ) => {
   try {
     const browser = await getBrowser();
@@ -2106,11 +2108,20 @@ export const generateSecretariatLetterPDF = async (
     const effectivePdfLetterheadUrl =
       companySettings?.pdfLetterheadUrl || companySettings?.letterheadUrl;
     const isPdfLetterhead =
+      !noLetterhead &&
       effectivePdfLetterheadUrl &&
       effectivePdfLetterheadUrl.toLowerCase().endsWith(".pdf");
 
     let letterheadHtml = "";
-    if (companySettings?.letterheadUrl || isPdfLetterhead) {
+    if (noLetterhead) {
+      letterheadHtml = `
+                <div class="${hasCustomPos ? "lh-left-custom" : "lh-left-default-on-img"}">
+                    <div>شماره: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.letterNumber)}</span></div>
+                    <div>تاریخ: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.date)}</span></div>
+                    <div>پیوست: ${letter.attachments?.length ? "دارد" : "ندارد"}</div>
+                </div>
+      `;
+    } else if (companySettings?.letterheadUrl || isPdfLetterhead) {
       letterheadHtml = `
                 ${isPdfLetterhead ? "" : `<img src="${makeAbsolute(companySettings.letterheadUrl)}" class="letterhead-bg" />`}
                 <div class="${hasCustomPos ? "lh-left-custom" : "lh-left-default-on-img"}">
@@ -2245,8 +2256,10 @@ export const generateSecretariatLetterPDF = async (
                     min-height: 100vh;
                     overflow: hidden;
                     box-sizing: border-box;
-                    padding-top: ${companySettings?.letterheadUrl ? "150px" : "30px"};
-                    padding-bottom: 100px;
+                    padding-top: ${noLetterhead ? "25mm" : (companySettings?.marginTop !== undefined ? `${companySettings.marginTop}mm` : (companySettings?.letterheadUrl || isPdfLetterhead ? "40mm" : "30px"))};
+                    padding-bottom: ${companySettings?.marginBottom !== undefined ? `${companySettings.marginBottom}mm` : "25mm"};
+                    padding-left: ${companySettings?.marginLeft !== undefined ? `${companySettings.marginLeft}mm` : "20mm"};
+                    padding-right: ${companySettings?.marginRight !== undefined ? `${companySettings.marginRight}mm` : "20mm"};
                 }
                 
                 .letterhead-bg {
@@ -2378,21 +2391,23 @@ export const generateSecretariatLetterPDF = async (
         if (fs.existsSync(fullPath)) {
           const letterheadBytes = fs.readFileSync(fullPath);
           const mainPdfDoc = await PDFDocument.load(pdf);
-          const letterheadDoc = await PDFDocument.load(letterheadBytes);
+          const letterheadDoc = await PDFDocument.load(letterheadBytes, { ignoreEncryption: true });
 
-          const pages = mainPdfDoc.getPages();
-          const letterheadPage = letterheadDoc.getPages()[0];
+          const finalPdfDoc = await PDFDocument.create();
+          const letterheadPageCount = letterheadDoc.getPageCount();
 
-          // Embed letterhead page into the main doc
-          const [embeddedLetterhead] = await mainPdfDoc.embedPdf(
-            letterheadBytes,
-            [0],
-          );
+          for (let i = 0; i < mainPdfDoc.getPageCount(); i++) {
+            // Copy letterhead page as background (page 0 or corresponding page)
+            const bgPageIndex = Math.min(i, letterheadPageCount - 1);
+            const [bgPage] = await finalPdfDoc.copyPages(letterheadDoc, [bgPageIndex]);
+            finalPdfDoc.addPage(bgPage);
 
-          for (const p of pages) {
-            const { width, height } = p.getSize();
-            // Draw letterhead at the bottom layer (behind text)
-            p.drawPage(embeddedLetterhead, {
+            // Embed the rendered text content (rendered with transparent background) on top
+            const [contentPage] = await finalPdfDoc.embedPdf(pdf, [i]);
+            const currentPage = finalPdfDoc.getPage(i);
+            const { width, height } = currentPage.getSize();
+
+            currentPage.drawPage(contentPage, {
               x: 0,
               y: 0,
               width: width,
@@ -2400,7 +2415,7 @@ export const generateSecretariatLetterPDF = async (
             });
           }
 
-          pdf = Buffer.from(await mainPdfDoc.save());
+          pdf = Buffer.from(await finalPdfDoc.save());
         }
       } catch (mergeErr) {
         console.error("PDF Merge Error:", mergeErr);
@@ -2421,6 +2436,48 @@ export const generateSecretariatLetterDoc = async (
   company,
   noLetterhead = false,
 ) => {
+  // If a custom Word template (.docx) is uploaded, render using Docxtemplater
+  if (!noLetterhead && companySettings?.wordLetterheadUrl) {
+    try {
+      const parts = companySettings.wordLetterheadUrl.split("/uploads/");
+      const fileName = parts[parts.length - 1].split("?")[0];
+      const fullPath = path.join(process.cwd(), "uploads", fileName);
+
+      if (fs.existsSync(fullPath)) {
+        const PizZip = (await import("pizzip")).default;
+        const Docxtemplater = (await import("docxtemplater")).default;
+        const contentBytes = fs.readFileSync(fullPath, "binary");
+        const zip = new PizZip(contentBytes);
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+        });
+
+        const cleanContent = (letter.content || "")
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/p>/gi, "\n\n")
+          .replace(/<[^>]+>/g, "")
+          .trim();
+
+        doc.render({
+          letterNumber: letter.letterNumber || "",
+          date: letter.date || "",
+          attachments: letter.attachments?.length ? "دارد" : "ندارد",
+          section: letter.section === "headquarters" ? "دفتر مرکزی" : "کارخانه",
+          companyName: companyName || "",
+          receiver: letter.receiver || "",
+          sender: letter.sender || "",
+          subject: letter.subject || "",
+          content: cleanContent,
+        });
+
+        return doc.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+      }
+    } catch (docxErr) {
+      console.error("Word template render error, falling back to html-to-docx:", docxErr);
+    }
+  }
+
   const isA5 = letter.paperSize === "A5";
   const isLandscape = letter.orientation === "landscape";
   const fontFamily = companySettings?.letterheadFontFamily || "Tahoma";

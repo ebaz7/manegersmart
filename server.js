@@ -8274,6 +8274,70 @@ app.delete('/api/secretariat-letters/:id', (req, res) => {
     }
 });
 
+// Download Secretariat Letter as Vector PDF (high-resolution print with optional PDF letterhead)
+app.get('/api/secretariat/letters/:id/pdf', async (req, res) => {
+    try {
+        const db = getDb();
+        const letter = (db.secretariatLetters || []).find(x => x.id === req.params.id);
+        if (!letter) {
+            return res.status(404).json({ error: 'نامه اداری یافت نشد' });
+        }
+        const company = (db.companies || []).find(c => c.id === letter.companyId) || (db.settings?.companies || []).find(c => c.id === letter.companyId);
+        const companyName = company ? company.name : '';
+        const allSecSettings = db.secretariatCompanySettings || {};
+        const companySettings = allSecSettings[letter.companyId] || (Array.isArray(db.secretariatSettings) ? db.secretariatSettings.find(s => s.companyId === letter.companyId) : db.secretariatSettings) || {};
+        const noLetterhead = req.query.noLetterhead === 'true';
+
+        const pdfBuffer = await Renderer.generateSecretariatLetterPDF(
+            letter,
+            companyName,
+            companySettings,
+            company,
+            noLetterhead
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        const filename = encodeURIComponent(`Letter_${String(letter.letterNumber || letter.id).replace(/[\/\\]/g, '_')}.pdf`);
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (e) {
+        console.error("GET /api/secretariat/letters/:id/pdf error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Download Secretariat Letter as Word document (from custom Word template or HTML-to-DOCX)
+app.get('/api/secretariat/letters/:id/docx', async (req, res) => {
+    try {
+        const db = getDb();
+        const letter = (db.secretariatLetters || []).find(x => x.id === req.params.id);
+        if (!letter) {
+            return res.status(404).json({ error: 'نامه اداری یافت نشد' });
+        }
+        const company = (db.companies || []).find(c => c.id === letter.companyId) || (db.settings?.companies || []).find(c => c.id === letter.companyId);
+        const companyName = company ? company.name : '';
+        const allSecSettings = db.secretariatCompanySettings || {};
+        const companySettings = allSecSettings[letter.companyId] || (Array.isArray(db.secretariatSettings) ? db.secretariatSettings.find(s => s.companyId === letter.companyId) : db.secretariatSettings) || {};
+        const noLetterhead = req.query.noLetterhead === 'true';
+
+        const docBuffer = await Renderer.generateSecretariatLetterDoc(
+            letter,
+            companyName,
+            companySettings,
+            company,
+            noLetterhead
+        );
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        const filename = encodeURIComponent(`Letter_${String(letter.letterNumber || letter.id).replace(/[\/\\]/g, '_')}.docx`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(docBuffer);
+    } catch (e) {
+        console.error("GET /api/secretariat/letters/:id/docx error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Dedicated Exit Permits Endpoints with Automated Notifications
 app.get('/api/exit-permits', (req, res) => {
     const db = getDb();

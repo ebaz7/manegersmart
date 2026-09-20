@@ -453,6 +453,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     });
   const [uploadingLetterhead, setUploadingLetterhead] = useState(false);
   const letterheadInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingPdfLetterhead, setUploadingPdfLetterhead] = useState(false);
+  const pdfLetterheadInputRef = useRef<HTMLInputElement>(null);
   const [uploadingStamp, setUploadingStamp] = useState(false);
   const stampInputRef = useRef<HTMLInputElement>(null);
 
@@ -1140,6 +1142,38 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         alert("خطا در آپلود و ذخیره سربرگ");
       } finally {
         setUploadingLetterhead(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Upload Vector PDF Letterhead (Ultra High Resolution 300 DPI)
+  const handlePdfLetterheadUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedCompany) return;
+
+    setUploadingPdfLetterhead(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string;
+      try {
+        const res = await uploadFile(file.name, base64);
+        const updatedForm: SecretariatCompanySettings = {
+          ...companySettingsForm,
+          companyId: selectedCompany.id,
+          pdfLetterheadUrl: res.url,
+        };
+        setCompanySettingsForm(updatedForm);
+        const updatedSettings = await saveSecretariatSettings(updatedForm);
+        setSecSettings(updatedSettings);
+        alert("فایل سربرگ برداری PDF با موفقیت بارگذاری شد. از این پس خروجی‌های PDF با حداکثر کیفیت برداری چاپ (۳۰۰ DPI) تولید می‌شوند.");
+      } catch (err) {
+        console.error("Error uploading PDF letterhead:", err);
+        alert("خطا در آپلود و ذخیره سربرگ برداری PDF");
+      } finally {
+        setUploadingPdfLetterhead(false);
       }
     };
     reader.readAsDataURL(file);
@@ -2848,7 +2882,59 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   </div>
 
                   {/* Letterhead Upload Actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="file"
+                      ref={pdfLetterheadInputRef}
+                      onChange={handlePdfLetterheadUpload}
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => pdfLetterheadInputRef.current?.click()}
+                      disabled={uploadingPdfLetterhead}
+                      className="bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                      title="آپلود فایل PDF سربرگ رسمی با کیفیت برداری نامحدود و تفکیک‌پذیری ۳۰۰ DPI"
+                    >
+                      {uploadingPdfLetterhead ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <FileText size={14} />
+                      )}
+                      آپلود سربرگ برداری PDF (کیفیت ۳۰۰ DPI)
+                    </button>
+
+                    {companySettingsForm.pdfLetterheadUrl && (
+                      <div className="flex items-center gap-1.5 bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-200 px-2.5 py-1.5 rounded-xl text-xs font-bold border border-rose-200 dark:border-rose-800">
+                        <CheckCircle size={13} className="text-rose-600" />
+                        <span>سربرگ PDF فعال</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!selectedCompany) return;
+                            const updatedForm = {
+                              ...companySettingsForm,
+                              companyId: selectedCompany.id,
+                              pdfLetterheadUrl: "",
+                            };
+                            setCompanySettingsForm(updatedForm);
+                            try {
+                              const updated = await saveSecretariatSettings(updatedForm);
+                              setSecSettings(updated);
+                              alert("سربرگ PDF حذف شد.");
+                            } catch (err) {
+                              console.error(err);
+                            }
+                          }}
+                          className="text-rose-500 hover:text-rose-700 p-0.5 ml-1"
+                          title="حذف سربرگ PDF"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+
                     <input
                       type="file"
                       ref={letterheadInputRef}
@@ -2860,14 +2946,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       type="button"
                       onClick={() => letterheadInputRef.current?.click()}
                       disabled={uploadingLetterhead}
-                      className="bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5"
+                      className="bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
                     >
                       {uploadingLetterhead ? (
                         <Loader2 size={14} className="animate-spin" />
                       ) : (
                         <Upload size={14} />
                       )}
-                      آپلود تصویر سربرگ شرکت
+                      آپلود تصویر سربرگ (PNG/JPG)
                     </button>
 
                     {companySettingsForm.letterheadUrl && (
@@ -5662,8 +5748,28 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       }}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
-                      <Printer size={15} /> چاپ و ذخیره PDF
+                      <Printer size={15} /> چاپ مرورگر
                     </button>
+
+                    <a
+                      href={`/api/secretariat/letters/${isPrintMode.id}/pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="دانلود و چاپ مستقیم فایل PDF با سربرگ برداری با کیفیت فوق‌العاده ۳۰۰ DPI"
+                    >
+                      <FileText size={15} /> دریافت PDF برداری سربرگ (۳۰۰ DPI)
+                    </a>
+
+                    <a
+                      href={`/api/secretariat/letters/${isPrintMode.id}/docx`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="دانلود فایل رسمی Word بر اساس قالب سربرگ ورد"
+                    >
+                      <FileText size={15} /> دریافت فایل Word رسمی (.docx)
+                    </a>
 
                     <button
                       onClick={() => handleShareSecretariatLetterToChat(isPrintMode)}

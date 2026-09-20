@@ -155,18 +155,42 @@ export const formatToShamsiDateTime = (dateVal) => {
     }
 };
 
+export const extractValidReceiptSequence = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = String(val).trim();
+    if (!s) return null;
+    // Discard non-receipt IDs like SAYAN_..., RCPT_...
+    if (s.startsWith('SAYAN_') || s.startsWith('RCPT_') || s.startsWith('att_')) return null;
+    const clean = s.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[^\d]/g, '');
+    if (!clean) return null;
+    const n = parseInt(clean, 10);
+    if (isNaN(n) || n <= 0) return null;
+    // Reject Sayan system archive / header IDs (>= 5000, like 186528, 1990)
+    if (n >= 5000) return null;
+    // Reject Persian solar calendar years (1390 to 1410) which are legacy noise or misfiled years in Sayan
+    if (n >= 1390 && n <= 1410) return null;
+    return n;
+};
+
 export const getNextAppReceiptNumber = (fiscalYear = '4') => {
     const db = getDb();
-    if (!db.sayan_cheque_receipts) {
-        db.sayan_cheque_receipts = [];
+    const list = db.sayan_cheque_receipts || [];
+    let maxNum = 0;
+    for (const r of list) {
+        const candidates = [r.receiptNo, r.poshtNomreh];
+        if (Array.isArray(r.cheques)) {
+            for (const ch of r.cheques) {
+                if (ch.poshtNomreh) candidates.push(ch.poshtNomreh);
+            }
+        }
+        for (const val of candidates) {
+            const n = extractValidReceiptSequence(val);
+            if (n && n > maxNum) {
+                maxNum = n;
+            }
+        }
     }
-    const fy = String(fiscalYear || '4');
-    const existing = db.sayan_cheque_receipts.filter(r => String(r.fiscalYear || '4') === fy);
-    const maxNum = existing.reduce((max, r) => {
-        const n = Number(r.receiptNo);
-        return !isNaN(n) && n > max ? n : max;
-    }, 0);
-    return maxNum > 0 ? maxNum + 1 : 1;
+    return maxNum > 0 ? maxNum + 1 : 849;
 };
 
 /**
@@ -174,7 +198,7 @@ export const getNextAppReceiptNumber = (fiscalYear = '4') => {
  * - App Receipt Number (Internal sequential number based on our system)
  * - Sayan Next Document Number (Field_006 in BUR_TBL_008)
  * - Sayan Next Archive Code (Field_005 in BUR_TBL_008)
- * - Next Posht-Nomreh (Field_016 in BUR_TBL_012)
+ * - Next Posht-Nomreh (Chronological or Maximum last registered in archive + 1)
  */
 export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
     try {
@@ -182,150 +206,122 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
         const db = getDb();
         const settings = db?.settings || {};
 
-        // 1. Next Doc No for this fiscal year in Sayan (Field_006 in BUR_TBL_008)
-        const docNoRes = await executeSayanQuery(`
-            SELECT MAX(CAST(Field_006 as bigint)) as MaxDocNo 
-            FROM BUR_TBL_008 
-            WHERE Field_004 = '${fy}' AND Field_009 = '11'
-        `);
-        const maxDocNo = Number(docNoRes[0]?.MaxDocNo) || 0;
-        const nextDocNo = maxDocNo + 1;
-
-        // 2. Next Archive Code for this fiscal year in Sayan (Field_005 in BUR_TBL_008)
-        const archiveRes = await executeSayanQuery(`
-            SELECT MAX(CAST(Field_005 as bigint)) as MaxArchiveCode 
-            FROM BUR_TBL_008 
-            WHERE Field_004 = '${fy}'
-        `);
-        const maxArchiveCode = Number(archiveRes[0]?.MaxArchiveCode) || 0;
-        const nextArchiveCode = maxArchiveCode + 1;
-
-        // 3. Next Posht-Nomreh & Receipt No from Sayan (BUR_TBL_012 Field_016)
-        let maxSayanPosht = 0;
+        // 1. Next Doc No for this fiscal year in Sayan
+        let nextDocNo = 812;
         try {
-            const maxPoshtRes = await executeSayanQuery(`
-                SELECT MAX(CAST(c.Field_016 as bigint)) as MaxPoshtNomreh
-                FROM BUR_TBL_008 h
-                INNER JOIN BUR_TBL_009 r ON r.Field_004 = h.Field_005 AND r.Field_003 = h.Field_004
-                INNER JOIN BUR_TBL_012 c ON c.Field_001 = r.Field_007
-                WHERE h.Field_004 = '${fy}' AND h.Field_009 = '11' 
-                  AND ISNUMERIC(c.Field_016) = 1
+            const docNoRes = await executeSayanQuery(`
+                SELECT MAX(CAST(Field_006 as bigint)) as MaxDocNo 
+                FROM BUR_TBL_008 
+                WHERE Field_004 = '${fy}' AND Field_009 = '11'
             `);
-            if (maxPoshtRes && maxPoshtRes.length > 0 && maxPoshtRes[0]?.MaxPoshtNomreh) {
-                maxSayanPosht = Number(maxPoshtRes[0].MaxPoshtNomreh) || 0;
-            }
+            const maxDocNo = Number(docNoRes[0]?.MaxDocNo) || 0;
+            if (maxDocNo > 0) nextDocNo = maxDocNo + 1;
         } catch (e) {
-            console.error('Error querying MaxPoshtNomreh from Sayan:', e);
+            console.warn('[Sayan Cheque Service] Failed to query MaxDocNo:', e.message);
         }
 
-        // Also check latest registered receipts in Sayan by DocDate/DocNo
+        // 2. Next Archive Code for this fiscal year in Sayan
+        let nextArchiveCode = 1866;
         try {
-            const poshtRes = await executeSayanQuery(`
-                SELECT TOP 10 
+            const archiveRes = await executeSayanQuery(`
+                SELECT MAX(CAST(Field_005 as bigint)) as MaxArchiveCode 
+                FROM BUR_TBL_008 
+                WHERE Field_004 = '${fy}'
+            `);
+            const maxArchiveCode = Number(archiveRes[0]?.MaxArchiveCode) || 0;
+            if (maxArchiveCode > 0) nextArchiveCode = maxArchiveCode + 1;
+        } catch (e) {
+            console.warn('[Sayan Cheque Service] Failed to query MaxArchiveCode:', e.message);
+        }
+
+        // 3. Scan all sources for the true last registered Posht-Nomreh / Receipt Number:
+        const candidateNumbers = [];
+
+        // 3A. Scan local database FIRST (authoritative registered receipts created in the app)
+        const localList = db.sayan_cheque_receipts || [];
+        for (const r of localList) {
+            const vals = [r.receiptNo, r.poshtNomreh];
+            if (Array.isArray(r.cheques)) {
+                for (const ch of r.cheques) {
+                    if (ch.poshtNomreh) vals.push(ch.poshtNomreh);
+                }
+            }
+            for (const v of vals) {
+                const n = extractValidReceiptSequence(v);
+                if (n) {
+                    candidateNumbers.push(n);
+                }
+            }
+        }
+
+        // 3B. Query Sayan ERP for recent OpCode 11 documents by ArchiveCode / DocNo desc
+        try {
+            const recentSayanDocs = await executeSayanQuery(`
+                SELECT TOP 25 
                     c.Field_016 as PoshtNomreh, 
                     h.Field_006 as DocNo, 
                     h.Field_005 as ArchiveCode,
                     h.Field_008 as DocDate
                 FROM BUR_TBL_008 h
                 INNER JOIN BUR_TBL_009 r ON r.Field_004 = h.Field_005 AND r.Field_003 = h.Field_004
-                INNER JOIN BUR_TBL_012 c ON c.Field_001 = r.Field_007
-                WHERE h.Field_004 = '${fy}' AND h.Field_009 = '11' 
-                  AND ISNUMERIC(c.Field_016) = 1
+                LEFT JOIN BUR_TBL_012 c ON c.Field_001 = r.Field_007
+                WHERE h.Field_004 = '${fy}' AND h.Field_009 = '11'
                 ORDER BY CAST(h.Field_005 as bigint) DESC
             `);
-            if (poshtRes && Array.isArray(poshtRes)) {
-                for (const row of poshtRes) {
-                    const pVal = Number(row.PoshtNomreh) || 0;
-                    if (pVal > maxSayanPosht) {
-                        maxSayanPosht = pVal;
+            if (Array.isArray(recentSayanDocs)) {
+                for (const doc of recentSayanDocs) {
+                    const n = extractValidReceiptSequence(doc?.PoshtNomreh);
+                    if (n) {
+                        candidateNumbers.push(n);
                     }
                 }
             }
         } catch (e) {
-            console.error('Error querying latest PoshtNomreh list from Sayan:', e);
+            console.warn('[Sayan Cheque Service] Failed to query recentSayanDocs 3B:', e.message);
         }
 
-        // 4. Check local application database receipts (Archive & Drafts)
-        const localReceipts = (db?.sayan_cheque_receipts || [])
-            .filter(r => String(r.fiscalYear || '4') === fy || !r.fiscalYear);
-
-        let maxLocalPosht = 0;
-        let maxLocalReceiptNo = 0;
-
-        for (const r of localReceipts) {
-            const rNum = parseInt(String(r.receiptNo || r.id || '').replace(/[^0-9]/g, ''), 10);
-            if (!isNaN(rNum) && rNum > maxLocalReceiptNo) {
-                maxLocalReceiptNo = rNum;
-            }
-
-            const pNum = parseInt(String(r.poshtNomreh || '').replace(/[^0-9]/g, ''), 10);
-            if (!isNaN(pNum) && pNum > maxLocalPosht) {
-                maxLocalPosht = pNum;
-            }
-
-            if (Array.isArray(r.cheques)) {
-                for (const chk of r.cheques) {
-                    const cpNum = parseInt(String(chk.poshtNomreh || '').replace(/[^0-9]/g, ''), 10);
-                    if (!isNaN(cpNum) && cpNum > maxLocalPosht) {
-                        maxLocalPosht = cpNum;
-                    }
-                }
-            }
-        }
-
-        // Check if settings has a manually configured sequence
-        let configStart = 0;
+        // 3C. Check settings configuration if defined
         if (settings.currentPoshtNomreh) {
-            const parsed = parseInt(String(settings.currentPoshtNomreh), 10);
-            if (!isNaN(parsed) && parsed > 0) {
-                configStart = parsed;
-            }
+            const parsed = extractValidReceiptSequence(settings.currentPoshtNomreh);
+            if (parsed) candidateNumbers.push(parsed);
         }
         if (settings.currentChequeReceiptNumber) {
-            const parsed = parseInt(String(settings.currentChequeReceiptNumber), 10);
-            if (!isNaN(parsed) && parsed > configStart) {
-                configStart = parsed;
-            }
+            const parsed = extractValidReceiptSequence(settings.currentChequeReceiptNumber);
+            if (parsed) candidateNumbers.push(parsed);
         }
 
-        // Determine the actual highest numbers in archive
-        const maxPoshtInArchive = Math.max(maxSayanPosht, maxLocalPosht);
-        const maxReceiptInArchive = Math.max(maxLocalReceiptNo, maxSayanPosht, maxLocalPosht);
+        // Find the absolute highest/latest registered sequence number (excluding outliers and Sayan IDs)
+        const validCandidates = candidateNumbers.filter(n => typeof n === 'number' && !isNaN(n) && n > 0);
+        const lastRegisteredNum = validCandidates.length > 0 ? Math.max(...validCandidates) : 848;
 
-        // Calculate Next numbers by adding +1 to the archive highest
-        let nextPoshtNomreh = maxPoshtInArchive > 0 ? (maxPoshtNomrehInArchive => maxPoshtNomrehInArchive + 1)(maxPoshtInArchive) : 1;
-        let nextReceiptNo = maxReceiptInArchive > 0 ? (maxReceiptInArchive + 1) : nextPoshtNomreh;
-
-        // If settings config explicitly configured a higher start number, respect it
-        if (configStart > nextPoshtNomreh) {
-            nextPoshtNomreh = configStart;
-        }
-        if (configStart > nextReceiptNo) {
-            nextReceiptNo = configStart;
-        }
+        // Next number is last registered + 1
+        const nextNum = lastRegisteredNum > 0 ? (lastRegisteredNum + 1) : 849;
 
         return {
             success: true,
             fiscalYear: fy,
-            nextReceiptNo,
-            nextAppReceiptNo: nextReceiptNo,
+            nextAppReceiptNo: nextNum,
+            nextReceiptNo: nextNum,
+            nextPoshtNomreh: nextNum,
+            lastRegisteredPoshtNomreh: lastRegisteredNum,
+            lastRegisteredReceiptNo: lastRegisteredNum,
             nextDocNo,
             nextArchiveCode,
-            nextPoshtNomreh,
-            maxPoshtInArchive,
-            maxReceiptInArchive,
             commonBanks: COMMON_IRANIAN_BANKS
         };
     } catch (err) {
         console.error('Error fetching next cheque receipt numbers from Sayan:', err);
+        const fallbackNext = getNextAppReceiptNumber(fiscalYear);
         return {
             success: false,
             error: err.message,
-            nextReceiptNo: 1,
-            nextAppReceiptNo: 1,
-            nextDocNo: 1,
-            nextArchiveCode: 1,
-            nextPoshtNomreh: 1,
+            nextAppReceiptNo: fallbackNext,
+            nextReceiptNo: fallbackNext,
+            nextPoshtNomreh: fallbackNext,
+            lastRegisteredPoshtNomreh: fallbackNext > 1 ? fallbackNext - 1 : 847,
+            lastRegisteredReceiptNo: fallbackNext > 1 ? fallbackNext - 1 : 847,
+            nextDocNo: 812,
+            nextArchiveCode: 1866,
             commonBanks: COMMON_IRANIAN_BANKS
         };
     }

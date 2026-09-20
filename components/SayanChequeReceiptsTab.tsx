@@ -5,7 +5,7 @@ import {
     Search, RefreshCw, Eye, Download, Upload, Calendar, Building2, User,
     FileCheck, ArrowRight, ExternalLink, X, ChevronDown, Check, Sparkles,
     Hash, Layers, ShieldAlert, ArrowUpRight, Copy, Printer, Edit3, CornerUpLeft,
-    CheckSquare, FileText, ArrowLeft, Settings2, Sliders, Zap, Loader2, RotateCcw
+    CheckSquare, FileText, ArrowLeft, Settings2, Sliders, Zap, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as jalaali from 'jalaali-js';
@@ -105,32 +105,6 @@ const getShamsiPlusMonths = (months: number): string => {
     const mm = String(j.jm).padStart(2, '0');
     const dd = String(j.jd).padStart(2, '0');
     return `${j.jy}/${mm}/${dd}`;
-};
-
-const computeNextFromArchive = (list: ChequeReceiptRecord[]) => {
-    let maxReceipt = 0;
-    let maxPosht = 0;
-    for (const r of list) {
-        const rNo = parseInt(String(r.receiptNo || r.id || '').replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(rNo) && rNo > 0 && rNo > maxReceipt) {
-            maxReceipt = rNo;
-        }
-        const pNo = parseInt(String(r.poshtNomreh || '').replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(pNo) && pNo > 0 && pNo > maxPosht) {
-            maxPosht = pNo;
-        }
-        if (Array.isArray(r.cheques)) {
-            for (const c of r.cheques) {
-                const cpNo = parseInt(String(c.poshtNomreh || '').replace(/[^0-9]/g, ''), 10);
-                if (!isNaN(cpNo) && cpNo > 0 && cpNo > maxPosht) {
-                    maxPosht = cpNo;
-                }
-            }
-        }
-    }
-    const nextReceiptNo = maxReceipt > 0 ? String(maxReceipt + 1) : '';
-    const nextPoshtNomreh = maxPosht > 0 ? String(maxPosht + 1) : (maxReceipt > 0 ? String(maxReceipt + 1) : '');
-    return { maxReceipt, maxPosht, nextReceiptNo, nextPoshtNomreh };
 };
 
 export const SayanChequeReceiptsTab: React.FC<Props> = ({
@@ -241,8 +215,6 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     const [poshtNomreh, setPoshtNomreh] = useState('');
     const [receiptNoInput, setReceiptNoInput] = useState('');
-    const [isReceiptNoUserEdited, setIsReceiptNoUserEdited] = useState(false);
-    const [isPoshtNomrehUserEdited, setIsPoshtNomrehUserEdited] = useState(false);
     const [editingReceiptNoItem, setEditingReceiptNoItem] = useState<{ id: string; currentNo: string } | null>(null);
     const [tempQuickReceiptNo, setTempQuickReceiptNo] = useState('');
     const [savingQuickReceiptNo, setSavingQuickReceiptNo] = useState(false);
@@ -307,22 +279,65 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [highlightedPersonIdx, setHighlightedPersonIdx] = useState(0);
 
+    // Helper to safely extract and validate a receipt / posht-nomreh sequence number
+    const extractValidReceiptSequence = (val: any): number | null => {
+        if (val === null || val === undefined) return null;
+        const s = String(val).trim();
+        if (!s) return null;
+        if (s.startsWith('SAYAN_') || s.startsWith('RCPT_') || s.startsWith('att_')) return null;
+        const clean = s.replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[^\d]/g, '');
+        if (!clean) return null;
+        const n = parseInt(clean, 10);
+        if (isNaN(n) || n <= 0) return null;
+        // Reject Sayan system archive / header IDs (>= 5000)
+        if (n >= 5000) return null;
+        // Reject Persian solar calendar years (1390 to 1410)
+        if (n >= 1390 && n <= 1410) return null;
+        return n;
+    };
+
+    // Helper to extract the highest registered receipt sequence number from a list of records
+    const getArchiveLatestSequence = (list: ChequeReceiptRecord[] = receiptsList) => {
+        let maxNum = 0;
+        for (const r of list) {
+            const candidates = [r.receiptNo, r.poshtNomreh];
+            if (Array.isArray(r.cheques)) {
+                for (const ch of r.cheques) {
+                    if (ch.poshtNomreh) candidates.push(ch.poshtNomreh);
+                }
+            }
+            for (const val of candidates) {
+                const n = extractValidReceiptSequence(val);
+                if (n && n > maxNum) {
+                    maxNum = n;
+                }
+            }
+        }
+        return maxNum > 0 ? maxNum : 848;
+    };
+
     // Fetch Receipts
-    const fetchMetaNumbers = async () => {
+    const fetchMetaNumbers = async (overrideList?: ChequeReceiptRecord[]) => {
+        const listToCheck = overrideList || receiptsList;
+        const localMax = getArchiveLatestSequence(listToCheck);
         try {
             const res = await fetch(`/api/sayan/cheque-receipts/meta?fiscalYear=${fiscalYear}`);
             const data = await res.json();
             if (data.success) {
-                if (data.nextPoshtNomreh && !isPoshtNomrehUserEdited) {
-                    setPoshtNomreh(String(data.nextPoshtNomreh));
-                }
-                if ((data.nextReceiptNo || data.nextPoshtNomreh) && !isReceiptNoUserEdited) {
-                    setReceiptNoInput(String(data.nextReceiptNo || data.nextPoshtNomreh));
-                }
+                const apiNextRaw = data.nextPoshtNomreh || data.nextReceiptNo || data.nextAppReceiptNo;
+                const apiNext = extractValidReceiptSequence(apiNextRaw);
+                const computedNext = Math.max(apiNext || 0, localMax > 0 ? (localMax + 1) : 849);
+                const nextStr = String(computedNext);
+                setPoshtNomreh(nextStr);
+                setReceiptNoInput(nextStr);
+                return;
             }
         } catch (err) {
             console.error('Failed to fetch next posht nomreh', err);
         }
+        const fallbackNext = localMax > 0 ? (localMax + 1) : 849;
+        setPoshtNomreh(String(fallbackNext));
+        setReceiptNoInput(String(fallbackNext));
     };
 
     const handleUpdateQuickReceiptNo = async (receiptId: string, newNo: string) => {
@@ -364,12 +379,23 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             const data = await res.json();
             if (data.success && Array.isArray(data.data)) {
                 setReceiptsList(data.data);
-                const computed = computeNextFromArchive(data.data);
-                if (!isReceiptNoUserEdited && computed.nextReceiptNo) {
-                    setReceiptNoInput(computed.nextReceiptNo);
-                }
-                if (!isPoshtNomrehUserEdited && computed.nextPoshtNomreh) {
-                    setPoshtNomreh(computed.nextPoshtNomreh);
+                const maxInList = getArchiveLatestSequence(data.data);
+                if (maxInList > 0) {
+                    const nextStr = String(maxInList + 1);
+                    setPoshtNomreh(prev => {
+                        const parsedPrev = extractValidReceiptSequence(prev);
+                        if (!prev || !parsedPrev || parsedPrev <= maxInList) {
+                            return nextStr;
+                        }
+                        return prev;
+                    });
+                    setReceiptNoInput(prev => {
+                        const parsedPrev = extractValidReceiptSequence(prev);
+                        if (!prev || !parsedPrev || parsedPrev <= maxInList) {
+                            return nextStr;
+                        }
+                        return prev;
+                    });
                 }
             }
         } catch (err: any) {
@@ -800,20 +826,15 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 setPrintReceipt(createdReceipt);
                 setIsPrintModalOpen(true);
 
-                // Reset form for next entry
+                // Reset form for next entry with automatic +1 from the newly created receipt
+                const cleanSubmittedNo = String(payload.poshtNomreh || payload.receiptNo || '').replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[^\d]/g, '');
+                const submittedNum = parseInt(cleanSubmittedNo, 10);
+                const nextSeqNo = (submittedNum > 0 && submittedNum < 50000) ? String(submittedNum + 1) : '';
+
                 setPersonQuery('');
                 setSelectedPerson(null);
-                setIsReceiptNoUserEdited(false);
-                setIsPoshtNomrehUserEdited(false);
-
-                // Auto-increment numbers for the next receipt
-                const savedR = parseInt(String(createdReceipt.receiptNo || receiptNoInput || '0').replace(/[^0-9]/g, ''), 10);
-                const savedP = parseInt(String(createdReceipt.poshtNomreh || poshtNomreh || '0').replace(/[^0-9]/g, ''), 10);
-                const nextR = String(Math.max(savedR + 1, savedP + 1, 1));
-                const nextP = String(Math.max(savedP + 1, 1));
-                setReceiptNoInput(nextR);
-                setPoshtNomreh(nextP);
-
+                setPoshtNomreh(nextSeqNo);
+                setReceiptNoInput(nextSeqNo);
                 setCashboxCode('11001');
                 setTargetTotalAmount('');
                 setDescription('');
@@ -1066,15 +1087,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                         {canRegisterReceipt && (
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setActiveSubTab('NEW_RECEIPT');
-                                    setIsReceiptNoUserEdited(false);
-                                    setIsPoshtNomrehUserEdited(false);
-                                    const computed = computeNextFromArchive(receiptsList);
-                                    if (computed.nextReceiptNo) setReceiptNoInput(computed.nextReceiptNo);
-                                    if (computed.nextPoshtNomreh) setPoshtNomreh(computed.nextPoshtNomreh);
-                                    fetchMetaNumbers();
-                                }}
+                                onClick={() => setActiveSubTab('NEW_RECEIPT')}
                                 className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 whitespace-nowrap ${
                                     activeSubTab === 'NEW_RECEIPT'
                                         ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
@@ -1307,32 +1320,47 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
                                     <span className="flex items-center gap-1.5">
                                         <span>شماره رسید</span>
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-normal">
-                                            خودکار از بایگانی (+۱)
+                                        <span className="text-[10px] text-blue-600 font-normal">
+                                            (پیش‌فرض: شماره بعدی بایگانی)
                                         </span>
                                     </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsReceiptNoUserEdited(false);
-                                            const comp = computeNextFromArchive(receiptsList);
-                                            if (comp.nextReceiptNo) setReceiptNoInput(comp.nextReceiptNo);
-                                            else fetchMetaNumbers();
-                                        }}
-                                        className="text-[10px] text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1 cursor-pointer transition-colors"
-                                        title="محاسبه مجدد شماره رسید از آخرین رکورد بایگانی"
-                                    >
-                                        <RotateCcw className="w-2.5 h-2.5" />
-                                        <span>بازنشانی خودکار</span>
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const lastVal = getArchiveLatestSequence(receiptsList) || 848;
+                                                const nextVal = lastVal + 1;
+                                                setReceiptNoInput(String(nextVal));
+                                                setPoshtNomreh(String(nextVal));
+                                            }}
+                                            title="تنظیم خودکار به آخرین شماره ثبت شده + ۱"
+                                            className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer font-bold"
+                                        >
+                                            <RefreshCw className="w-2.5 h-2.5" />
+                                            خودکار (+۱)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => fetchMetaNumbers()}
+                                            title="استعلام آخرین شماره از سیستم"
+                                            className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <RefreshCw className="w-2.5 h-2.5" />
+                                            استعلام
+                                        </button>
+                                    </div>
                                 </label>
                                 <input
                                     id="input-receipt-no"
                                     type="text"
                                     value={receiptNoInput}
                                     onChange={(e) => {
-                                        setReceiptNoInput(e.target.value);
-                                        setIsReceiptNoUserEdited(true);
+                                        const val = e.target.value;
+                                        setReceiptNoInput(val);
+                                        // Also keep poshtNomreh aligned if it was previously empty or equal
+                                        if (!poshtNomreh || poshtNomreh === receiptNoInput) {
+                                            setPoshtNomreh(val);
+                                        }
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
@@ -1340,7 +1368,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                             document.getElementById('input-posht-nomreh')?.focus();
                                         }
                                     }}
-                                    placeholder="مثال: ۱۳۹۹"
+                                    placeholder="مثال: ۸۴۹"
                                     className="w-full bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 text-xs font-mono font-black text-blue-700 dark:text-blue-300 outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                                 />
                             </div>
@@ -1350,23 +1378,23 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
                                     <span className="flex items-center gap-1.5">
                                         <span>شماره پشت‌نمره رسید *</span>
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-normal">
-                                            خودکار از بایگانی (+۱)
+                                        <span className="text-[10px] text-emerald-600 font-normal">
+                                            (آخرین در بایگانی: {toPersianDigits(getArchiveLatestSequence(receiptsList) || 848)})
                                         </span>
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            setIsPoshtNomrehUserEdited(false);
-                                            const comp = computeNextFromArchive(receiptsList);
-                                            if (comp.nextPoshtNomreh) setPoshtNomreh(comp.nextPoshtNomreh);
-                                            else fetchMetaNumbers();
+                                            const lastVal = getArchiveLatestSequence(receiptsList) || 848;
+                                            const nextVal = lastVal + 1;
+                                            setPoshtNomreh(String(nextVal));
+                                            setReceiptNoInput(String(nextVal));
                                         }}
-                                        className="text-[10px] text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
-                                        title="محاسبه مجدد پشت‌نمره از آخرین رکورد بایگانی"
+                                        className="text-[10px] text-slate-500 hover:text-emerald-600 flex items-center gap-1 cursor-pointer font-bold"
+                                        title="تنظیم خودکار به آخرین شماره بایگانی + ۱"
                                     >
-                                        <RotateCcw className="w-2.5 h-2.5" />
-                                        <span>بازنشانی خودکار</span>
+                                        <RefreshCw className="w-2.5 h-2.5" />
+                                        تنظیم خودکار (+۱)
                                     </button>
                                 </label>
                                 <input
@@ -1374,8 +1402,12 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     type="text"
                                     value={poshtNomreh}
                                     onChange={(e) => {
-                                        setPoshtNomreh(e.target.value);
-                                        setIsPoshtNomrehUserEdited(true);
+                                        const val = e.target.value;
+                                        setPoshtNomreh(val);
+                                        // Also update receiptNoInput if empty
+                                        if (!receiptNoInput) {
+                                            setReceiptNoInput(val);
+                                        }
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
@@ -1383,7 +1415,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                             handleEnterNext(0, 'poshtNomreh');
                                         }
                                     }}
-                                    placeholder="مثال: ۱۰۲۴"
+                                    placeholder="مثال: ۸۴۸"
                                     className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-xs font-mono font-bold outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-colors"
                                 />
                             </div>
@@ -1920,7 +1952,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                                         <td className="px-3 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
                                             <div className="flex items-center gap-1.5">
-                                                <span>#{toPersianDigits(r.receiptNo || r.id)}</span>
+                                                <span>{r.receiptNo ? `#${toPersianDigits(r.receiptNo)}` : (r.docNo ? `سند ${toPersianDigits(r.docNo)}` : `#${toPersianDigits(r.id)}`)}</span>
                                                 {canEditReceipt && (
                                                     <button
                                                         type="button"
@@ -1930,7 +1962,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                             setTempQuickReceiptNo(String(r.receiptNo || r.id));
                                                         }}
                                                         className="p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 transition-colors cursor-pointer"
-                                                        title="ویرایش شماره رسید (مثلا: ۱۳۹۹)"
+                                                        title="ویرایش شماره رسید (مثلا: ۸۴۸)"
                                                     >
                                                         <Edit3 className="w-3.5 h-3.5" />
                                                     </button>

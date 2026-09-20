@@ -117,11 +117,11 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     // Workflow Configuration State & System Users List
     const [workflowConfig, setWorkflowConfig] = useState<ChequeWorkflowConfig>({
-        requireCeoApproval: true,
-        autoRegisterAfterAccounting: false,
-        allowAccountingFinalApproval: false,
+        requireCeoApproval: false,
+        autoRegisterAfterAccounting: true,
+        allowAccountingFinalApproval: true,
         allowedFinalApproverUserIds: [],
-        allowedFinalApproverRoles: []
+        allowedFinalApproverRoles: ['ADMIN', 'CEO', 'FINANCIAL', 'ACCOUNTANT']
     });
     const [systemUsersList, setSystemUsersList] = useState<Array<{ id: string; name: string; username: string; role: string; roles?: string[] }>>([]);
     const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
@@ -884,7 +884,16 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
             const data = await res.json();
             if (data.success) {
-                setSuccessMessage(isApproveForCEO ? 'رسید چک با موفقیت تایید و جهت تایید نهایی به کارتابل مدیرعامل ارسال گردید.' : 'تغییرات رسید در همین مرحله با موفقیت ذخیره شد.');
+                const isCeoRequired = workflowConfig?.requireCeoApproval !== false;
+                const isAutoRegistered = !isCeoRequired && workflowConfig?.autoRegisterAfterAccounting;
+                const msg = isApproveForCEO 
+                    ? (isAutoRegistered 
+                        ? 'رسید چک با موفقیت تایید و مستقیماً در صف صدور سند سایان قرار گرفت.'
+                        : (isCeoRequired 
+                            ? 'رسید چک با موفقیت تایید و جهت تایید نهایی به کارتابل مدیرعامل ارسال گردید.' 
+                            : 'رسید چک با موفقیت تایید شد و آماده ثبت نهایی در سایان گردید.'))
+                    : 'تغییرات رسید در همین مرحله با موفقیت ذخیره شد.';
+                setSuccessMessage(msg);
                 setReviewingReceipt(null);
                 fetchReceipts(true);
             } else {
@@ -1708,10 +1717,14 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 </span>
                                 <div>
                                     <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                                        مرحله ۲: رسیدهای چک تایید حسابداری شده و منتظر تایید مدیرعامل و ثبت در سایان
+                                        {workflowConfig.requireCeoApproval 
+                                            ? 'مرحله ۲: رسیدهای چک تایید حسابداری شده و منتظر تایید مدیرعامل و ثبت در سایان'
+                                            : 'مرحله ۲: رسیدهای چک تایید حسابداری شده و آماده ثبت در سایان (تایید مستقیم)'}
                                     </h3>
                                     <p className="text-[11px] text-slate-500">
-                                        پس از تایید مدیرعامل، سند بلافاصله در دیتابیس ERP سایان بدون خطا ثبت و بایگانی می‌گردد.
+                                        {workflowConfig.requireCeoApproval
+                                            ? 'پس از تایید مدیرعامل، سند بلافاصله در دیتابیس ERP سایان بدون خطا ثبت و بایگانی می‌گردد.'
+                                            : 'تایید مدیرعامل غیرفعال است؛ رسیدها با تایید حسابداری یا با فشردن دکمه ثبت زیر مستقیماً در سایان ثبت می‌شوند.'}
                                     </p>
                                 </div>
                             </div>
@@ -1719,7 +1732,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
                         {pendingCeoList.length === 0 ? (
                             <div className="py-8 text-center text-xs text-slate-400">
-                                در حال حاضر رسیدی در انتظار تایید مدیرعامل وجود ندارد.
+                                {workflowConfig.requireCeoApproval 
+                                    ? 'در حال حاضر رسیدی در انتظار تایید مدیرعامل وجود ندارد.'
+                                    : 'در حال حاضر رسیدی در انتظار ثبت وجود ندارد.'}
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1907,7 +1922,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600'
                                 }`}
                             >
-                                منتظر تایید مدیرعامل
+                                {workflowConfig.requireCeoApproval ? 'منتظر تایید مدیرعامل' : 'آماده ثبت در سایان'}
                             </button>
                             <button
                                 type="button"
@@ -2003,7 +2018,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                 </span>
                                             ) : r.status === 'PENDING_CEO' ? (
                                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
-                                                    منتظر مدیرعامل
+                                                    {workflowConfig.requireCeoApproval ? 'منتظر مدیرعامل' : 'آماده ثبت در سایان'}
                                                 </span>
                                             ) : r.status === 'PENDING_ACCOUNTING' ? (
                                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300">

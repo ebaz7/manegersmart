@@ -40,12 +40,24 @@ export const ChequeWorkflowSettingsModal: React.FC<ChequeWorkflowSettingsModalPr
     onSaveSuccess
 }) => {
     const [config, setConfig] = useState<ChequeWorkflowConfig>({
-        requireCeoApproval: currentConfig?.requireCeoApproval ?? true,
-        autoRegisterAfterAccounting: currentConfig?.autoRegisterAfterAccounting ?? false,
-        allowAccountingFinalApproval: currentConfig?.allowAccountingFinalApproval ?? false,
+        requireCeoApproval: currentConfig?.requireCeoApproval ?? false,
+        autoRegisterAfterAccounting: currentConfig?.autoRegisterAfterAccounting ?? true,
+        allowAccountingFinalApproval: currentConfig?.allowAccountingFinalApproval ?? true,
         allowedFinalApproverUserIds: currentConfig?.allowedFinalApproverUserIds || [],
-        allowedFinalApproverRoles: currentConfig?.allowedFinalApproverRoles || []
+        allowedFinalApproverRoles: currentConfig?.allowedFinalApproverRoles || ['ADMIN', 'CEO', 'FINANCIAL', 'ACCOUNTANT']
     });
+
+    useEffect(() => {
+        if (currentConfig) {
+            setConfig({
+                requireCeoApproval: currentConfig.requireCeoApproval ?? false,
+                autoRegisterAfterAccounting: currentConfig.autoRegisterAfterAccounting ?? true,
+                allowAccountingFinalApproval: currentConfig.allowAccountingFinalApproval ?? true,
+                allowedFinalApproverUserIds: currentConfig.allowedFinalApproverUserIds || [],
+                allowedFinalApproverRoles: currentConfig.allowedFinalApproverRoles || ['ADMIN', 'CEO', 'FINANCIAL', 'ACCOUNTANT']
+            });
+        }
+    }, [currentConfig, isOpen]);
 
     const [saving, setSaving] = useState(false);
     const [savedNotice, setSavedNotice] = useState(false);
@@ -58,8 +70,8 @@ export const ChequeWorkflowSettingsModal: React.FC<ChequeWorkflowSettingsModalPr
         setConfig(prev => ({
             ...prev,
             requireCeoApproval: required,
-            // If CEO approval is disabled, auto-register can be chosen or manual final approval by authorized users
-            autoRegisterAfterAccounting: !required ? prev.autoRegisterAfterAccounting : false
+            // If CEO approval is disabled, default auto-register to true for instant seamless registration
+            autoRegisterAfterAccounting: !required ? (prev.autoRegisterAfterAccounting ?? true) : false
         }));
     };
 
@@ -82,7 +94,19 @@ export const ChequeWorkflowSettingsModal: React.FC<ChequeWorkflowSettingsModalPr
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)
             });
-            const data = await res.json();
+
+            let data: any = {};
+            try {
+                data = await res.json();
+            } catch (jsonErr) {
+                const text = await res.text().catch(() => '');
+                throw new Error(text || `خطای سرور (${res.status})`);
+            }
+
+            if (!res.ok) {
+                throw new Error(data.error || `خطای سرور (${res.status})`);
+            }
+
             if (data.success && data.config) {
                 setSavedNotice(true);
                 onSaveSuccess(data.config);

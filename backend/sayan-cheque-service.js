@@ -718,14 +718,41 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
     }
 
     if (approveForCEO) {
-        record.status = 'PENDING_CEO';
+        const wfConfig = getChequeWorkflowConfig();
         record.accountingReview = {
             id: currentUser?.id || 'ACCOUNTANT',
-            name: currentUser?.fullName || currentUser?.name || 'کارمند حسابداری',
+            name: currentUser?.fullName || currentUser?.name || 'کارشناس حسابداری',
             role: currentUser?.role || 'FINANCIAL',
             note: note || 'تایید و بررسی اولیه توسط حسابداری انجام شد.',
             reviewedAt: new Date().toISOString()
         };
+
+        if (!wfConfig.requireCeoApproval) {
+            // CEO approval is bypassed!
+            if (wfConfig.autoRegisterAfterAccounting) {
+                // Automatically queue for Sayan background registration
+                record.status = 'PROCESSING_SAYAN';
+                record.sayanSyncStatus = 'QUEUED';
+                record.ceoApproval = {
+                    id: currentUser?.id || 'DIRECT_APPROVAL',
+                    name: currentUser?.fullName || currentUser?.name || 'تایید مستقیم حسابداری (بدون مدیرعامل)',
+                    role: 'DIRECT_APPROVAL',
+                    approvedAt: new Date().toISOString(),
+                    note: 'ثبت مستقیم در سایان طبق تنظیمات فرآیند بدون نیاز به تایید مدیرعامل'
+                };
+                record.rejectionReason = null;
+                record.updatedAt = new Date().toISOString();
+                saveDb();
+                queueChequeReceiptForSayanRegistration(record.id, currentUser, note).catch(err => {
+                    console.error('[Sayan Cheque Service] Auto Sayan queue error:', err);
+                });
+                return record;
+            } else {
+                record.status = 'PENDING_CEO'; // Ready for direct final approval by accounting/authorized staff
+            }
+        } else {
+            record.status = 'PENDING_CEO';
+        }
     } else {
         // Pure edit: DO NOT advance status/stage! Keep current status exactly as is
         if (note) {
@@ -977,6 +1004,53 @@ export const rejectChequeReceipt = async (receiptId, currentUser, reason = '', r
 
 // Backward-compatible alias
 export const approveChequeReceipt = approveCEOReceipt;
+
+/**
+ * Get workflow configuration for Sayan cheque receipts
+ */
+export const getChequeWorkflowConfig = () => {
+    const db = getDb();
+    if (!db.sayan_cheque_workflow_config) {
+        db.sayan_cheque_workflow_config = {
+            requireCeoApproval: false, // Default to false so CEO approval is not required by default
+            autoRegisterAfterAccounting: true, // Automatically queue in Sayan after accounting review
+            allowAccountingFinalApproval: true, // Accounting staff are authorized for final approval
+            allowedFinalApproverUserIds: [],
+            allowedFinalApproverRoles: ['ADMIN', 'CEO', 'FINANCIAL', 'ACCOUNTANT'],
+            updatedAt: new Date().toISOString()
+        };
+        saveDb();
+    }
+    return db.sayan_cheque_workflow_config;
+};
+
+/**
+ * Update workflow configuration for Sayan cheque receipts
+ */
+export const updateChequeWorkflowConfig = (newConfig = {}) => {
+    const db = getDb();
+    const current = db.sayan_cheque_workflow_config || {
+        requireCeoApproval: false,
+        autoRegisterAfterAccounting: true,
+        allowAccountingFinalApproval: true,
+        allowedFinalApproverUserIds: [],
+        allowedFinalApproverRoles: ['ADMIN', 'CEO', 'FINANCIAL', 'ACCOUNTANT']
+    };
+
+    const updated = {
+        requireCeoApproval: typeof newConfig.requireCeoApproval === 'boolean' ? newConfig.requireCeoApproval : current.requireCeoApproval,
+        autoRegisterAfterAccounting: typeof newConfig.autoRegisterAfterAccounting === 'boolean' ? newConfig.autoRegisterAfterAccounting : current.autoRegisterAfterAccounting,
+        allowAccountingFinalApproval: typeof newConfig.allowAccountingFinalApproval === 'boolean' ? newConfig.allowAccountingFinalApproval : current.allowAccountingFinalApproval,
+        allowedFinalApproverUserIds: Array.isArray(newConfig.allowedFinalApproverUserIds) ? newConfig.allowedFinalApproverUserIds : (current.allowedFinalApproverUserIds || []),
+        allowedFinalApproverRoles: Array.isArray(newConfig.allowedFinalApproverRoles) ? newConfig.allowedFinalApproverRoles : (current.allowedFinalApproverRoles || []),
+        updatedAt: new Date().toISOString()
+    };
+
+    db.sayan_cheque_workflow_config = updated;
+    saveDb();
+    console.log('[Sayan Cheque Service] Workflow config updated:', updated);
+    return updated;
+};
 
 /**
  * Perform Dry-Run Validation on Cheque Receipt before inserting to Sayan

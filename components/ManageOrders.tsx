@@ -602,6 +602,11 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                 order={viewOrder} 
                 onClose={() => setViewOrder(null)} 
                 settings={settings}
+                currentUser={currentUser}
+                onOrderUpdated={(updated) => {
+                    setViewOrder(updated);
+                    refreshData();
+                }}
                 onApprove={canApprove(viewOrder) ? () => handleApprove(viewOrder.id, viewOrder.status) : undefined}
                 onReject={canApprove(viewOrder) ? () => handleReject(viewOrder.id, viewOrder.status) : undefined}
                 onEdit={canEdit(viewOrder) ? () => handleEdit(viewOrder) : undefined}
@@ -609,7 +614,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                     (!isRevocationStatus(viewOrder.status) && viewOrder.status !== OrderStatus.REVOKED && 
                     (currentUser.role === UserRole.ADMIN || viewOrder.requester === currentUser.fullName)) 
                     ? () => handleRevoke(viewOrder.id) 
-                    : undefined
+                     : undefined
                 }
               />
           </div>

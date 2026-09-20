@@ -196,6 +196,54 @@ const poll = async () => {
                         continue;
                     }
 
+                    // Support Photos and Documents (for PDF Merger and Secretariat Letters) in Bale
+                    if (u.message && (u.message.photo || u.message.document)) {
+                        const isPrivate = !u.message.chat?.type || u.message.chat.type === 'private' || (!String(u.message.chat.id).startsWith('-') && !u.message.chat.title);
+                        const chatId = u.message.chat.id;
+                        const hasActiveSession = BotCore.sessions[chatId] && BotCore.sessions[chatId].state !== 'IDLE';
+
+                        if (isPrivate || hasActiveSession) {
+                            let fileId = null;
+                            let fileName = null;
+                            let fileType = 'image';
+
+                            if (u.message.photo) {
+                                const photo = Array.isArray(u.message.photo) ? u.message.photo[u.message.photo.length - 1] : u.message.photo;
+                                fileId = photo.file_id;
+                                fileName = `photo_${Date.now()}.jpg`;
+                                fileType = 'image';
+                            } else if (u.message.document) {
+                                fileId = u.message.document.file_id;
+                                fileName = u.message.document.file_name || `document_${Date.now()}`;
+                                const isPdf = (u.message.document.mime_type === 'application/pdf') || (fileName && fileName.toLowerCase().endsWith('.pdf'));
+                                fileType = isPdf ? 'pdf' : 'image';
+                            }
+
+                            if (fileId) {
+                                try {
+                                    const fileInfo = await callApi('getFile', { file_id: fileId });
+                                    if (fileInfo && fileInfo.ok && fileInfo.result && fileInfo.result.file_path) {
+                                        const fileUrl = `https://tapi.bale.ai/file/bot${botToken}/${fileInfo.result.file_path}`;
+                                        const response = await fetch(fileUrl);
+                                        const arrayBuffer = await response.arrayBuffer();
+                                        const fileBuffer = Buffer.from(arrayBuffer);
+
+                                        await BotCore.handleIncomingFile('bale', chatId, u.message.from?.id || chatId, {
+                                            fileId,
+                                            fileName,
+                                            type: fileType,
+                                            buffer: fileBuffer
+                                        }, sendFn, sendPhotoFn, sendDocFn, checkMembershipFn, u.message);
+                                    }
+                                } catch (baleFileErr) {
+                                    console.error("[Bale File Processing Error]:", baleFileErr);
+                                    sendFn(chatId, `⚠️ خطا در دریافت فایل: ${baleFileErr.message}`);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+
                     if (u.message && u.message.text) {
                         const text = u.message.text;
                         const chatId = u.message.chat.id;

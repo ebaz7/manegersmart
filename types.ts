@@ -29,6 +29,7 @@ export interface User {
   canManageSales?: boolean;
   canManagePurchase?: boolean;
   canManageParts?: boolean;
+  canManageArchiveAttachments?: boolean; // دسترسی به افزودن و اتچ فایل به اسناد بایگانی
   canAccessSecretariat?: boolean;
   secretariatAllowedCompanies?: string[];
   canManageSecretariatSettings?: boolean;
@@ -164,6 +165,7 @@ export interface RolePermissions {
   canApproveFinancial?: boolean;
   canApproveManager?: boolean;
   canApproveCeo?: boolean;
+  canManageArchiveAttachments?: boolean; // دسترسی به افزودن و اتچ فایل به بایگانی اسناد
   canEditAll?: boolean;
   canDeleteAll?: boolean;
   canManageTrade?: boolean;
@@ -619,6 +621,18 @@ export enum OrderStatus {
   REVOKED = 'باطل شده'
 }
 
+export interface PaymentOrderAttachment {
+  id?: string;
+  fileName: string;
+  name?: string;
+  data?: string;
+  url?: string;
+  type?: string;
+  size?: number;
+  uploadedAt?: number;
+  uploadedBy?: string;
+}
+
 export interface PaymentOrder {
   id: string;
   trackingNumber: number;
@@ -631,7 +645,8 @@ export interface PaymentOrder {
   createdAt: number;
   updatedAt?: number;
   paymentDetails: PaymentDetail[];
-  attachments?: { fileName: string, data: string }[];
+  attachments?: PaymentOrderAttachment[];
+  archiveAttachments?: PaymentOrderAttachment[];
   payingCompany?: string;
   paymentPlace?: string;
   approverFinancial?: string;

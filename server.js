@@ -42,6 +42,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import * as jalaali from 'jalaali-js';
 import * as sayanOrderAuto from './backend/sayan-order-automation.js';
 import * as sayanChequeService from './backend/sayan-cheque-service.js';
+import { mergeFilesToPdf } from './backend/pdf-merger.js';
 
 const getDb = dbManager.getDb;
 const saveDb = dbManager.saveDb;
@@ -6906,7 +6907,11 @@ CRUD_COLLECTIONS.forEach(({ route, dbKey }) => {
         const db = getDb();
         if (!db[dbKey]) db[dbKey] = [];
         const item = req.body;
-        const existingIdx = db[dbKey].findIndex(x => x.id === item.id);
+        const existingIdx = db[dbKey].findIndex(x => {
+            if (item.id && x.id) return x.id === item.id;
+            if (item.companyId && x.companyId) return x.companyId === item.companyId;
+            return false;
+        });
         if (existingIdx > -1) {
             db[dbKey][existingIdx] = item;
         } else {
@@ -7376,6 +7381,82 @@ const handleSearchEverything = (req, res) => {
 app.get('/api/search-everything', handleSearchEverything);
 app.get('/search-everything', handleSearchEverything);
 
+// Helper to save base64 string to file in uploads and strip base64 from database record
+function saveBase64ToUploadFile(fileName, base64Str) {
+    if (!base64Str) return null;
+    let safeName = 'file';
+    try {
+        safeName = getSafeFileName(fileName || 'file');
+    } catch (e) {
+        safeName = 'attachment_' + Date.now();
+    }
+    const base64Data = base64Str.replace(/^data:.*;base64,/, '');
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+    const filePath = path.join(UPLOADS_DIR, uniqueName);
+    fs.writeFileSync(filePath, base64Data, 'base64');
+    return `/uploads/${uniqueName}`;
+}
+
+function sanitizeOrderAttachments(order) {
+    if (!order) return order;
+    
+    // Sanitize primary order attachments
+    if (Array.isArray(order.attachments)) {
+        order.attachments = order.attachments.map(att => {
+            if (!att) return att;
+            if (att.data && (typeof att.data === 'string') && (att.data.startsWith('data:') || att.data.length > 500)) {
+                try {
+                    const savedUrl = saveBase64ToUploadFile(att.fileName || att.name, att.data);
+                    return {
+                        id: att.id || generateUUID(),
+                        fileName: att.fileName || att.name || 'file',
+                        name: att.fileName || att.name || 'file',
+                        url: savedUrl,
+                        data: savedUrl,
+                        type: att.type || (att.fileName && att.fileName.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                        size: att.size || 0
+                    };
+                } catch (e) {
+                    console.error("Error converting base64 attachment to file:", e);
+                }
+            } else if (att.url && !att.data) {
+                att.data = att.url;
+            }
+            return att;
+        });
+    }
+
+    // Sanitize archive attachments if present
+    if (Array.isArray(order.archiveAttachments)) {
+        order.archiveAttachments = order.archiveAttachments.map(att => {
+            if (!att) return att;
+            if (att.data && (typeof att.data === 'string') && (att.data.startsWith('data:') || att.data.length > 500)) {
+                try {
+                    const savedUrl = saveBase64ToUploadFile(att.fileName || att.name, att.data);
+                    return {
+                        id: att.id || generateUUID(),
+                        fileName: att.fileName || att.name || 'file',
+                        name: att.fileName || att.name || 'file',
+                        url: savedUrl,
+                        data: savedUrl,
+                        type: att.type || (att.fileName && att.fileName.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+                        size: att.size || 0,
+                        uploadedAt: att.uploadedAt || Date.now(),
+                        uploadedBy: att.uploadedBy || 'کاربر'
+                    };
+                } catch (e) {
+                    console.error("Error converting archive base64 attachment to file:", e);
+                }
+            } else if (att.url && !att.data) {
+                att.data = att.url;
+            }
+            return att;
+        });
+    }
+
+    return order;
+}
+
 // Dedicated Payment Orders Endpoints with Automated Notifications
 app.get('/api/orders', (req, res) => {
     const db = getDb();
@@ -7386,7 +7467,8 @@ app.post('/api/orders', async (req, res) => {
     try {
         const db = getDb();
         if (!db.orders) db.orders = [];
-        const item = req.body;
+        let item = req.body;
+        item = sanitizeOrderAttachments(item);
         if (!item.fiscalYearId && db.settings?.activeFiscalYearId) {
             item.fiscalYearId = db.settings.activeFiscalYearId;
         }
@@ -7437,13 +7519,14 @@ app.put('/api/orders/:id', async (req, res) => {
         if (!db.orders) db.orders = [];
         const idx = db.orders.findIndex(x => x.id === req.params.id);
         const isEdit = req.body.isEdit || false;
-        let updatedItem;
+        let updatedItem = req.body;
+        updatedItem = sanitizeOrderAttachments(updatedItem);
 
         if (idx > -1) {
-            db.orders[idx] = { ...db.orders[idx], ...req.body };
+            db.orders[idx] = { ...db.orders[idx], ...updatedItem };
             updatedItem = db.orders[idx];
         } else {
-            updatedItem = { id: req.params.id, ...req.body };
+            updatedItem = { id: req.params.id, ...updatedItem };
             db.orders.push(updatedItem);
         }
         saveDb(db);
@@ -7505,6 +7588,83 @@ app.delete('/api/orders/:id', (req, res) => {
         }
     } catch (e) {
         console.error("DELETE /api/orders error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Dedicated Archive Attachments Endpoints for Payment Orders
+app.post('/api/orders/:id/archive-attachments', async (req, res) => {
+    try {
+        const db = getDb();
+        if (!db.orders) db.orders = [];
+        const idx = db.orders.findIndex(x => x.id === req.params.id);
+        if (idx === -1) {
+            return res.status(404).json({ error: 'دستور پرداخت یافت نشد' });
+        }
+
+        const order = db.orders[idx];
+        order.archiveAttachments = order.archiveAttachments || [];
+
+        let { fileName, fileData, url, type, size, uploadedBy } = req.body;
+        let finalUrl = url;
+
+        if (fileData && (fileData.startsWith('data:') || fileData.length > 500)) {
+            finalUrl = saveBase64ToUploadFile(fileName || 'archive_attachment', fileData);
+        }
+
+        if (!finalUrl && !fileData) {
+            return res.status(400).json({ error: 'فایلی جهت بارگذاری ارائه نشده است' });
+        }
+
+        const newAttachment = {
+            id: generateUUID(),
+            fileName: fileName || 'پیوست بایگانی',
+            name: fileName || 'پیوست بایگانی',
+            url: finalUrl,
+            data: finalUrl,
+            type: type || (fileName && fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+            size: size || 0,
+            uploadedAt: Date.now(),
+            uploadedBy: uploadedBy || 'کاربر'
+        };
+
+        order.archiveAttachments.push(newAttachment);
+        saveDb(db);
+
+        res.json({
+            success: true,
+            order: order,
+            attachment: newAttachment,
+            orders: db.orders
+        });
+    } catch (e) {
+        console.error("POST /api/orders/:id/archive-attachments error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/orders/:id/archive-attachments/:attachmentId', async (req, res) => {
+    try {
+        const db = getDb();
+        if (!db.orders) db.orders = [];
+        const idx = db.orders.findIndex(x => x.id === req.params.id);
+        if (idx === -1) {
+            return res.status(404).json({ error: 'دستور پرداخت یافت نشد' });
+        }
+
+        const order = db.orders[idx];
+        if (Array.isArray(order.archiveAttachments)) {
+            order.archiveAttachments = order.archiveAttachments.filter(a => a.id !== req.params.attachmentId);
+        }
+        saveDb(db);
+
+        res.json({
+            success: true,
+            order: order,
+            orders: db.orders
+        });
+    } catch (e) {
+        console.error("DELETE archive attachment error:", e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -8435,6 +8595,58 @@ app.post('/api/upload', (req, res) => {
     } catch (e) {
         console.error("Upload error:", e);
         res.status(500).json({ error: 'خطا در بارگذاری فایل' });
+    }
+});
+
+// PDF / Image merge tool endpoint
+app.post('/api/tools/merge-to-pdf', async (req, res) => {
+    try {
+        const { files } = req.body;
+        if (!Array.isArray(files) || files.length === 0) {
+            return res.status(400).json({ error: 'هیچ فایلی جهت ادغام ارسال نشده است.' });
+        }
+
+        const preparedFiles = [];
+        for (const item of files) {
+            let buffer = null;
+            let fileName = item.fileName || item.name || 'document';
+            let type = item.type || (fileName.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image');
+
+            if (item.data) {
+                const base64Clean = item.data.replace(/^data:.*;base64,/, '');
+                buffer = Buffer.from(base64Clean, 'base64');
+            } else if (item.url) {
+                let localName = item.url.replace('/uploads/', '');
+                const safeBase = path.basename(localName).replace(/[\/\\]/g, '');
+                const localPath = path.join(UPLOADS_DIR, safeBase);
+                if (fs.existsSync(localPath)) {
+                    buffer = fs.readFileSync(localPath);
+                }
+            }
+
+            if (buffer) {
+                preparedFiles.push({ fileName, type, buffer });
+            }
+        }
+
+        if (preparedFiles.length === 0) {
+            return res.status(400).json({ error: 'هیچ فایل معتبری جهت پردازش یافت نشد.' });
+        }
+
+        const mergedBuffer = await mergeFilesToPdf(preparedFiles);
+        const outputFileName = `Merged_${Date.now()}.pdf`;
+        const outputPath = path.join(UPLOADS_DIR, outputFileName);
+        fs.writeFileSync(outputPath, mergedBuffer);
+
+        res.json({
+            success: true,
+            fileName: outputFileName,
+            url: `/uploads/${outputFileName}`,
+            fileData: `data:application/pdf;base64,${mergedBuffer.toString('base64')}`
+        });
+    } catch (e) {
+        console.error("PDF Merge endpoint error:", e);
+        res.status(500).json({ error: 'خطا در تبدیل و ادغام فایل‌ها: ' + e.message });
     }
 });
 

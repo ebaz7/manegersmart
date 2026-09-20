@@ -58,7 +58,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         // If any of the roles is ADMIN, they get everything (highest priority)
         if (userObject.roles.includes(UserRole.ADMIN)) {
             return {
-                canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
+                canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canManageArchiveAttachments: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
                 canCreateExitPermit: true, canViewExitPermits: true, canApproveExitCeo: true, canApproveExitFactory: true, canApproveExitWarehouse: true, canApproveExitSecurity: true, canViewExitArchive: true, canEditExitArchive: true,
                 canManageWarehouse: true, canViewWarehouseReports: true, canApproveBijak: true,
                 canViewSecurity: true, canCreateSecurityLog: true, canApproveSecuritySupervisor: true, canManagePurchase: true,
@@ -92,7 +92,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     // 1. ADMIN GETS EVERYTHING (Hard Override)
     if (userRole === UserRole.ADMIN) {
         return {
-            canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
+            canViewAll: true, canCreatePaymentOrder: true, canViewPaymentOrders: true, canApproveFinancial: true, canApproveManager: true, canApproveCeo: true, canManageArchiveAttachments: true, canEditOwn: true, canEditAll: true, canDeleteOwn: true, canDeleteAll: true, canManageTrade: true, canManageSettings: true,
             canCreateExitPermit: true, canViewExitPermits: true, canApproveExitCeo: true, canApproveExitFactory: true, canApproveExitWarehouse: true, canApproveExitSecurity: true, canViewExitArchive: true, canEditExitArchive: true,
             canManageWarehouse: true, canViewWarehouseReports: true, canApproveBijak: true,
             canViewSecurity: true, canCreateSecurityLog: true, canApproveSecuritySupervisor: true, canManagePurchase: true,
@@ -115,7 +115,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewAll: false,
         canEditOwn: true, 
         canDeleteOwn: true,
-        canCreatePaymentOrder: false, canViewPaymentOrders: false, canApproveFinancial: false, canApproveManager: false, canApproveCeo: false, canEditAll: false, canDeleteAll: false,
+        canCreatePaymentOrder: false, canViewPaymentOrders: false, canApproveFinancial: false, canApproveManager: false, canApproveCeo: false, canManageArchiveAttachments: false, canEditAll: false, canDeleteAll: false,
         canManageTrade: false, canManageSettings: false,
         canCreateExitPermit: false, canViewExitPermits: false, canApproveExitCeo: false, canApproveExitFactory: false, canApproveExitWarehouse: false, canApproveExitSecurity: false, canViewExitArchive: false, canEditExitArchive: false,
         canManageWarehouse: false, canViewWarehouseReports: false, canApproveBijak: false,
@@ -134,6 +134,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canViewAll = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveCeo = true;
+            perms.canManageArchiveAttachments = true;
             perms.canViewExitPermits = true;
             perms.canApproveExitCeo = true;
             perms.canManageTrade = true;
@@ -147,6 +148,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveFinancial = true;
+            perms.canManageArchiveAttachments = true;
             perms.canViewCustomerBalances = true;
             perms.canImportCustomerBalances = true;
             break;
@@ -155,6 +157,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canCreatePaymentOrder = true;
             perms.canViewPaymentOrders = true;
             perms.canApproveManager = true;
+            perms.canManageArchiveAttachments = true;
             perms.canViewExitPermits = true; 
             perms.canViewCustomerBalances = true;
             break;
@@ -300,6 +303,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         }
         if (userObject.canManageParts !== undefined) {
             perms.canManageParts = userObject.canManageParts;
+        }
+        if (userObject.canManageArchiveAttachments !== undefined) {
+            perms.canManageArchiveAttachments = userObject.canManageArchiveAttachments;
         }
         if (userObject.canManageProformas !== undefined) {
             perms.canManageProformas = userObject.canManageProformas;

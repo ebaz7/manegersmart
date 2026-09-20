@@ -43,7 +43,8 @@ const PERMISSION_GROUPS = [
             { id: 'canViewPaymentOrders', label: 'مشاهده کارتابل پرداخت' },
             { id: 'canApproveFinancial', label: 'تایید مرحله مالی' },
             { id: 'canApproveManager', label: 'تایید مرحله مدیریت' },
-            { id: 'canApproveCeo', label: 'تایید مرحله نهایی (مدیرعامل)' }
+            { id: 'canApproveCeo', label: 'تایید مرحله نهایی (مدیرعامل)' },
+            { id: 'canManageArchiveAttachments', label: 'افزودن و پیوست (اتچ) فایل به اسناد بایگانی‌شده' }
         ] 
     }, 
     { 

@@ -94,6 +94,34 @@ export const editOrder = async (updatedOrder: PaymentOrder): Promise<PaymentOrde
     return safeRes;
 };
 
+export const addOrderArchiveAttachment = async (
+    orderId: string, 
+    attachment: { fileName: string; fileData?: string; url?: string; type?: string; size?: number; uploadedBy?: string }
+): Promise<{ success: boolean; order: PaymentOrder; orders: PaymentOrder[] }> => {
+    const res = await apiCall<{ success: boolean; order: PaymentOrder; orders: PaymentOrder[] }>(`/orders/${orderId}/archive-attachments`, 'POST', attachment);
+    if (res && res.orders && typeof window !== 'undefined') {
+        localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(res.orders));
+        window.dispatchEvent(new CustomEvent('ORDER_BACKGROUND_SYNCED', {
+            detail: { allOrders: res.orders, order: res.order }
+        }));
+    }
+    return res;
+};
+
+export const deleteOrderArchiveAttachment = async (
+    orderId: string, 
+    attachmentId: string
+): Promise<{ success: boolean; order: PaymentOrder; orders: PaymentOrder[] }> => {
+    const res = await apiCall<{ success: boolean; order: PaymentOrder; orders: PaymentOrder[] }>(`/orders/${orderId}/archive-attachments/${attachmentId}`, 'DELETE');
+    if (res && res.orders && typeof window !== 'undefined') {
+        localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(res.orders));
+        window.dispatchEvent(new CustomEvent('ORDER_BACKGROUND_SYNCED', {
+            detail: { allOrders: res.orders, order: res.order }
+        }));
+    }
+    return res;
+};
+
 export const updateOrderStatus = async (id: string, status: OrderStatus, approverUser: User, rejectionReason?: string, isBackwardReject?: boolean): Promise<PaymentOrder[]> => {
   const updates: any = { status, updatedAt: Date.now() };
 

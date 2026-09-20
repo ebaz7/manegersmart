@@ -136,6 +136,7 @@ import {
   Edit,
   Eye,
   Volume2,
+  Sliders,
 } from "lucide-react";
 
 import {
@@ -313,6 +314,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     | null
   >(null);
   const [isReadingAloud, setIsReadingAloud] = useState(false);
+  const [showAdvancedOptionsModal, setShowAdvancedOptionsModal] = useState(false);
 
   const handleFindReplace = () => {
     if (!findText) return;
@@ -1893,173 +1895,241 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       {/* 1. REGISTER NEW LETTER MODAL */}
       <AnimatePresence>
         {showNewLetterModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-0 backdrop-blur-sm overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-1 sm:p-3 backdrop-blur-xs overflow-hidden">
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="bg-slate-50 dark:bg-slate-900 w-full h-full p-6 sm:p-8 flex flex-col overflow-hidden text-right"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="bg-slate-100 dark:bg-slate-900 w-full h-full max-w-[1500px] rounded-2xl border border-slate-200 dark:border-slate-800 p-3 sm:p-4 flex flex-col overflow-hidden text-right shadow-2xl"
               dir="rtl"
             >
-              <div className="flex items-center justify-between border-b pb-3 shrink-0">
-                <h3 className="text-base font-black text-gray-800 dark:text-white">
-                  ثبت نامه اداری جدید
-                </h3>
-                <button
-                  onClick={() => setShowNewLetterModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X size={20} />
-                </button>
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2.5 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+                  <h3 className="text-sm sm:text-base font-black text-gray-800 dark:text-white">
+                    {newLetterForm.id ? "ویرایش نامه اداری" : "ثبت و تدوین نامه اداری جدید"}
+                  </h3>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
+                    {selectedCompany?.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fakeLetter: SecretariatLetter = {
+                        ...(newLetterForm as any),
+                        id: "preview_only",
+                        companyId: selectedCompany.id,
+                        status: SecretariatLetterStatus.DRAFT,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        letterNumber: "پیش‌نویس",
+                        date: newLetterForm.date || "پیش‌نویس",
+                      };
+                      setIsPrintMode(fakeLetter);
+                    }}
+                    className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 text-amber-700 dark:text-amber-300 text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1"
+                  >
+                    <Eye size={13} /> مشاهده پیش‌نویس
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewLetterModal(false)}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
-              <form onSubmit={handleSaveLetter} className="flex-1 flex flex-col overflow-hidden gap-4 min-h-0">
-                <div className="flex-1 overflow-y-auto pr-1 pl-1 space-y-4 custom-scrollbar min-h-0">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Letter Date */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      تاریخ نامه (شمسی)
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      value={newLetterForm.date}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          date: e.target.value,
-                        })
-                      }
-                      placeholder="۱۴۰۵/۰۴/۰۶"
-                      className="w-full border rounded-lg px-3 py-2 text-xs"
-                    />
-                  </div>
-
-                  {/* Letter Type */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      نوع نامه
-                    </label>
-                    <select
-                      value={newLetterForm.type}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          type: e.target.value as any,
-                        })
-                      }
-                      className="w-full border rounded-lg px-3 py-2 text-xs bg-white"
-                    >
-                      <option value="internal">داخلی (بین بخشی)</option>
-                      <option value="incoming">وارده (از سازمان بیرونی)</option>
-                      <option value="outgoing">صادره (به سازمان بیرونی)</option>
-                    </select>
-                  </div>
-
-                  {/* Sender */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      فرستنده (از طرف)
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      list="user-list"
-                      value={newLetterForm.sender}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          sender: e.target.value,
-                        })
-                      }
-                      placeholder="مثال: مدیریت دفتر مرکزی"
-                      className="w-full border rounded-lg px-3 py-2 text-xs"
-                    />
-                  </div>
-
-                  {/* Receiver */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      گیرنده (به سمت)
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      list="user-list"
-                      value={newLetterForm.receiver}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          receiver: e.target.value,
-                        })
-                      }
-                      placeholder="مثال: سرپرست کارخانه"
-                      className="w-full border rounded-lg px-3 py-2 text-xs"
-                    />
-                  </div>
-
-                  <datalist id="user-list">
-                    {users.map((u) => (
-                      <option key={u.id} value={u.fullName} />
-                    ))}
-                  </datalist>
-                </div>
-
-                {/* Subject */}
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-500 font-bold">
-                    موضوع نامه
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    value={newLetterForm.subject}
-                    onChange={(e) =>
-                      setNewLetterForm({
-                        ...newLetterForm,
-                        subject: e.target.value,
-                      })
-                    }
-                    placeholder="مثال: درخواست تأمین تجهیزات حفاظتی"
-                    className="w-full border rounded-lg px-3 py-2 text-xs"
-                  />
-                  <div className="flex flex-wrap gap-4 mt-2">
-                    <label className="flex items-center gap-1.5 text-xs text-slate-600 font-bold cursor-pointer">
+              <form onSubmit={handleSaveLetter} className="flex-1 flex flex-col overflow-hidden gap-2 min-h-0 pt-2">
+                {/* Compact Metadata Ribbon */}
+                <div className="bg-white dark:bg-slate-800 border dark:border-slate-700/80 rounded-xl p-2.5 shadow-xs shrink-0 space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-12 gap-2 items-center">
+                    {/* Subject */}
+                    <div className="md:col-span-4 space-y-0.5">
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1">
+                        <span>موضوع نامه</span>
+                        <span className="text-red-500">*</span>
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={newLetterForm.hideSubjectInLetter}
+                        required
+                        type="text"
+                        value={newLetterForm.subject}
                         onChange={(e) =>
                           setNewLetterForm({
                             ...newLetterForm,
-                            hideSubjectInLetter: e.target.checked,
+                            subject: e.target.value,
                           })
                         }
-                        className="rounded text-purple-600 focus:ring-purple-500"
+                        placeholder="مثال: درخواست تأمین تجهیزات حفاظتی"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 dark:text-slate-100"
                       />
-                      حذف موضوع از متن نامه نهایی
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-600 font-bold cursor-pointer">
+                    </div>
+
+                    {/* Sender */}
+                    <div className="md:col-span-2 space-y-0.5">
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">فرستنده (از طرف)</label>
                       <input
-                        type="checkbox"
-                        checked={newLetterForm.hideSalutationInLetter}
+                        required
+                        type="text"
+                        list="user-list"
+                        value={newLetterForm.sender}
                         onChange={(e) =>
                           setNewLetterForm({
                             ...newLetterForm,
-                            hideSalutationInLetter: e.target.checked,
+                            sender: e.target.value,
                           })
                         }
-                        className="rounded text-purple-600 focus:ring-purple-500"
+                        placeholder="مثال: مدیریت دفتر مرکزی"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2.5 py-1 text-xs"
                       />
-                      حذف عبارت «با سلام و احترام» از متن نامه نهایی
-                    </label>
+                    </div>
+
+                    {/* Receiver */}
+                    <div className="md:col-span-2 space-y-0.5">
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">گیرنده (به سمت)</label>
+                      <input
+                        required
+                        type="text"
+                        list="user-list"
+                        value={newLetterForm.receiver}
+                        onChange={(e) =>
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            receiver: e.target.value,
+                          })
+                        }
+                        placeholder="مثال: سرپرست کارخانه"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2.5 py-1 text-xs"
+                      />
+                    </div>
+
+                    {/* Type */}
+                    <div className="md:col-span-2 space-y-0.5">
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">نوع نامه</label>
+                      <select
+                        value={newLetterForm.type}
+                        onChange={(e) =>
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            type: e.target.value as any,
+                          })
+                        }
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2 py-1 text-xs bg-white dark:text-white"
+                      >
+                        <option value="internal">داخلی (بین‌بخشی)</option>
+                        <option value="incoming">وارده (سازمان بیرونی)</option>
+                        <option value="outgoing">صادره (سازمان بیرونی)</option>
+                      </select>
+                    </div>
+
+                    {/* Date */}
+                    <div className="md:col-span-2 space-y-0.5">
+                      <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">تاریخ نامه (شمسی)</label>
+                      <input
+                        required
+                        type="text"
+                        value={newLetterForm.date}
+                        onChange={(e) =>
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            date: e.target.value,
+                          })
+                        }
+                        placeholder="۱۴۰۵/۰۴/۰۶"
+                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2 py-1 text-xs font-mono text-center"
+                      />
+                    </div>
+
+                    <datalist id="user-list">
+                      {users.map((u) => (
+                        <option key={u.id} value={u.fullName} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Inline quick checkboxes and advanced settings trigger */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t dark:border-slate-700/60 text-xs">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 font-bold cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={newLetterForm.hideSubjectInLetter}
+                          onChange={(e) =>
+                            setNewLetterForm({
+                              ...newLetterForm,
+                              hideSubjectInLetter: e.target.checked,
+                            })
+                          }
+                          className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                        />
+                        حذف موضوع از متن
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 font-bold cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={newLetterForm.hideSalutationInLetter}
+                          onChange={(e) =>
+                            setNewLetterForm({
+                              ...newLetterForm,
+                              hideSalutationInLetter: e.target.checked,
+                            })
+                          }
+                          className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                        />
+                        حذف عبارت «با سلام و احترام»
+                      </label>
+                      {companySettingsForm.companyStampUrl && (
+                        <label className="flex items-center gap-1.5 text-[11px] text-red-600 dark:text-red-400 font-bold cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={newLetterForm.addCompanyStamp}
+                            onChange={(e) =>
+                              setNewLetterForm({
+                                ...newLetterForm,
+                                addCompanyStamp: e.target.checked,
+                              })
+                            }
+                            className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5"
+                          />
+                          درج مهر شرکت
+                        </label>
+                      )}
+                      <label className="flex items-center gap-1.5 text-[11px] text-purple-600 dark:text-purple-400 font-bold cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={newLetterForm.isPrivate}
+                          onChange={(e) =>
+                            setNewLetterForm({
+                              ...newLetterForm,
+                              isPrivate: e.target.checked,
+                            })
+                          }
+                          className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                        />
+                        نامه محرمانه
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedOptionsModal(true)}
+                        className="flex items-center gap-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all"
+                      >
+                        <Sliders size={13} />
+                        تنظیمات تکمیلی، امضاها و ضمائم ({newLetterForm.attachments?.length || 0} پیوست)
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Content Textarea with insert template option */}
-                <div className="space-y-3">
+                {/* Virtual Google Docs Workspace Canvas - Maximized Height */}
+                <div className="flex-1 min-h-0 flex flex-col bg-slate-200/90 dark:bg-slate-950 rounded-xl border border-slate-300 dark:border-slate-800 overflow-hidden shadow-inner">
                   {/* Google Docs Styled Menu Bar */}
-                  <div className="flex items-center flex-wrap gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 border dark:border-white/10 rounded-t-xl text-xs font-bold text-slate-700 dark:text-slate-200 select-none relative z-40">
+                  <div className="flex items-center flex-wrap gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border-b dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 select-none relative z-40 shrink-0">
                     {/* Doc Icon & Subject */}
                     <div className="flex items-center gap-1.5 border-l border-slate-300 dark:border-slate-700 pl-3 ml-1 text-purple-600 dark:text-purple-400">
                       <FileText size={15} />
@@ -2944,332 +3014,291 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 border-t pt-4">
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      اندازه کاغذ
-                    </label>
-                    <select
-                      value={newLetterForm.paperSize}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          paperSize: e.target.value as "A4" | "A5",
-                        })
-                      }
-                      className="w-full border rounded-lg p-2 text-xs"
-                    >
-                      <option value="A4">A4</option>
-                      <option value="A5">A5</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      جهت کاغذ
-                    </label>
-                    <select
-                      value={newLetterForm.orientation}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          orientation: e.target.value as
-                            "portrait" | "landscape",
-                        })
-                      }
-                      className="w-full border rounded-lg p-2 text-xs"
-                    >
-                      <option value="portrait">عمودی (Portrait)</option>
-                      <option value="landscape">افقی (Landscape)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      مکان امضا/مهر
-                    </label>
-                    <select
-                      value={newLetterForm.signaturePosition}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          signaturePosition: e.target.value as any,
-                        })
-                      }
-                      className="w-full border rounded-lg p-2 text-xs"
-                    >
-                      <option value="bottom_left">پایین سمت چپ</option>
-                      <option value="bottom_center">پایین وسط</option>
-                      <option value="bottom_right">پایین سمت راست</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1 flex flex-col justify-center">
-                    <label className="flex items-center gap-2 cursor-pointer mt-4">
-                      <input
-                        type="checkbox"
-                        checked={newLetterForm.addCompanyStamp}
-                        onChange={(e) =>
-                          setNewLetterForm({
-                            ...newLetterForm,
-                            addCompanyStamp: e.target.checked,
-                          })
-                        }
-                        className="w-4 h-4 text-purple-600 rounded"
-                      />
-                      <span className="text-xs font-bold text-slate-700">
-                        درج مهر شرکت
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Sign-off text and Signers */}
-                <div className="space-y-4 mt-4 border-t pt-4">
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500 font-bold">
-                      متن پایان نامه (با تشکر...)
-                    </label>
-                    <textarea
-                      required
-                      rows={2}
-                      value={newLetterForm.signOffText}
-                      onChange={(e) =>
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          signOffText: e.target.value,
-                        })
-                      }
-                      placeholder="مثال: با تشکر و تقدیم احترام"
-                      className="w-full border rounded-lg px-3 py-2 text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs text-slate-500 font-bold">
-                        امضاکنندگان نامه
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const s = newLetterForm.signers || [];
-                          setNewLetterForm({
-                            ...newLetterForm,
-                            signers: [...s, { name: "", title: "" }],
-                          });
-                        }}
-                        className="text-[10px] text-purple-600 font-bold hover:underline"
-                      >
-                        + افزودن امضاکننده جدید
-                      </button>
-                    </div>
-                    {(!newLetterForm.signers ||
-                      newLetterForm.signers.length === 0) && (
-                      <div className="text-[10px] text-slate-400">
-                        بدون نام امضاکننده (فقط امضای دیجیتال درج می‌شود)
-                      </div>
-                    )}
-                    {newLetterForm.signers?.map((signer, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder="نام امضاکننده (مثال: محمد احمدی)"
-                          value={signer.name}
-                          onChange={(e) => {
-                            const newSigners = [
-                              ...(newLetterForm.signers || []),
-                            ];
-                            newSigners[idx].name = e.target.value;
-                            setNewLetterForm({
-                              ...newLetterForm,
-                              signers: newSigners,
-                            });
-                          }}
-                          className="flex-1 border rounded-lg px-2 py-1.5 text-[11px]"
-                        />
-                        <input
-                          type="text"
-                          placeholder="سمت (مثال: مدیر عامل)"
-                          value={signer.title}
-                          onChange={(e) => {
-                            const newSigners = [
-                              ...(newLetterForm.signers || []),
-                            ];
-                            newSigners[idx].title = e.target.value;
-                            setNewLetterForm({
-                              ...newLetterForm,
-                              signers: newSigners,
-                            });
-                          }}
-                          className="flex-1 border rounded-lg px-2 py-1.5 text-[11px]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newSigners = [
-                              ...(newLetterForm.signers || []),
-                            ];
-                            newSigners.splice(idx, 1);
-                            setNewLetterForm({
-                              ...newLetterForm,
-                              signers: newSigners,
-                            });
-                          }}
-                          className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* File Attachment Upload */}
-                <div className="space-y-2 border-t pt-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs text-slate-500 font-bold">
-                      الصاق فایل‌های پیوست
-                    </label>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      className="hidden"
-                      onChange={handleAttachmentUpload}
-                    />
+                {/* Sleek Bottom Action Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t dark:border-slate-800 pt-2 shrink-0">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-1 text-[11px] text-slate-600 hover:text-slate-800 font-bold bg-slate-50 border px-3 py-1.5 rounded-lg transition-colors"
-                      disabled={uploadingAttachment}
+                      onClick={handleSaveAsTemplate}
+                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40 text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
                     >
-                      <Upload size={12} />{" "}
-                      {uploadingAttachment
-                        ? "درحال آپلود..."
-                        : "انتخاب و الصاق پیوست"}
+                      ذخیره متون فعلی به عنوان قالب
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedOptionsModal(true)}
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                    >
+                      <Sliders size={13} />
+                      تنظیمات کاغذ و امضاها ({newLetterForm.signers?.length || 0} امضاکننده)
                     </button>
                   </div>
 
-                  {/* List of Attachments */}
-                  {newLetterForm.attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {newLetterForm.attachments.map((file, i) => (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1.5 bg-slate-50 border text-slate-700 text-[10px] font-bold px-2.5 py-1 rounded-full"
-                        >
-                          <FileText size={10} />
-                          <span className="truncate max-w-[120px]">
-                            {file.fileName}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAttachment(i)}
-                            className="text-red-500 hover:text-red-700 font-bold"
-                          >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  {/* Company Stamp Checkbox */}
-                  {companySettingsForm.companyStampUrl && (
-                    <div className="flex-1 flex items-center gap-2 bg-red-50/50 border border-red-100 p-3 rounded-xl">
-                      <input
-                        type="checkbox"
-                        id="new-letter-add-stamp"
-                        checked={newLetterForm.addCompanyStamp}
-                        onChange={(e) =>
-                          setNewLetterForm((prev) => ({
-                            ...prev,
-                            addCompanyStamp: e.target.checked,
-                          }))
-                        }
-                        className="rounded text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer"
-                      />
-                      <label
-                        htmlFor="new-letter-add-stamp"
-                        className="text-xs font-black text-slate-700 cursor-pointer select-none flex items-center gap-1.5"
-                      >
-                        <Award
-                          size={14}
-                          className="text-red-600 animate-pulse"
-                        />{" "}
-                        درج مهر رسمی شرکت پای این نامه اداری
-                      </label>
-                    </div>
-                  )}
-
-                  {/* Private Letter Checkbox */}
-                  <div className="flex-1 flex items-center gap-2 bg-purple-50/50 border border-purple-100 p-3 rounded-xl">
-                    <input
-                      type="checkbox"
-                      id="new-letter-is-private"
-                      checked={newLetterForm.isPrivate}
-                      onChange={(e) =>
-                        setNewLetterForm((prev) => ({
-                          ...prev,
-                          isPrivate: e.target.checked,
-                        }))
-                      }
-                      className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
-                    />
-                    <label
-                      htmlFor="new-letter-is-private"
-                      className="text-xs font-black text-slate-700 cursor-pointer select-none flex items-center gap-1.5"
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewLetterModal(false)}
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-4 py-2 rounded-xl transition-all"
                     >
-                      <Lock size={14} className="text-purple-600" /> نامه
-                      محرمانه / خصوصی (فقط قابل مشاهده برای افراد مرتبط)
-                    </label>
+                      انصراف
+                    </button>
+                    <button
+                      type="submit"
+                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1.5"
+                    >
+                      <CheckCircle size={15} />
+                      ثبت نهایی و صدور شماره نامه
+                    </button>
                   </div>
                 </div>
-                </div>
-
-                {/* Form Buttons */}
-                <div className="flex justify-end gap-2 border-t pt-4 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const fakeLetter: SecretariatLetter = {
-                        ...(newLetterForm as any),
-                        id: "preview_only",
-                        companyId: selectedCompany.id,
-                        status: SecretariatLetterStatus.DRAFT,
-                        createdAt: Date.now(),
-                        updatedAt: Date.now(),
-                        letterNumber: "پیش‌نویس",
-                        date: "پیش‌نویس",
-                      };
-                      setIsPrintMode(fakeLetter);
-                    }}
-                    className="bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all ml-auto"
-                  >
-                    <Eye size={14} className="inline mr-1" /> مشاهده پیش‌نویس
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowNewLetterModal(false)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-all"
-                  >
-                    انصراف
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveAsTemplate}
-                    className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-xs font-bold px-4 py-2.5 rounded-xl transition-all mr-auto"
-                  >
-                    ذخیره متون فعلی به عنوان قالب
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm hover:shadow transition-all"
-                  >
-                    ثبت نهایی و صدور شماره نامه
-                  </button>
-                </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 1.1 ADVANCED SETTINGS & SIGNERS MODAL */}
+      <AnimatePresence>
+        {showAdvancedOptionsModal && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto text-right"
+              dir="rtl"
+            >
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-3">
+                <h4 className="text-sm font-black text-gray-800 dark:text-white flex items-center gap-2">
+                  <Sliders size={16} className="text-purple-600" />
+                  تنظیمات ساختاری کاغذ، امضاکنندگان و ضمائم نامه
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOptionsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Page & Stamp Config */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">اندازه کاغذ</label>
+                  <select
+                    value={newLetterForm.paperSize}
+                    onChange={(e) =>
+                      setNewLetterForm({
+                        ...newLetterForm,
+                        paperSize: e.target.value as "A4" | "A5",
+                      })
+                    }
+                    className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-xs font-bold"
+                  >
+                    <option value="A4">A4 (استاندارد)</option>
+                    <option value="A5">A5 (کوچک)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">جهت کاغذ</label>
+                  <select
+                    value={newLetterForm.orientation}
+                    onChange={(e) =>
+                      setNewLetterForm({
+                        ...newLetterForm,
+                        orientation: e.target.value as "portrait" | "landscape",
+                      })
+                    }
+                    className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-xs font-bold"
+                  >
+                    <option value="portrait">عمودی (Portrait)</option>
+                    <option value="landscape">افقی (Landscape)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">مکان امضا و مهر</label>
+                  <select
+                    value={newLetterForm.signaturePosition}
+                    onChange={(e) =>
+                      setNewLetterForm({
+                        ...newLetterForm,
+                        signaturePosition: e.target.value as any,
+                      })
+                    }
+                    className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg p-2 text-xs font-bold"
+                  >
+                    <option value="bottom_left">پایین سمت چپ</option>
+                    <option value="bottom_center">پایین وسط</option>
+                    <option value="bottom_right">پایین سمت راست</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Sign-off text and Signers */}
+              <div className="space-y-3 border-t dark:border-slate-800 pt-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                    متن پایانی نامه (عبارت احترام‌آمیز)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newLetterForm.signOffText}
+                    onChange={(e) =>
+                      setNewLetterForm({
+                        ...newLetterForm,
+                        signOffText: e.target.value,
+                      })
+                    }
+                    placeholder="مثال: با تشکر و تقدیم احترام"
+                    className="w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-3 py-1.5 text-xs font-medium"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                      امضاکنندگان نامه
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const s = newLetterForm.signers || [];
+                        setNewLetterForm({
+                          ...newLetterForm,
+                          signers: [...s, { name: "", title: "" }],
+                        });
+                      }}
+                      className="text-[11px] text-purple-600 font-bold hover:underline"
+                    >
+                      + افزودن امضاکننده جدید
+                    </button>
+                  </div>
+                  {(!newLetterForm.signers ||
+                    newLetterForm.signers.length === 0) && (
+                    <div className="text-[11px] text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border dark:border-slate-800">
+                      بدون امضاکننده متنی (فقط امضای دیجیتال درج می‌شود)
+                    </div>
+                  )}
+                  {newLetterForm.signers?.map((signer, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="نام امضاکننده (مثال: محمد احمدی)"
+                        value={signer.name}
+                        onChange={(e) => {
+                          const newSigners = [
+                            ...(newLetterForm.signers || []),
+                          ];
+                          newSigners[idx].name = e.target.value;
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            signers: newSigners,
+                          });
+                        }}
+                        className="flex-1 border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 text-xs"
+                      />
+                      <input
+                        type="text"
+                        placeholder="سمت (مثال: مدیر عامل)"
+                        value={signer.title}
+                        onChange={(e) => {
+                          const newSigners = [
+                            ...(newLetterForm.signers || []),
+                          ];
+                          newSigners[idx].title = e.target.value;
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            signers: newSigners,
+                          });
+                        }}
+                        className="flex-1 border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newSigners = [
+                            ...(newLetterForm.signers || []),
+                          ];
+                          newSigners.splice(idx, 1);
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            signers: newSigners,
+                          });
+                        }}
+                        className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-1.5 rounded-lg"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Attachments Section */}
+              <div className="space-y-2 border-t dark:border-slate-800 pt-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                    الصاق فایل‌های پیوست (اسناد، تصاویر، PDF)
+                  </label>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={handleAttachmentUpload}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border dark:border-slate-700 px-3 py-1.5 rounded-lg font-bold transition-colors"
+                    disabled={uploadingAttachment}
+                  >
+                    <Upload size={13} />
+                    {uploadingAttachment
+                      ? "درحال آپلود..."
+                      : "انتخاب و الصاق فایل جدید"}
+                  </button>
+                </div>
+
+                {newLetterForm.attachments.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {newLetterForm.attachments.map((file, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold px-2.5 py-1 rounded-lg"
+                      >
+                        <FileText size={12} className="text-purple-600" />
+                        <span className="truncate max-w-[150px]">
+                          {file.fileName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachment(i)}
+                          className="text-red-500 hover:text-red-700 font-bold"
+                        >
+                          <X size={13} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-400">
+                    هیچ فایلی الصاق نشده است.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-3 border-t dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOptionsModal(false)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-5 py-2 rounded-xl"
+                >
+                  تایید و بازگشت به نگارش نامه
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -3278,26 +3307,28 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       {/* 2. DETAILED LETTER VIEW MODAL */}
       <AnimatePresence>
         {selectedLetterForView && (
-          <div className="fixed inset-0 z-50 flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs overflow-hidden">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-gray-900 border dark:border-white/10 rounded-2xl max-w-3xl w-full p-6 shadow-xl space-y-4 max-h-[85vh] overflow-y-auto text-right"
+              className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl max-w-6xl w-full p-4 sm:p-5 shadow-2xl flex flex-col max-h-[92vh] text-right"
               dir="rtl"
             >
-              <div className="flex items-center justify-between border-b pb-3">
+              {/* Modal Top Bar */}
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-3 shrink-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-gray-800 dark:text-white">
-                    بررسی نامه اداری شماره: {selectedLetterForView.letterNumber}
+                  <h3 className="text-base font-black text-gray-800 dark:text-white flex items-center gap-1.5">
+                    <FileText size={18} className="text-purple-600" />
+                    نامه اداری شماره: {selectedLetterForView.letterNumber}
                   </h3>
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                       selectedLetterForView.type === "internal"
-                        ? "bg-purple-50 text-purple-700"
+                        ? "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
                         : selectedLetterForView.type === "incoming"
-                          ? "bg-blue-50 text-blue-700"
-                          : "bg-emerald-50 text-emerald-700"
+                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                          : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
                     }`}
                   >
                     {selectedLetterForView.type === "internal"
@@ -3306,18 +3337,28 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         ? "وارده"
                         : "صادره"}
                   </span>
+                  {selectedLetterForView.isPrivate && (
+                    <span className="text-[10px] bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                      <Lock size={10} /> محرمانه
+                    </span>
+                  )}
+                  {selectedLetterForView.status === SecretariatLetterStatus.ARCHIVED && (
+                    <span className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                      <Archive size={10} /> بایگانی‌شده
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   {canEditLetters && (
                     <button
                       onClick={() =>
                         handleEditLetterClick(selectedLetterForView)
                       }
-                      className="p-1.5 text-amber-600 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                      className="p-1.5 text-amber-600 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
                       title="ویرایش نامه"
                     >
-                      <Edit size={16} /> ویرایش
+                      <Edit size={14} /> <span className="hidden sm:inline">ویرایش</span>
                     </button>
                   )}
                   {canDeleteLetters && (
@@ -3325,257 +3366,228 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       onClick={() =>
                         handleDeleteLetter(selectedLetterForView.id)
                       }
-                      className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                      className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
                       title="حذف نامه"
                     >
-                      <Trash2 size={16} /> حذف
+                      <Trash2 size={14} /> <span className="hidden sm:inline">حذف</span>
                     </button>
                   )}
                   <button
                     onClick={() => setIsPrintMode(selectedLetterForView)}
-                    className="p-1.5 text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                    className="p-1.5 text-slate-600 hover:text-slate-800 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
                     title="چاپ با بالاترین کیفیت"
                   >
-                    <Printer size={16} /> چاپ و خروجی PDF
+                    <Printer size={14} /> <span className="hidden sm:inline">چاپ و پیش‌نمایش</span>
                   </button>
                   <button
                     onClick={() => handleShareSecretariatLetterToChat(selectedLetterForView)}
                     disabled={isSharingLetter}
-                    className="p-1.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
-                    title="ارسال مستقیم نامه اداری به گفتگو"
+                    className="p-1.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+                    title="ارسال مستقیم تصویر نامه اداری به گفتگو"
                   >
-                    {isSharingLetter ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-                    ارسال به گفتگو
+                    {isSharingLetter ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+                    <span className="hidden sm:inline">ارسال به گفتگو</span>
                   </button>
 
                   <button
                     onClick={() => setSelectedLetterForView(null)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1"
                   >
                     <X size={20} />
                   </button>
                 </div>
               </div>
 
-              {/* Main Two Column layout for Actions */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left (Letter view card) */}
-                <div className="lg:col-span-7 border rounded-2xl p-4 bg-slate-50/50 space-y-4 shadow-2xs">
-                  <div className="bg-white border rounded-xl p-4 space-y-4 font-sans text-xs shadow-3xs relative min-h-[250px] leading-relaxed">
-                    {/* Tiny Letter header mockup */}
-                    <div className="flex justify-between items-center border-b pb-2 mb-2 text-[10px] text-slate-400 font-mono">
-                      <span>{selectedCompany.name}</span>
-                      <div className="text-left">
-                        <div>تاریخ: {selectedLetterForView.date}</div>
-                        <div>شماره: {selectedLetterForView.letterNumber}</div>
-                        <div>
-                          پیوست:{" "}
-                          {selectedLetterForView.attachments?.length > 0
-                            ? "دارد"
-                            : "ندارد"}
-                        </div>
-                      </div>
-                    </div>
+              {/* Compact Metadata Ribbon (جمع و جور کردن مشخصات و موضوع نامه) */}
+              <div className="bg-slate-50 dark:bg-slate-800/80 border dark:border-slate-700/60 rounded-xl p-2.5 my-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 shrink-0">موضوع نامه:</span>
+                  <span className="font-black text-slate-800 dark:text-white truncate max-w-sm sm:max-w-md">{selectedLetterForView.subject}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+                  <div><b className="text-slate-400 font-bold">فرستنده:</b> {selectedLetterForView.sender}</div>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                  <div><b className="text-slate-400 font-bold">گیرنده:</b> {selectedLetterForView.receiver}</div>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                  <div><b className="text-slate-400 font-bold">تاریخ:</b> <span className="font-mono">{selectedLetterForView.date}</span></div>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                  <div><b className="text-slate-400 font-bold">پیوست:</b> {selectedLetterForView.attachments?.length ? `${selectedLetterForView.attachments.length} فایل` : "ندارد"}</div>
+                </div>
+              </div>
 
-                    <div className="space-y-2">
+              {/* Main Two Column layout for Full Visibility */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0 overflow-hidden">
+                {/* Left/Center: Letter Document Paper (High Priority & Space) */}
+                <div className="lg:col-span-8 flex flex-col min-h-0 overflow-hidden bg-slate-100 dark:bg-slate-950/60 rounded-xl border dark:border-slate-800/80 p-2 sm:p-4">
+                  <div className="overflow-y-auto flex-1 flex flex-col items-center custom-scrollbar">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md rounded-xl p-6 sm:p-8 w-full max-w-2xl min-h-[460px] flex flex-col justify-between text-right font-sans">
                       <div>
-                        <b>به سمت:</b> {selectedLetterForView.receiver}
-                      </div>
-                      <div>
-                        <b>از طرف:</b> {selectedLetterForView.sender}
-                      </div>
-                      <div className="pt-2 border-t border-dashed">
-                        <b>موضوع:</b> {selectedLetterForView.subject}
-                      </div>
-                    </div>
-
-                    {/* Content */}
-                    <div
-                      className="ql-editor pt-4 text-slate-700 leading-loose whitespace-pre-wrap font-medium"
-                      dangerouslySetInnerHTML={{
-                        __html: selectedLetterForView.content,
-                      }}
-                    ></div>
-
-                    {/* Real embedded signatures layout */}
-                    {selectedLetterForView.approvedBy &&
-                      selectedLetterForView.approvedBy.length > 0 && (
-                        <div className="pt-6 border-t border-dashed flex flex-wrap gap-4 justify-end">
-                          {selectedLetterForView.approvedBy.map((userId, i) => {
-                            const signer = users.find((u) => u.id === userId);
-                            const sigUrl =
-                              selectedLetterForView.signatureImageUrls?.[i];
-                            return (
-                              <div
-                                key={i}
-                                className="text-center space-y-1 bg-slate-50/70 p-1.5 border rounded-lg min-w-[100px]"
-                              >
-                                <span className="text-[10px] text-emerald-600 font-bold block flex items-center gap-0.5 justify-center">
-                                  <CheckCircle size={10} /> تایید و امضا شد
-                                </span>
-                                {sigUrl ? (
-                                  <img
-                                    src={sigUrl}
-                                    className="h-10 mx-auto object-contain mix-blend-multiply"
-                                  />
-                                ) : (
-                                  <div className="h-10 flex items-center justify-center text-[10px] text-slate-400">
-                                    بدون تصویر امضا
-                                  </div>
-                                )}
-                                <span className="text-[9px] font-bold text-gray-700 block">
-                                  {signer?.fullName || "کاربر سیستم"}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                  </div>
-
-                  {/* Letter attachments view link */}
-                  {selectedLetterForView.attachments?.length > 0 && (
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-bold text-slate-500 block">
-                        فایل‌های الصاقی (پیوست‌ها):
-                      </span>
-                      <div className="flex flex-col gap-1.5">
-                        {selectedLetterForView.attachments.map((file, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <a
-                              href={file.url}
-                              target="_blank"
-                              rel="referrer"
-                              className="flex-1 flex items-center justify-between bg-white border rounded-lg px-3 py-1.5 text-[11px] text-purple-700 hover:text-purple-900 hover:bg-slate-50 transition-all font-bold"
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <FileText size={14} /> {file.fileName}
-                              </span>
-                              <span className="text-[10px] text-slate-400">
-                                دانلود و مشاهده
-                              </span>
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => openSendToChat({
-                                fileUrl: file.url,
-                                fileName: file.fileName,
-                                title: `ارسال پیوست ${file.fileName} به گفتگو`,
-                                defaultMessage: `📎 فایل پیوست نامه شماره ${selectedLetterForView.letterNumber || '-'}: ${file.fileName}`
-                              })}
-                              className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors cursor-pointer"
-                              title="ارسال مستقیم پیوست به گفتگو"
-                            >
-                              <MessageSquare size={14} />
-                            </button>
+                        {/* Header metadata strip on paper */}
+                        <div className="flex justify-between items-center border-b dark:border-slate-800 pb-3 mb-4 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                          <span className="font-bold text-slate-700 dark:text-slate-200">{selectedCompany.name}</span>
+                          <div className="text-left space-y-0.5">
+                            <div>تاریخ: {selectedLetterForView.date}</div>
+                            <div>شماره: {selectedLetterForView.letterNumber}</div>
+                            <div>پیوست: {selectedLetterForView.attachments?.length > 0 ? "دارد" : "ندارد"}</div>
                           </div>
-                        ))}
+                        </div>
+
+                        {/* Receiver & Subject line on paper */}
+                        <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-200 mb-4">
+                          <div><b className="text-slate-900 dark:text-white">به:</b> {selectedLetterForView.receiver}</div>
+                          <div><b className="text-slate-900 dark:text-white">از:</b> {selectedLetterForView.sender}</div>
+                          <div className="pt-1.5 border-t border-dashed dark:border-slate-800"><b className="text-slate-900 dark:text-white">موضوع:</b> {selectedLetterForView.subject}</div>
+                        </div>
+
+                        {/* Full Letter Content */}
+                        <div
+                          className="ql-editor py-2 text-slate-800 dark:text-slate-100 leading-loose whitespace-pre-wrap font-medium text-xs sm:text-sm"
+                          dangerouslySetInnerHTML={{
+                            __html: selectedLetterForView.content,
+                          }}
+                        />
+                      </div>
+
+                      {/* Sign-off text and Signatures */}
+                      <div className="pt-6 border-t border-dashed dark:border-slate-800 mt-6 space-y-3">
+                        {selectedLetterForView.signOffText && (
+                          <div className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                            {selectedLetterForView.signOffText}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-end justify-between gap-4">
+                          {/* Company Stamp if enabled */}
+                          {selectedLetterForView.addCompanyStamp && companySettingsForm.companyStampUrl && (
+                            <div className="flex flex-col items-center">
+                              <img
+                                src={companySettingsForm.companyStampUrl}
+                                alt="مهر شرکت"
+                                className="h-16 w-auto object-contain mix-blend-multiply dark:mix-blend-normal opacity-90"
+                              />
+                              <span className="text-[9px] text-red-600 font-bold mt-1">مهر رسمی شرکت</span>
+                            </div>
+                          )}
+
+                          {/* Signatures */}
+                          <div className="flex flex-wrap gap-3 justify-end ml-auto">
+                            {selectedLetterForView.approvedBy && selectedLetterForView.approvedBy.length > 0 ? (
+                              selectedLetterForView.approvedBy.map((userId, i) => {
+                                const signer = users.find((u) => u.id === userId);
+                                const sigUrl = selectedLetterForView.signatureImageUrls?.[i];
+                                return (
+                                  <div
+                                    key={i}
+                                    className="text-center space-y-1 bg-slate-50 dark:bg-slate-800/80 p-2 border dark:border-slate-700 rounded-lg min-w-[110px]"
+                                  >
+                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block flex items-center gap-0.5 justify-center">
+                                      <CheckCircle size={11} /> تایید و امضا شد
+                                    </span>
+                                    {sigUrl ? (
+                                      <img
+                                        src={sigUrl}
+                                        className="h-10 mx-auto object-contain mix-blend-multiply dark:mix-blend-normal"
+                                      />
+                                    ) : (
+                                      <div className="h-10 flex items-center justify-center text-[10px] text-slate-400">
+                                        امضای دیجیتال
+                                      </div>
+                                    )}
+                                    <span className="text-[10px] font-bold text-gray-700 dark:text-gray-200 block">
+                                      {signer?.fullName || "کاربر سیستم"}
+                                    </span>
+                                  </div>
+                                );
+                              })
+                            ) : selectedLetterForView.signers && selectedLetterForView.signers.length > 0 ? (
+                              selectedLetterForView.signers.map((s, i) => (
+                                <div key={i} className="text-center space-y-0.5 min-w-[100px] border-t pt-1">
+                                  <div className="text-[11px] font-bold text-slate-800 dark:text-white">{s.name}</div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400">{s.title}</div>
+                                </div>
+                              ))
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  )}
 
-                  {/* Letter Official Export PDF/DOCX */}
-                  <div className="space-y-2 pt-3 border-t">
-                    <span className="text-[11px] font-bold text-slate-500 block">
-                      خروجی رسمی نامه اداری:
-                    </span>
-
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => openSendToChat({
-                          fileUrl: `/api/secretariat/letters/${selectedLetterForView.id}/pdf`,
-                          fileName: `Letter_${selectedLetterForView.letterNumber || selectedLetterForView.id}.pdf`,
-                          title: "ارسال فایل PDF رسمی نامه به گفتگو",
-                          defaultMessage: `📄 فایل PDF رسمی نامه اداری شماره ${selectedLetterForView.letterNumber || '-'}: ${selectedLetterForView.subject || ''}`
-                        })}
-                        className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl py-2 text-[11px] font-bold transition-all cursor-pointer"
-                        title="ارسال مستقیم فایل PDF این نامه به گفتگوی سازمانی"
-                      >
-                        <MessageSquare size={13} />
-                        ارسال فایل PDF رسمی به گفتگو
-                      </button>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <a
-                          href={`/api/secretariat/letters/${selectedLetterForView.id}/pdf`}
-                          className="flex items-center justify-center gap-1 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded-xl py-2 text-[10px] font-bold transition-all"
-                          title="دانلود با سربرگ پیش‌فرض شرکت"
-                          download
-                        >
-                          <FileText size={13} />
-                          PDF با سربرگ
-                        </a>
-                        <a
-                          href={`/api/secretariat/letters/${selectedLetterForView.id}/pdf?noLetterhead=true`}
-                          className="flex items-center justify-center gap-1 bg-rose-100/50 border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-xl py-2 text-[10px] font-bold transition-all"
-                          title="دانلود بدون سربرگ (مناسب چاپ روی کاغذ سربرگ‌دار)"
-                          download
-                        >
-                          <FileText size={13} />
-                          PDF بدون سربرگ
-                        </a>
+                    {/* Letter attachments view link */}
+                    {selectedLetterForView.attachments?.length > 0 && (
+                      <div className="w-full max-w-2xl mt-3 space-y-1.5 bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-xl p-3">
+                        <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block flex items-center gap-1">
+                          <FileText size={13} className="text-purple-600" />
+                          فایل‌های الصاقی (پیوست‌ها):
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {selectedLetterForView.attachments.map((file, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="referrer"
+                                className="flex-1 flex items-center justify-between bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] text-purple-700 dark:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all font-bold truncate"
+                              >
+                                <span className="flex items-center gap-1 truncate">
+                                  <FileText size={13} className="shrink-0" /> <span className="truncate">{file.fileName}</span>
+                                </span>
+                                <span className="text-[9px] text-slate-400 shrink-0 ml-1">
+                                  دانلود
+                                </span>
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => openSendToChat({
+                                  fileUrl: file.url,
+                                  fileName: file.fileName,
+                                  title: `ارسال پیوست ${file.fileName} به گفتگو`,
+                                  defaultMessage: `📎 فایل پیوست نامه شماره ${selectedLetterForView.letterNumber || '-'}: ${file.fileName}`
+                                })}
+                                className="p-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 rounded-lg border border-emerald-200 dark:border-emerald-800/40 transition-colors cursor-pointer shrink-0"
+                                title="ارسال مستقیم پیوست به گفتگو"
+                              >
+                                <MessageSquare size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <a
-                          href={`/api/secretariat/letters/${selectedLetterForView.id}/docx`}
-                          className="flex items-center justify-center gap-1 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-xl py-2 text-[10px] font-bold transition-all"
-                          title="دانلود سند Word با سربرگ"
-                          download
-                        >
-                          <FileText size={13} />
-                          Word با سربرگ
-                        </a>
-                        <a
-                          href={`/api/secretariat/letters/${selectedLetterForView.id}/docx?noLetterhead=true`}
-                          className="flex items-center justify-center gap-1 bg-sky-100/50 border border-sky-200 text-sky-700 hover:bg-sky-100 rounded-xl py-2 text-[10px] font-bold transition-all"
-                          title="دانلود سند Word بدون سربرگ (مناسب کاغذ سربرگ‌دار)"
-                          download
-                        >
-                          <FileText size={13} />
-                          Word بدون سربرگ
-                        </a>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Right (Action items: refer, comment, sign, archive) */}
-                <div className="lg:col-span-5 space-y-5">
+                {/* Right: Side Actions, Referrals & Comments */}
+                <div className="lg:col-span-4 flex flex-col gap-3 overflow-y-auto pr-1 min-h-0 custom-scrollbar">
                   {/* Approval Actions Panel */}
-                  <div className="glass-panel p-4 border rounded-2xl bg-white space-y-3">
-                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b pb-2">
-                      <UserCheck size={14} className="text-purple-600" />{" "}
-                      اقدامات و تایید نامه
+                  <div className="p-3.5 border dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 space-y-2.5 shadow-xs">
+                    <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5 border-b dark:border-slate-800 pb-2">
+                      <UserCheck size={14} className="text-purple-600" />
+                      اقدامات و تایید نامه اداری
                     </span>
 
                     <div className="flex flex-col gap-2">
                       {/* Sign and Confirm Button */}
                       <button
                         onClick={handleApproveSign}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-lg shadow-sm hover:shadow transition-colors flex items-center justify-center gap-1"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3 rounded-lg shadow-sm hover:shadow transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <Plus size={16} /> تایید و امضای رسمی نامه (الصاق تصویر
-                        امضا)
+                        <Plus size={15} /> تایید و امضای رسمی نامه (الصاق تصویر امضا)
                       </button>
 
                       {/* Reject Letter */}
                       <button
                         onClick={handleRejectLetter}
-                        className="w-full bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs py-2 px-3 rounded-lg border border-red-200 transition-colors flex items-center justify-center gap-1"
+                        className="w-full bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300 font-bold text-xs py-1.5 px-3 rounded-lg border border-red-200 dark:border-red-800/40 transition-colors flex items-center justify-center gap-1"
                       >
                         مخالفت و رد نامه اداری
                       </button>
 
                       {/* Company Stamp toggle */}
                       {companySettingsForm.companyStampUrl && (
-                        <label className="flex items-center gap-2 bg-red-50/40 border border-red-100 p-2.5 rounded-xl cursor-pointer hover:bg-red-50 transition-colors mt-1">
+                        <label className="flex items-center gap-2 bg-red-50/40 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 p-2 rounded-lg cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors">
                           <input
                             type="checkbox"
-                            checked={
-                              selectedLetterForView.addCompanyStamp || false
-                            }
+                            checked={selectedLetterForView.addCompanyStamp || false}
                             onChange={async (e) => {
                               const updated: SecretariatLetter = {
                                 ...selectedLetterForView,
@@ -3583,8 +3595,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                 updatedAt: Date.now(),
                               };
                               try {
-                                const letters =
-                                  await updateSecretariatLetter(updated);
+                                const letters = await updateSecretariatLetter(updated);
                                 setLetters(letters);
                                 setSelectedLetterForView(updated);
                               } catch (err) {
@@ -3593,55 +3604,87 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                             }}
                             className="rounded text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer"
                           />
-                          <span className="text-xs font-black text-slate-700 flex items-center gap-1">
-                            <Award size={14} className="text-red-600" /> درج مهر
-                            رسمی شرکت پای نامه
+                          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                            <Award size={13} className="text-red-600" /> درج مهر رسمی شرکت پای این نامه
                           </span>
                         </label>
                       )}
                     </div>
 
                     {/* Quick status controls (Archive/Unarchive/Delete) */}
-                    <div className="flex gap-2 border-t pt-3 mt-3">
+                    <div className="flex gap-2 border-t dark:border-slate-800 pt-2.5">
                       <button
-                        onClick={() =>
-                          handleToggleArchive(selectedLetterForView)
-                        }
-                        className="flex-1 bg-slate-50 hover:bg-slate-100 border text-slate-700 text-[10px] font-bold py-1.5 px-2.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                        onClick={() => handleToggleArchive(selectedLetterForView)}
+                        className="flex-1 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 border dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1"
                       >
-                        <Archive size={12} />{" "}
-                        {selectedLetterForView.status ===
-                        SecretariatLetterStatus.ARCHIVED
+                        <Archive size={12} />
+                        {selectedLetterForView.status === SecretariatLetterStatus.ARCHIVED
                           ? "خروج از بایگانی"
                           : "انتقال به بایگانی اسناد"}
                       </button>
+                    </div>
+                  </div>
 
-                      {isSuperUser && (
-                        <button
-                          onClick={() =>
-                            handleDeleteLetter(selectedLetterForView.id)
-                          }
-                          className="bg-red-50 hover:bg-red-100 text-red-600 p-1.5 rounded-lg transition-colors border border-red-100"
-                          title="حذف کامل نامه"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                  {/* Letter Official Export PDF/DOCX Card */}
+                  <div className="p-3.5 border dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 space-y-2 shadow-xs">
+                    <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5 border-b dark:border-slate-800 pb-2">
+                      <Download size={14} className="text-blue-600" />
+                      خروجی رسمی و دریافت فایل
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => openSendToChat({
+                        fileUrl: `/api/secretariat/letters/${selectedLetterForView.id}/pdf`,
+                        fileName: `Letter_${selectedLetterForView.letterNumber || selectedLetterForView.id}.pdf`,
+                        title: "ارسال فایل PDF رسمی نامه به گفتگو",
+                        defaultMessage: `📄 فایل PDF رسمی نامه اداری شماره ${selectedLetterForView.letterNumber || '-'}: ${selectedLetterForView.subject || ''}`
+                      })}
+                      className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 rounded-lg py-1.5 text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      <MessageSquare size={13} />
+                      ارسال فایل PDF رسمی به گفتگو
+                    </button>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <a
+                        href={`/api/secretariat/letters/${selectedLetterForView.id}/pdf`}
+                        className="flex items-center justify-center gap-1 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
+                        download
+                      >
+                        <FileText size={12} /> PDF با سربرگ
+                      </a>
+                      <a
+                        href={`/api/secretariat/letters/${selectedLetterForView.id}/pdf?noLetterhead=true`}
+                        className="flex items-center justify-center gap-1 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
+                        download
+                      >
+                        <FileText size={12} /> PDF بدون سربرگ
+                      </a>
+                      <a
+                        href={`/api/secretariat/letters/${selectedLetterForView.id}/docx`}
+                        className="flex items-center justify-center gap-1 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
+                        download
+                      >
+                        <FileText size={12} /> Word با سربرگ
+                      </a>
+                      <a
+                        href={`/api/secretariat/letters/${selectedLetterForView.id}/docx?noLetterhead=true`}
+                        className="flex items-center justify-center gap-1 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
+                        download
+                      >
+                        <FileText size={12} /> Word بدون سربرگ
+                      </a>
                     </div>
                   </div>
 
                   {/* Referral Panel */}
-                  <div className="glass-panel p-4 border rounded-2xl bg-white space-y-3">
-                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b pb-2">
-                      <Share2 size={14} className="text-amber-600" /> ارجاع نامه
-                      به پرسنل و همکاران
+                  <div className="p-3.5 border dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 space-y-2 shadow-xs">
+                    <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5 border-b dark:border-slate-800 pb-2">
+                      <Share2 size={14} className="text-amber-600" /> ارجاع نامه به پرسنل
                     </span>
-                    <p className="text-[10px] text-slate-400">
-                      می‌توانید این نامه را جهت پیگیری و اقدام به یک یا چند
-                      کاربر سیستم ارجاع دهید.
-                    </p>
 
-                    <div className="max-h-32 overflow-y-auto border rounded-lg p-2 space-y-1 bg-slate-50/50">
+                    <div className="max-h-28 overflow-y-auto border dark:border-slate-800 rounded-lg p-1.5 space-y-1 bg-slate-50/50 dark:bg-slate-800/50">
                       {users
                         .filter((u) => u.id !== currentUser.id)
                         .map((u) => {
@@ -3651,7 +3694,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                           return (
                             <label
                               key={u.id}
-                              className="flex items-center gap-2 text-xs hover:bg-white p-1 rounded cursor-pointer"
+                              className="flex items-center gap-2 text-[11px] hover:bg-white dark:hover:bg-slate-800 p-1 rounded cursor-pointer"
                             >
                               <input
                                 type="checkbox"
@@ -3669,7 +3712,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                 className="rounded text-amber-500 focus:ring-amber-500 w-3.5 h-3.5"
                               />
                               <span
-                                className={`font-bold ${isReferred ? "text-slate-400 line-through" : "text-slate-700"}`}
+                                className={`font-bold ${isReferred ? "text-slate-400 line-through" : "text-slate-700 dark:text-slate-200"}`}
                               >
                                 {u.fullName} {isReferred && "(ارجاع شده)"}
                               </span>
@@ -3681,21 +3724,20 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <button
                       onClick={handleReferLetter}
                       disabled={selectedReferrals.length === 0}
-                      className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-1.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       ثبت ارجاعات انتخابی
                     </button>
                   </div>
 
                   {/* Comments Panel */}
-                  <div className="glass-panel p-4 border rounded-2xl bg-white space-y-3">
-                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 border-b pb-2">
-                      <MessageSquare size={14} className="text-indigo-600" />{" "}
+                  <div className="p-3.5 border dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 space-y-2 shadow-xs">
+                    <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5 border-b dark:border-slate-800 pb-2">
+                      <MessageSquare size={14} className="text-indigo-600" />
                       نظرات و پیگیری پاراف‌ها
                     </span>
 
-                    {/* Comments List */}
-                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
                       {!selectedLetterForView.comments ||
                       selectedLetterForView.comments.length === 0 ? (
                         <p className="text-[10px] text-slate-400 text-center py-2">
@@ -3705,10 +3747,10 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         selectedLetterForView.comments.map((c) => (
                           <div
                             key={c.id}
-                            className="bg-slate-50 p-2 rounded-lg text-[10px] space-y-1 leading-relaxed border border-slate-100"
+                            className="bg-slate-50 dark:bg-slate-800/80 p-2 rounded-lg text-[10px] space-y-0.5 leading-relaxed border dark:border-slate-700"
                           >
                             <div className="flex justify-between items-center text-slate-400">
-                              <span className="font-bold text-slate-700">
+                              <span className="font-bold text-slate-700 dark:text-slate-200">
                                 {c.username}
                               </span>
                               <span>
@@ -3717,7 +3759,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                 )}
                               </span>
                             </div>
-                            <p className="text-slate-600 font-medium">
+                            <p className="text-slate-600 dark:text-slate-300 font-medium">
                               {c.comment}
                             </p>
                           </div>
@@ -3725,18 +3767,17 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       )}
                     </div>
 
-                    {/* Add Comment Textarea */}
-                    <div className="flex gap-1.5 pt-2 border-t">
+                    <div className="flex gap-1.5 pt-1.5 border-t dark:border-slate-800">
                       <input
                         type="text"
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
-                        placeholder="ثبت نظر یا پاراف اداری جدید..."
-                        className="flex-1 border rounded-lg px-2.5 py-1.5 text-xs"
+                        placeholder="ثبت نظر یا پاراف اداری..."
+                        className="flex-1 border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2 py-1 text-xs"
                       />
                       <button
                         onClick={handleAddComment}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1 rounded-lg transition-colors"
                       >
                         ارسال
                       </button>

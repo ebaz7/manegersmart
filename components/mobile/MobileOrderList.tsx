@@ -142,8 +142,12 @@ const MobileOrderList: React.FC<Props> = ({ orders, currentUser, refreshData }) 
         <div className="fixed inset-0 z-[100] glass-panel overflow-y-auto">
             <PrintVoucher 
                 order={selectedOrder} 
+                currentUser={currentUser}
                 onClose={() => setSelectedOrder(null)} 
-                // Pass existing handlers if needed or reimplement minimal ones
+                onOrderUpdated={(updated) => {
+                    setSelectedOrder(updated);
+                    refreshData();
+                }}
             />
         </div>
       )}

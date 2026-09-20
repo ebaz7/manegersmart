@@ -1421,7 +1421,11 @@ const Settings: React.FC<SettingsProps> = ({
         companyId: selectedCompanyIdForSec,
         headquartersAccessTokens: existing.headquartersAccessTokens || [],
         factoryAccessTokens: existing.factoryAccessTokens || [],
+        editAccessTokens: existing.editAccessTokens || [],
+        deleteAccessTokens: existing.deleteAccessTokens || [],
         letterheadUrl: existing.letterheadUrl || "",
+        pdfLetterheadUrl: existing.pdfLetterheadUrl || "",
+        wordLetterheadUrl: existing.wordLetterheadUrl || "",
         meetingMinutesTemplate: existing.meetingMinutesTemplate || "",
         companyStampUrl: existing.companyStampUrl || "",
         companyStampSize: existing.companyStampSize || 112,
@@ -1439,7 +1443,11 @@ const Settings: React.FC<SettingsProps> = ({
         companyId: selectedCompanyIdForSec,
         headquartersAccessTokens: [],
         factoryAccessTokens: [],
+        editAccessTokens: [],
+        deleteAccessTokens: [],
         letterheadUrl: "",
+        pdfLetterheadUrl: "",
+        wordLetterheadUrl: "",
         meetingMinutesTemplate: "",
         companyStampUrl: "",
         companyStampSize: 112,
@@ -6150,44 +6158,50 @@ const Settings: React.FC<SettingsProps> = ({
                       <div className="bg-white/50 dark:bg-gray-800 border rounded-2xl p-5 md:p-6 shadow-sm space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-3 bg-slate-50/50 p-4 border rounded-xl">
-                            <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                              <Lock size={14} className="text-purple-600" />{" "}
-                              دسترسی به دبیرخانه دفتر مرکزی
-                            </label>
-                            <div className="max-h-40 overflow-y-auto border bg-white rounded-lg p-2.5 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                                <Lock size={14} className="text-purple-600" />{" "}
+                                دسترسی به دبیرخانه دفتر مرکزی
+                              </label>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                {(secSettingsForm.headquartersAccessTokens || []).length} کاربر مجاز
+                              </span>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto border bg-white rounded-lg p-2 space-y-1">
                               {systemUsers.map((u) => {
-                                const isChecked =
-                                  secSettingsForm.headquartersAccessTokens?.includes(
-                                    u.id,
-                                  );
+                                const isChecked = (secSettingsForm.headquartersAccessTokens || []).includes(u.id);
                                 return (
                                   <label
                                     key={u.id}
-                                    className="flex items-center gap-2 text-xs hover:bg-slate-50 p-1 rounded cursor-pointer"
+                                    className={`flex items-center gap-2 text-xs p-2 rounded-lg border cursor-pointer transition-colors ${
+                                      isChecked
+                                        ? "bg-purple-50/80 border-purple-200 text-purple-900 font-bold"
+                                        : "bg-white border-transparent hover:bg-slate-50 text-gray-700"
+                                    }`}
                                   >
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
                                         let tokens = [
-                                          ...(secSettingsForm.headquartersAccessTokens ||
-                                            []),
+                                          ...(secSettingsForm.headquartersAccessTokens || []),
                                         ];
                                         if (tokens.includes(u.id))
-                                          tokens = tokens.filter(
-                                            (t) => t !== u.id,
-                                          );
+                                          tokens = tokens.filter((t) => t !== u.id);
                                         else tokens.push(u.id);
                                         setSecSettingsForm({
                                           ...secSettingsForm,
                                           headquartersAccessTokens: tokens,
                                         });
                                       }}
-                                      className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                                      className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
                                     />
-                                    <span className="font-bold text-gray-700">
+                                    <span className="flex-1">
                                       {u.fullName}
                                     </span>
+                                    {isChecked && (
+                                      <span className="text-[10px] text-purple-600 font-bold">مجاز</span>
+                                    )}
                                   </label>
                                 );
                               })}
@@ -6195,44 +6209,50 @@ const Settings: React.FC<SettingsProps> = ({
                           </div>
 
                           <div className="space-y-3 bg-slate-50/50 p-4 border rounded-xl">
-                            <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                              <Lock size={14} className="text-indigo-600" />{" "}
-                              دسترسی به دبیرخانه کارخانه
-                            </label>
-                            <div className="max-h-40 overflow-y-auto border bg-white rounded-lg p-2.5 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                                <Lock size={14} className="text-indigo-600" />{" "}
+                                دسترسی به دبیرخانه کارخانه
+                              </label>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                {(secSettingsForm.factoryAccessTokens || []).length} کاربر مجاز
+                              </span>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto border bg-white rounded-lg p-2 space-y-1">
                               {systemUsers.map((u) => {
-                                const isChecked =
-                                  secSettingsForm.factoryAccessTokens?.includes(
-                                    u.id,
-                                  );
+                                const isChecked = (secSettingsForm.factoryAccessTokens || []).includes(u.id);
                                 return (
                                   <label
                                     key={u.id}
-                                    className="flex items-center gap-2 text-xs hover:bg-slate-50 p-1 rounded cursor-pointer"
+                                    className={`flex items-center gap-2 text-xs p-2 rounded-lg border cursor-pointer transition-colors ${
+                                      isChecked
+                                        ? "bg-indigo-50/80 border-indigo-200 text-indigo-900 font-bold"
+                                        : "bg-white border-transparent hover:bg-slate-50 text-gray-700"
+                                    }`}
                                   >
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
                                         let tokens = [
-                                          ...(secSettingsForm.factoryAccessTokens ||
-                                            []),
+                                          ...(secSettingsForm.factoryAccessTokens || []),
                                         ];
                                         if (tokens.includes(u.id))
-                                          tokens = tokens.filter(
-                                            (t) => t !== u.id,
-                                          );
+                                          tokens = tokens.filter((t) => t !== u.id);
                                         else tokens.push(u.id);
                                         setSecSettingsForm({
                                           ...secSettingsForm,
                                           factoryAccessTokens: tokens,
                                         });
                                       }}
-                                      className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                                      className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                                     />
-                                    <span className="font-bold text-gray-700">
+                                    <span className="flex-1">
                                       {u.fullName}
                                     </span>
+                                    {isChecked && (
+                                      <span className="text-[10px] text-indigo-600 font-bold">مجاز</span>
+                                    )}
                                   </label>
                                 );
                               })}
@@ -6242,44 +6262,50 @@ const Settings: React.FC<SettingsProps> = ({
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
                           <div className="space-y-3 bg-slate-50/50 p-4 border rounded-xl">
-                            <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                              <Lock size={14} className="text-amber-600" />{" "}
-                              دسترسی به ویرایش نامه‌ها
-                            </label>
-                            <div className="max-h-40 overflow-y-auto border bg-white rounded-lg p-2.5 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                                <Lock size={14} className="text-amber-600" />{" "}
+                                دسترسی به ویرایش نامه‌ها
+                              </label>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                {(secSettingsForm.editAccessTokens || []).length} کاربر مجاز
+                              </span>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto border bg-white rounded-lg p-2 space-y-1">
                               {systemUsers.map((u) => {
-                                const isChecked =
-                                  secSettingsForm.editAccessTokens?.includes(
-                                    u.id,
-                                  );
+                                const isChecked = (secSettingsForm.editAccessTokens || []).includes(u.id);
                                 return (
                                   <label
                                     key={u.id}
-                                    className="flex items-center gap-2 text-xs hover:bg-slate-50 p-1 rounded cursor-pointer"
+                                    className={`flex items-center gap-2 text-xs p-2 rounded-lg border cursor-pointer transition-colors ${
+                                      isChecked
+                                        ? "bg-amber-50/80 border-amber-200 text-amber-900 font-bold"
+                                        : "bg-white border-transparent hover:bg-slate-50 text-gray-700"
+                                    }`}
                                   >
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
                                         let tokens = [
-                                          ...(secSettingsForm.editAccessTokens ||
-                                            []),
+                                          ...(secSettingsForm.editAccessTokens || []),
                                         ];
                                         if (tokens.includes(u.id))
-                                          tokens = tokens.filter(
-                                            (t) => t !== u.id,
-                                          );
+                                          tokens = tokens.filter((t) => t !== u.id);
                                         else tokens.push(u.id);
                                         setSecSettingsForm({
                                           ...secSettingsForm,
                                           editAccessTokens: tokens,
                                         });
                                       }}
-                                      className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5"
+                                      className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
                                     />
-                                    <span className="font-bold text-gray-700">
+                                    <span className="flex-1">
                                       {u.fullName}
                                     </span>
+                                    {isChecked && (
+                                      <span className="text-[10px] text-amber-600 font-bold">مجاز</span>
+                                    )}
                                   </label>
                                 );
                               })}
@@ -6287,44 +6313,50 @@ const Settings: React.FC<SettingsProps> = ({
                           </div>
 
                           <div className="space-y-3 bg-slate-50/50 p-4 border rounded-xl">
-                            <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                              <Lock size={14} className="text-red-600" /> دسترسی
-                              به حذف نامه‌ها
-                            </label>
-                            <div className="max-h-40 overflow-y-auto border bg-white rounded-lg p-2.5 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                                <Lock size={14} className="text-red-600" />{" "}
+                                دسترسی به حذف نامه‌ها
+                              </label>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                                {(secSettingsForm.deleteAccessTokens || []).length} کاربر مجاز
+                              </span>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto border bg-white rounded-lg p-2 space-y-1">
                               {systemUsers.map((u) => {
-                                const isChecked =
-                                  secSettingsForm.deleteAccessTokens?.includes(
-                                    u.id,
-                                  );
+                                const isChecked = (secSettingsForm.deleteAccessTokens || []).includes(u.id);
                                 return (
                                   <label
                                     key={u.id}
-                                    className="flex items-center gap-2 text-xs hover:bg-slate-50 p-1 rounded cursor-pointer"
+                                    className={`flex items-center gap-2 text-xs p-2 rounded-lg border cursor-pointer transition-colors ${
+                                      isChecked
+                                        ? "bg-red-50/80 border-red-200 text-red-900 font-bold"
+                                        : "bg-white border-transparent hover:bg-slate-50 text-gray-700"
+                                    }`}
                                   >
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
                                       onChange={() => {
                                         let tokens = [
-                                          ...(secSettingsForm.deleteAccessTokens ||
-                                            []),
+                                          ...(secSettingsForm.deleteAccessTokens || []),
                                         ];
                                         if (tokens.includes(u.id))
-                                          tokens = tokens.filter(
-                                            (t) => t !== u.id,
-                                          );
+                                          tokens = tokens.filter((t) => t !== u.id);
                                         else tokens.push(u.id);
                                         setSecSettingsForm({
                                           ...secSettingsForm,
                                           deleteAccessTokens: tokens,
                                         });
                                       }}
-                                      className="rounded text-red-600 focus:ring-red-500 w-3.5 h-3.5"
+                                      className="rounded text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer"
                                     />
-                                    <span className="font-bold text-gray-700">
+                                    <span className="flex-1">
                                       {u.fullName}
                                     </span>
+                                    {isChecked && (
+                                      <span className="text-[10px] text-red-600 font-bold">مجاز</span>
+                                    )}
                                   </label>
                                 );
                               })}

@@ -121,6 +121,51 @@ export const initTelegram = async (token) => {
                     }
                 }
 
+                // Support Photos and Documents (for PDF Merger and Secretariat Letters)
+                if (msg.photo || msg.document) {
+                    const isPrivate = msg.chat?.type === 'private';
+                    const hasActiveSession = BotCore.sessions[msg.chat.id] && BotCore.sessions[msg.chat.id].state !== 'IDLE';
+
+                    if (isPrivate || hasActiveSession) {
+                        let fileId = null;
+                        let fileName = null;
+                        let fileType = 'image';
+
+                        if (msg.photo && msg.photo.length > 0) {
+                            const photo = msg.photo[msg.photo.length - 1];
+                            fileId = photo.file_id;
+                            fileName = `photo_${Date.now()}.jpg`;
+                            fileType = 'image';
+                        } else if (msg.document) {
+                            fileId = msg.document.file_id;
+                            fileName = msg.document.file_name || `document_${Date.now()}`;
+                            const isPdf = (msg.document.mime_type === 'application/pdf') || (fileName && fileName.toLowerCase().endsWith('.pdf'));
+                            fileType = isPdf ? 'pdf' : 'image';
+                        }
+
+                        if (fileId) {
+                            try {
+                                await bot.sendChatAction(msg.chat.id, 'upload_document').catch(() => {});
+                                const fileLink = await bot.getFileLink(fileId);
+                                const response = await fetch(fileLink);
+                                const arrayBuffer = await response.arrayBuffer();
+                                const fileBuffer = Buffer.from(arrayBuffer);
+
+                                await BotCore.handleIncomingFile('telegram', msg.chat.id, msg.from?.id || msg.chat.id, {
+                                    fileId,
+                                    fileName,
+                                    type: fileType,
+                                    buffer: fileBuffer
+                                }, sendFn, sendPhotoFn, sendDocFn, checkMembershipFn, msg);
+                                return;
+                            } catch (fErr) {
+                                console.error("[Telegram File Receive Error]:", fErr);
+                                return sendFn(msg.chat.id, `⚠️ خطا در دریافت و پردازش فایل ارسالی: ${fErr.message}`);
+                            }
+                        }
+                    }
+                }
+
                 if (!msg.text) return;
                 
                 // Allow /id command in groups

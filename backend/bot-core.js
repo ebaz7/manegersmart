@@ -8,6 +8,7 @@ import * as Renderer from './renderer.js';
 import * as dbManager from './db-manager.js';
 import * as utils from './utils.js';
 import * as whatsapp from './whatsapp.js';
+import { mergeFilesToPdf } from './pdf-merger.js';
 
 const getDb = dbManager.getDb;
 const saveDb = dbManager.saveDb;
@@ -1010,6 +1011,7 @@ const KEYBOARDS = {
             [{ text: '💰 مدیریت پرداخت', callback_data: 'MENU_PAY' }, { text: '🚛 مدیریت خروج', callback_data: 'MENU_EXIT' }],
             [{ text: '📦 انبار و موجودی', callback_data: 'MENU_WH' }, { text: '🌍 بازرگانی', callback_data: 'MENU_TRADE' }],
             [{ text: '🛒 فروش', callback_data: 'MENU_SALES' }, { text: '📂 دبیرخانه اداری', callback_data: 'MENU_SEC' }],
+            [{ text: '📑 تبدیل و ادغام عکس/PDF به تک‌فایل PDF', callback_data: 'ACT_MERGE_PDF_START' }],
             [{ text: '📊 گزارشات مدیریتی', callback_data: 'MENU_REPORTS' }, { text: 'ℹ️ اطلاعات شرکت و بانک‌ها', callback_data: 'ACT_KNOWLEDGE' }],
             [{ text: '👤 پروفایل', callback_data: 'MENU_PROFILE' }]
         ]
@@ -1728,6 +1730,7 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
             const guestMenu = [
                 [{ text: '📦 لیست محصولات و قیمت', callback_data: 'GUEST_PRODUCTS' }],
                 [{ text: '🛒 ثبت سفارش خرید', callback_data: 'GUEST_ORDER' }],
+                [{ text: '📑 تبدیل و ادغام عکس/PDF به تک‌فایل PDF', callback_data: 'ACT_MERGE_PDF_START' }],
                 [{ text: '📞 ارتباط با بخش فروش (تیکت)', callback_data: 'GUEST_CONTACT' }],
                 [{ text: '💰 استعلام مانده حساب من', callback_data: 'GUEST_BALANCE_REQUEST' }],
                 [{ text: '🔍 پیگیری درخواست', callback_data: 'GUEST_TRACK' }],
@@ -2253,7 +2256,40 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
         }
 
         if (isGroup) return;
+
+        // PDF Merger trigger command
+        if (text === '/pdf' || text === '/mergepdf' || text === 'تبدیل pdf' || text === 'ادغام pdf' || text === 'ادغام فایل' || text === 'تبدیل به pdf' || text === 'pdf') {
+            return handleCallback(platform, chatId, senderId || chatId, 'ACT_MERGE_PDF_START', sendFn, sendPhotoFn, sendDocFn, checkMembershipFn);
+        }
+
         return sendFn(chatId, `امکانات ربات: لطفا /start را بزنید.`);
+    }
+
+    // --- PDF MERGER COLLECTING STATE ---
+    if (session.state === 'MERGE_PDF_COLLECTING') {
+        const lower = text.toLowerCase().trim();
+        if (text.includes('ساخت') || text.includes('اتمام') || text.includes('پایان') || lower === '/done' || lower === '/finish' || lower === 'done' || lower === 'finish') {
+            return handleCallback(platform, chatId, senderId || chatId, 'ACT_MERGE_PDF_FINISH', sendFn, sendPhotoFn, sendDocFn, checkMembershipFn);
+        }
+        if (text.includes('پاک') || lower === '/clear' || lower === 'clear') {
+            return handleCallback(platform, chatId, senderId || chatId, 'ACT_MERGE_PDF_CLEAR', sendFn, sendPhotoFn, sendDocFn, checkMembershipFn);
+        }
+        if (text.includes('لغو') || text.includes('انصراف') || lower === '/cancel' || lower === 'cancel') {
+            session.state = 'IDLE';
+            session.data.mergeFiles = [];
+            return sendFn(chatId, "❌ عملیات ادغام فایل‌ها لغو شد.", { reply_markup: KEYBOARDS.MAIN });
+        }
+        
+        const count = (session.data.mergeFiles || []).length;
+        return sendFn(chatId, `📥 شما در حالت «تبدیل و ادغام به PDF» هستید.\n\nتعداد فایل‌های حاضر در صف: *${count} عدد*\n\n🔹 لطفاً تصاویر (JPG/PNG) یا فایل‌های PDF خود را ارسال کنید.\n🔹 پس از پایان ارسال، دکمه «🏁 ساخت فایل PDF نهایی» را لمس کنید:`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: `🏁 ساخت فایل PDF نهایی (${count} فایل)`, callback_data: 'ACT_MERGE_PDF_FINISH' }],
+                    [{ text: '🗑️ پاک کردن صف', callback_data: 'ACT_MERGE_PDF_CLEAR' }],
+                    [{ text: '🔙 انصراف و بازگشت', callback_data: 'MENU_MAIN' }]
+                ]
+            }
+        });
     }
 
     // --- SECRETARIAT STATES ---
@@ -4034,6 +4070,98 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
             session.lastFinMenu = 'SAYAN_REPORTS_MENU';
             const userKb = getSayanReportsKeyboard(user);
             return sendFn(chatId, "🏢 *گزارشات و اطلاعات مالی ERP سایان*\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", { reply_markup: userKb });
+        }
+    }
+
+    // --- PDF MERGER CALLBACK ACTIONS ---
+    if (data === 'ACT_MERGE_PDF_START') {
+        session.state = 'MERGE_PDF_COLLECTING';
+        session.data.mergeFiles = [];
+        const guideText = 
+            `📑 *ابزار تبدیل و ادغام تصاویر و فایل‌های PDF به یک فایل PDF واحد*\n\n` +
+            `🔹 لطفاً عکس‌ها (JPG, PNG, WebP) و فایل‌های PDF مورد نظرتان را یکی پس از دیگری به این چت ارسال نمایید.\n` +
+            `🔹 هر تصویر به عنوان یک صفحه استاندارد و هر فایل PDF با تمام صفحاتش به همان ترتیبی که ارسال می‌کنید در خروجی قرار می‌گیرند.\n` +
+            `🔹 پس از ارسال فایل‌ها، دکمه «🏁 ساخت فایل PDF نهایی» را لمس کنید.\n\n` +
+            `📥 _در انتظار دریافت فایل‌ها... (تعداد فعلی: ۰)_`;
+        
+        return sendFn(chatId, guideText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🏁 ساخت فایل PDF نهایی (۰ فایل)', callback_data: 'ACT_MERGE_PDF_FINISH' }],
+                    [{ text: '🗑️ پاک کردن صف', callback_data: 'ACT_MERGE_PDF_CLEAR' }],
+                    [{ text: '🔙 انصراف و منوی اصلی', callback_data: 'MENU_MAIN' }]
+                ]
+            }
+        });
+    }
+
+    if (data === 'ACT_MERGE_PDF_CLEAR') {
+        session.data.mergeFiles = [];
+        return sendFn(chatId, "🗑️ صف فایل‌ها با موفقیت خالی شد (۰ فایل).\nاکنون می‌توانید عکس‌ها یا فایل‌های PDF جدید را ارسال کنید:", {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🏁 ساخت فایل PDF نهایی (۰ فایل)', callback_data: 'ACT_MERGE_PDF_FINISH' }],
+                    [{ text: '🔙 منوی اصلی', callback_data: 'MENU_MAIN' }]
+                ]
+            }
+        });
+    }
+
+    if (data === 'ACT_MERGE_PDF_FINISH') {
+        const fileList = session.data.mergeFiles || [];
+        if (fileList.length === 0) {
+            return sendFn(chatId, "⚠️ هنوز هیچ فایل یا تصویری ارسال نکرده‌اید!\nلطفاً ابتدا عکس‌ها یا فایل‌های PDF خود را به چت بفرستید.", {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔙 منوی اصلی', callback_data: 'MENU_MAIN' }]
+                    ]
+                }
+            });
+        }
+
+        try {
+            await sendFn(chatId, `⏳ در حال پردازش و ادغام ${fileList.length} فایل ارسالی به یک فایل PDF باکیفیت... لطفاً چند لحظه صبر کنید.`);
+            const mergedBuffer = await mergeFilesToPdf(fileList);
+            const fileName = `Merged_Document_${Date.now()}.pdf`;
+            
+            await sendDocFn(chatId, mergedBuffer, fileName, `✅ *فایل PDF تجمیعی با موفقیت تولید شد.*\n📄 تعداد کل اسناد و تصاویر ادغام شده: *${fileList.length} مورد*`);
+            
+            session.data.mergeFiles = [];
+            session.state = 'IDLE';
+            return sendFn(chatId, "🎉 عملیات ادغام با موفقیت انجام شد. منوی اصلی:", {
+                reply_markup: KEYBOARDS.MAIN
+            });
+        } catch (mergeErr) {
+            console.error("[Bot Merge PDF Error]:", mergeErr);
+            return sendFn(chatId, `❌ خطا در تولید فایل PDF: ${mergeErr.message || 'خطای ناشناخته'}\nلطفاً از سلامت فایل‌های ارسالی اطمینان حاصل نمایید.`, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔄 تلاش مجدد', callback_data: 'ACT_MERGE_PDF_FINISH' }],
+                        [{ text: '🗑️ پاک کردن صف', callback_data: 'ACT_MERGE_PDF_CLEAR' }],
+                        [{ text: '🔙 منوی اصلی', callback_data: 'MENU_MAIN' }]
+                    ]
+                }
+            });
+        }
+    }
+
+    if (data === 'ACT_MERGE_PDF_ADD_RECENT') {
+        if (session.data.recentFile) {
+            session.state = 'MERGE_PDF_COLLECTING';
+            session.data.mergeFiles = session.data.mergeFiles || [];
+            session.data.mergeFiles.push(session.data.recentFile);
+            delete session.data.recentFile;
+            
+            const count = session.data.mergeFiles.length;
+            return sendFn(chatId, `✅ فایل به صف ادغام اضافه شد.\n\n📊 تعداد کل فایل‌ها در صف: *${count} عدد*\n\nمی‌توانید فایل‌های بعدی را بفرستید یا دکمه ساخت PDF نهایی را بزنید:`, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `🏁 ساخت فایل PDF نهایی (${count} فایل)`, callback_data: 'ACT_MERGE_PDF_FINISH' }],
+                        [{ text: '🗑️ پاک کردن صف', callback_data: 'ACT_MERGE_PDF_CLEAR' }],
+                        [{ text: '🔙 بازگشت به منوی اصلی', callback_data: 'MENU_MAIN' }]
+                    ]
+                }
+            });
         }
     }
 
@@ -6754,4 +6882,71 @@ export const sendTreasuryChequesReport = async (db, customTargets = null, select
         error: errorMsg,
         message: isSuccess ? `گزارش چک‌ها با موفقیت ارسال شد (${sentCount} ارسال موفق).` : errorMsg
     };
+};
+
+export const handleIncomingFile = async (platform, chatId, senderId, fileData, sendFn, sendPhotoFn, sendDocFn, checkMembershipFn, rawMsg) => {
+    const db = getDb();
+    const user = resolveUser(db, platform, senderId || chatId);
+    const isGroup = chatId.toString().startsWith('-') || 
+                  (platform === 'bale' && (chatId.toString().length > 10 || chatId.toString().startsWith('g') || chatId.toString().includes('@group'))) ||
+                  (senderId && senderId.toString() !== chatId.toString());
+
+    if (!sessions[chatId]) sessions[chatId] = { state: 'IDLE', data: {} };
+    const session = sessions[chatId];
+
+    // If in PDF merge collecting state:
+    if (session.state === 'MERGE_PDF_COLLECTING') {
+        session.data.mergeFiles = session.data.mergeFiles || [];
+        session.data.mergeFiles.push(fileData);
+        
+        const count = session.data.mergeFiles.length;
+        const isImg = fileData.type === 'image';
+        const typeLabel = isImg ? '🖼️ تصویر' : '📄 سند PDF';
+        
+        return sendFn(chatId, `✅ ${typeLabel} *${fileData.fileName || ''}* دریافت و به صف ادغام افزوده شد.\n\n📊 تعداد کل فایل‌های حاضر در صف: *${count} عدد*\n\n🔹 می‌توانید فایل‌ها و تصاویر بعدی را ارسال نمایید.\n🔹 پس از تکمیل ارسال، دکمه «🏁 ساخت فایل PDF نهایی» را لمس کنید:`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: `🏁 ساخت فایل PDF نهایی (${count} فایل)`, callback_data: 'ACT_MERGE_PDF_FINISH' }],
+                    [{ text: '🗑️ پاک کردن صف', callback_data: 'ACT_MERGE_PDF_CLEAR' }],
+                    [{ text: '🔙 انصراف و بازگشت', callback_data: 'MENU_MAIN' }]
+                ]
+            }
+        });
+    }
+
+    // If in secretariat letter waiting state
+    if (session.state === 'SEC_WAIT_FILE') {
+        session.data.fileName = fileData.fileName;
+        session.data.fileBuffer = fileData.buffer;
+        
+        const companies = db.settings?.companies || [];
+        if (companies.length === 0) {
+            session.state = 'IDLE';
+            return sendFn(chatId, "❌ خطایی رخ داد: هیچ شرکتی در سیستم تعریف نشده است.");
+        }
+        session.state = 'SEC_WAIT_COMPANY';
+        const inline_keyboard = companies.map(c => [{ text: `🏢 ${c.name}`, callback_data: `SEC_SET_CO_${c.id}` }]);
+        inline_keyboard.push([{ text: '❌ انصراف', callback_data: 'MENU_SEC' }]);
+        
+        return sendFn(chatId, `📎 فایل دریافت شد: *${fileData.fileName}*\n\n🏢 لطفا شرکت مربوط به این نامه را انتخاب کنید:`, {
+            reply_markup: { inline_keyboard }
+        });
+    }
+
+    // If in IDLE state in private chat, provide smart contextual options:
+    if (!isGroup) {
+        session.data.recentFile = fileData;
+        const isImg = fileData.type === 'image';
+        const typeLabel = isImg ? '🖼️ تصویر' : '📄 سند PDF';
+        
+        return sendFn(chatId, `📥 ${typeLabel} *${fileData.fileName || ''}* دریافت شد.\n\nمایلید چه عملیاتی روی این فایل انجام دهید؟`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📑 افزودن به صف ساخت PDF تجمیعی', callback_data: 'ACT_MERGE_PDF_ADD_RECENT' }],
+                    [{ text: '📂 ثبت به عنوان نامه در دبیرخانه', callback_data: 'SEC_NEW_LETTER_FLOW' }],
+                    [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
+                ]
+            }
+        });
+    }
 };

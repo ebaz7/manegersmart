@@ -179,8 +179,9 @@ export const getNextAppReceiptNumber = (fiscalYear = '4') => {
 export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
     try {
         const fy = String(fiscalYear || '4');
-        const nextAppReceiptNo = getNextAppReceiptNumber(fy);
-        
+        const db = getDb();
+        const settings = db?.settings || {};
+
         // 1. Next Doc No for this fiscal year in Sayan
         const docNoRes = await executeSayanQuery(`
             SELECT MAX(CAST(Field_006 as bigint)) as MaxDocNo 
@@ -199,72 +200,80 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
         const maxArchiveCode = Number(archiveRes[0]?.MaxArchiveCode) || 0;
         const nextArchiveCode = maxArchiveCode + 1;
 
-        // 3. Next Posht-Nomreh (specifically looking at fiscal year 4 documents)
+        // 3. Next Posht-Nomreh & Receipt No from Sayan (chronologically latest registered cheque receipt)
+        // We order by document date (Field_002) and doc number (Field_006) to get the true last registered receipt in Sayan
         const poshtRes = await executeSayanQuery(`
-            SELECT TOP 1 c.Field_016 as PoshtNomreh
+            SELECT TOP 5 
+                c.Field_016 as PoshtNomreh, 
+                h.Field_006 as DocNo, 
+                h.Field_005 as ArchiveCode,
+                h.Field_002 as DocDate
             FROM BUR_TBL_008 h
             INNER JOIN BUR_TBL_009 r ON r.Field_004 = h.Field_005 AND r.Field_003 = h.Field_004
             INNER JOIN BUR_TBL_012 c ON c.Field_001 = r.Field_007
-            WHERE h.Field_004 = '${fy}' AND h.Field_009 = '11' AND ISNUMERIC(c.Field_016) = 1
-            ORDER BY CAST(h.Field_005 as bigint) DESC
+            WHERE h.Field_004 = '${fy}' AND h.Field_009 = '11' 
+              AND ISNUMERIC(c.Field_016) = 1
+              AND CAST(c.Field_016 as bigint) > 0
+              AND CAST(c.Field_016 as bigint) NOT IN (1398, 1399)
+            ORDER BY h.Field_002 DESC, CAST(h.Field_006 as bigint) DESC
         `);
         
+        let lastSayanPosht = 0;
+        if (poshtRes && poshtRes.length > 0 && poshtRes[0]?.PoshtNomreh) {
+            lastSayanPosht = Number(poshtRes[0].PoshtNomreh);
+        }
+
+        // 4. Check local application database receipts for this fiscal year
+        const localReceipts = (db?.sayan_cheque_receipts || [])
+            .filter(r => String(r.fiscalYear || '4') === fy);
+
+        // Find the chronologically latest registered receipt in local DB
+        const sortedLocal = [...localReceipts]
+            .filter(r => {
+                const num = parseInt(r.poshtNomreh || r.receiptNo);
+                return !isNaN(num) && num > 0 && num !== 1399 && num !== 1398;
+            })
+            .sort((a, b) => {
+                const dateA = new Date(a.registeredAt || a.createdAt || a.updatedAt || 0).getTime();
+                const dateB = new Date(b.registeredAt || b.createdAt || b.updatedAt || 0).getTime();
+                return dateB - dateA;
+            });
+
+        const latestLocalNum = sortedLocal.length > 0 ? (parseInt(sortedLocal[0].poshtNomreh || sortedLocal[0].receiptNo) || 0) : 0;
+
+        // Check if settings has a manually configured sequence
+        let configStart = 0;
+        if (settings.currentPoshtNomreh) {
+            const parsed = parseInt(String(settings.currentPoshtNomreh));
+            if (!isNaN(parsed) && parsed !== 1399 && parsed !== 1398) {
+                configStart = parsed;
+            }
+        }
+        if (settings.currentChequeReceiptNumber) {
+            const parsed = parseInt(String(settings.currentChequeReceiptNumber));
+            if (!isNaN(parsed) && parsed !== 1399 && parsed !== 1398 && parsed > configStart) {
+                configStart = parsed;
+            }
+        }
+
+        // Determine the actual last registered number
+        let lastRegisteredNum = Math.max(lastSayanPosht, latestLocalNum);
+        
         let nextPoshtNomreh = 1;
-        if (poshtRes.length > 0 && poshtRes[0]?.PoshtNomreh) {
-            nextPoshtNomreh = Number(poshtRes[0].PoshtNomreh) + 1;
+        if (lastRegisteredNum > 0) {
+            nextPoshtNomreh = lastRegisteredNum + 1;
+        } else if (configStart > 0) {
+            nextPoshtNomreh = configStart;
         } else {
-            // Fallback to max across table if none in fiscal year
-            const allPosht = await executeSayanQuery(`
-                SELECT MAX(CAST(Field_016 as bigint)) as MaxPosht
-                FROM BUR_TBL_012 
-                WHERE ISNUMERIC(Field_016) = 1 AND CAST(Field_016 as bigint) < 10000
-            `);
-            nextPoshtNomreh = (Number(allPosht[0]?.MaxPosht) || 700) + 1;
+            // Default baseline if no records exist yet
+            nextPoshtNomreh = 766;
         }
 
-        // Integrate configured startPoshtNomreh and local drafts to prevent overlap
-        try {
-            const db = getDb();
-            const settings = db?.settings || {};
-            const activeYear = (settings.fiscalYears || []).find(y => y.id === settings.activeFiscalYearId);
-            
-            let configStart = 1;
-            if (settings.currentPoshtNomreh) {
-                configStart = parseInt(String(settings.currentPoshtNomreh)) || 1;
-            }
-
-            if (activeYear && activeYear.companySequences) {
-                for (const key of Object.keys(activeYear.companySequences)) {
-                    const seq = activeYear.companySequences[key];
-                    if (seq && seq.startPoshtNomreh) {
-                        const val = parseInt(String(seq.startPoshtNomreh));
-                        if (!isNaN(val) && val > configStart) {
-                            configStart = val;
-                        }
-                    }
-                }
-            }
-
-            const localReceipts = db?.sayan_cheque_receipts || [];
-            const maxLocalPosht = localReceipts
-                .filter(r => String(r.fiscalYear) === String(fy))
-                .reduce((max, r) => {
-                    const num = parseInt(r.poshtNomreh || r.receiptNo);
-                    return !isNaN(num) && num > max ? num : max;
-                }, 0);
-
-            if (configStart > nextPoshtNomreh) {
-                nextPoshtNomreh = configStart;
-            }
-            if (maxLocalPosht >= nextPoshtNomreh) {
-                nextPoshtNomreh = maxLocalPosht + 1;
-            }
-        } catch (dbErr) {
-            console.error('Error matching local DB and configs for nextPoshtNomreh:', dbErr);
+        // If config specifies a higher starting number, respect it
+        if (configStart > nextPoshtNomreh) {
+            nextPoshtNomreh = configStart;
         }
 
-        // "شماره رسید با پشت نمره باید یکی باشه که همون 766 هست"
-        // Ensure nextAppReceiptNo and nextPoshtNomreh are unified and identical
         const unifiedReceiptNo = nextPoshtNomreh;
 
         return {

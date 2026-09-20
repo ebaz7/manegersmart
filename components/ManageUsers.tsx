@@ -21,6 +21,7 @@ const ManageUsers: React.FC = () => {
     canManageSales: false, 
     canManagePurchase: false,
     canManageParts: false,
+    canManageArchiveAttachments: false,
     canManageProformas: false,
     canAccessSayanRegistrations: false,
     canSayanPreInvoices: false,
@@ -91,6 +92,7 @@ const ManageUsers: React.FC = () => {
           canManageSales: false, 
           canManagePurchase: false,
           canManageParts: false,
+          canManageArchiveAttachments: false,
           canManageProformas: false,
           canAccessSayanRegistrations: false,
           canSayanPreInvoices: false,
@@ -124,6 +126,7 @@ const ManageUsers: React.FC = () => {
           canManageSales: user.canManageSales || false, 
           canManagePurchase: user.canManagePurchase || false,
           canManageParts: user.canManageParts || false,
+          canManageArchiveAttachments: user.canManageArchiveAttachments || false,
           canManageProformas: user.canManageProformas || false,
           canAccessSayanRegistrations: user.canAccessSayanRegistrations || false,
           canSayanPreInvoices: user.canSayanPreInvoices || false,
@@ -157,6 +160,7 @@ const ManageUsers: React.FC = () => {
           canManageSales: false, 
           canManagePurchase: false,
           canManageParts: false,
+          canManageArchiveAttachments: false,
           canManageProformas: false,
           canAccessSayanRegistrations: false,
           canSayanPreInvoices: false,
@@ -384,6 +388,10 @@ const ManageUsers: React.FC = () => {
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-amber-50 px-2 py-1.5 rounded cursor-pointer border border-amber-200">
                   <input type="checkbox" checked={formData.canManageParts} onChange={e => setFormData({...formData, canManageParts: e.target.checked})} className="w-4 h-4 text-amber-600" />
                   <span>تعریف و کدینگ کالا (درخواست خرید / انبار)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-indigo-900 bg-indigo-50/80 px-2 py-1.5 rounded cursor-pointer border border-indigo-200">
+                  <input type="checkbox" checked={formData.canManageArchiveAttachments} onChange={e => setFormData({...formData, canManageArchiveAttachments: e.target.checked})} className="w-4 h-4 text-indigo-600" />
+                  <span>دسترسی افزودن و اتچ فایل به بایگانی اسناد</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-indigo-50 px-2 py-1.5 rounded cursor-pointer border border-indigo-200">
                   <input type="checkbox" checked={formData.canManageProformas} onChange={e => setFormData({...formData, canManageProformas: e.target.checked})} className="w-4 h-4 text-indigo-600" />

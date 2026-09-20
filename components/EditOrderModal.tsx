@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { PaymentMethod, PaymentOrder, PaymentDetail, SystemSettings, OrderStatus, UserRole, CompanyBank } from '../types';
+import { PaymentMethod, PaymentOrder, PaymentDetail, SystemSettings, OrderStatus, UserRole, CompanyBank, PaymentOrderAttachment } from '../types';
 import { editOrder, uploadFile, getSettings, saveSettings } from '../services/storageService';
 import { enhanceDescription } from '../services/geminiService';
 import { jalaliToGregorian, getShamsiDateFromIso, formatCurrency, generateUUID, normalizeInputNumber, formatNumberString, deformatNumberString, getCurrentShamsiDate } from '../constants';
@@ -36,7 +36,7 @@ const EditOrderModal: React.FC<EditOrderModalProps> = ({ order, onClose, onSave 
   const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
   const [availableBanks, setAvailableBanks] = useState<string[]>([]);
   const [paymentLines, setPaymentLines] = useState<PaymentDetail[]>(Array.isArray(order.paymentDetails) ? order.paymentDetails : []);
-  const [attachments, setAttachments] = useState<{ fileName: string, data: string }[]>(Array.isArray(order.attachments) ? order.attachments : []);
+  const [attachments, setAttachments] = useState<PaymentOrderAttachment[]>(Array.isArray(order.attachments) ? order.attachments : []);
   
   // NEW: Editing state for lines
   const [editingLineId, setEditingLineId] = useState<string | null>(null);

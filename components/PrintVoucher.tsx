@@ -1,26 +1,38 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { PaymentOrder, OrderStatus, PaymentMethod, SystemSettings } from '../types';
+import { PaymentOrder, OrderStatus, PaymentMethod, SystemSettings, User, UserRole, PaymentOrderAttachment, PaymentDetail } from '../types';
 import { formatCurrency, formatDate, getStatusLabel, numberToPersianWords, formatNumberString, getShamsiDateFromIso } from '../constants';
-import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers, MessageSquare } from 'lucide-react';
-import { apiCall } from '../services/apiService';
+import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers, MessageSquare, Paperclip, Upload, Trash2, Image, FileCheck } from 'lucide-react';
+import { apiCall, resolveImageUrl } from '../services/apiService';
 import { generatePdf } from '../utils/pdfGenerator'; 
 import html2canvas from 'html2canvas';
 import { shareElementToChat } from '../services/chatShareService';
+import { FileViewerModal } from './FileViewerModal';
+import { downloadAndOpenFile } from '../services/fileService';
+import { addOrderArchiveAttachment, deleteOrderArchiveAttachment } from '../services/storageService';
+import { getRolePermissions } from '../services/authService';
 
 interface PrintVoucherProps {
   order: PaymentOrder;
   onClose?: () => void;
   settings?: SystemSettings;
+  currentUser?: User;
   onApprove?: () => void;
   onReject?: () => void;
   onEdit?: () => void;
   onRevoke?: () => void; 
   embed?: boolean; 
+  onOrderUpdated?: (updatedOrder: PaymentOrder) => void;
 }
 
-const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, onApprove, onReject, onEdit, onRevoke, embed }) => {
+const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, currentUser, onApprove, onReject, onEdit, onRevoke, embed, onOrderUpdated }) => {
+  const [currentOrder, setCurrentOrder] = useState<PaymentOrder>(order);
+
+  useEffect(() => {
+    setCurrentOrder(order);
+  }, [order]);
+
   const [processing, setProcessing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [sharePlatform, setSharePlatform] = useState<'whatsapp' | 'telegram' | 'bale' | null>(null);
@@ -39,19 +51,42 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
   // Line Selection for Multi-Payment Orders
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   
-  // NEW: Dual Print Mode State (full, withdrawal, deposit)
+  // Dual Print Mode State (full, withdrawal, deposit)
   const [dualPrintMode, setDualPrintMode] = useState<'full' | 'withdrawal' | 'deposit'>('full');
 
   // Scale State for Mobile Fit
   const [scale, setScale] = useState(1);
   const containerWrapperRef = useRef<HTMLDivElement>(null);
 
+  // File Viewer Modal State
+  const [activeViewer, setActiveViewer] = useState<{ isOpen: boolean; url: string; fileName: string; fileType?: 'image' | 'pdf' | 'auto' }>({
+    isOpen: false,
+    url: '',
+    fileName: '',
+    fileType: 'auto'
+  });
+
+  // Archive Attachment Upload State
+  const [uploadingArchive, setUploadingArchive] = useState(false);
+  const archiveFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check Archive Attachment Permission
+  const userPerms = currentUser ? getRolePermissions(currentUser.role, settings || null, currentUser) : null;
+  const canManageArchiveAttachments = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.ADMIN ||
+      currentUser.canManageArchiveAttachments ||
+      userPerms?.canManageArchiveAttachments ||
+      (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN))
+    )
+  );
+
   // Determine which line to show
-  const paymentLines = order.paymentDetails;
-  const currentLine = paymentLines[currentLineIndex];
+  const paymentLines = (currentOrder.paymentDetails as PaymentDetail[]) || [];
+  const currentLine = (paymentLines[currentLineIndex] || paymentLines[0] || {}) as Partial<PaymentDetail>;
 
   // --- TEMPLATE LOGIC ---
-  const company = settings?.companies?.find(c => c.name === order.payingCompany);
+  const company = settings?.companies?.find(c => c.name === currentOrder.payingCompany);
   const sourceBankConfig = company?.banks?.find(b => currentLine.bankName?.includes(b.bankName));
   
   // Logic to pick correct template based on method and DUAL PRINT mode
@@ -66,7 +101,6 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
           } else if (dualPrintMode === 'deposit' && sourceBankConfig?.internalDepositTemplateId) {
               effectiveTemplateId = sourceBankConfig.internalDepositTemplateId;
           } else if (sourceBankConfig?.internalTransferTemplateId) {
-              // Fallback to legacy single internal template if dual specific isn't set
               effectiveTemplateId = sourceBankConfig.internalTransferTemplateId;
           }
       } else if (sourceBankConfig?.internalTransferTemplateId) {
@@ -241,7 +275,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
       const isBankForm = printMode === 'bank_form' && !!dynamicTemplate;
       let opts: any = {
           elementId: printAreaId,
-          filename: `Voucher_${order.trackingNumber}.pdf`,
+          filename: `Voucher_${currentOrder.trackingNumber || currentOrder.id}.pdf`,
           onComplete: () => setProcessing(false),
           onError: () => { alert('خطا در ایجاد PDF'); setProcessing(false); }
       };
@@ -261,9 +295,9 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
           if (!el) throw new Error('سند یافت نشد');
           await shareElementToChat(
               el,
-              `Voucher_${order.trackingNumber || 'order'}.pdf`,
+              `Voucher_${currentOrder.trackingNumber || 'order'}.pdf`,
               {
-                  defaultMessage: `سند پرداخت شماره ${order.trackingNumber || ''} - در وجه ${order.payee} (${formatCurrency(order.totalAmount)})`,
+                  defaultMessage: `سند پرداخت شماره ${currentOrder.trackingNumber || ''} - در وجه ${currentOrder.payee} (${formatCurrency(currentOrder.totalAmount)})`,
                   title: 'ارسال سند پرداخت به گفتگو',
                   asPdf: true
               }
@@ -282,25 +316,104 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
       try {
           const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
           const base64 = canvas.toDataURL('image/png').split(',')[1];
-          const caption = `🧾 *رسید پرداخت وجه*\n🏢 شرکت: ${order.payingCompany}\n👤 ذینفع: ${order.payee}\n💰 مبلغ: ${formatCurrency(order.totalAmount)}`;
+          const caption = `🧾 *رسید پرداخت وجه*\n🏢 شرکت: ${currentOrder.payingCompany}\n👤 ذینفع: ${currentOrder.payee}\n💰 مبلغ: ${formatCurrency(currentOrder.totalAmount)}`;
           if (sharePlatform === 'whatsapp') {
               await apiCall('/send-whatsapp', 'POST', {
                   number: targetId,
                   message: caption,
-                  mediaData: { data: base64, mimeType: 'image/png', filename: `Order_${order.trackingNumber}.png` }
+                  mediaData: { data: base64, mimeType: 'image/png', filename: `Order_${currentOrder.trackingNumber}.png` }
               });
           } else {
               await apiCall('/send-bot-message', 'POST', {
                   platform: sharePlatform,
                   chatId: targetId,
                   caption: caption,
-                  mediaData: { data: base64, filename: `Order_${order.trackingNumber}.png` }
+                  mediaData: { data: base64, filename: `Order_${currentOrder.trackingNumber}.png` }
               });
           }
           if (!embed) alert('ارسال شد.');
           setSharePlatform(null);
       } catch(e) { alert('خطا در ارسال'); } finally { setProcessing(false); }
   };
+
+  // --- ATTACHMENTS HANDLING ---
+  const handleOpenViewer = (att: { url?: string; data?: string; fileName?: string; name?: string; type?: string }) => {
+      const rawUrl = att.url || att.data;
+      if (!rawUrl) return;
+      const fileName = att.fileName || att.name || 'پیوست سند';
+      const isPdf = fileName.toLowerCase().endsWith('.pdf') || (att.type && att.type.includes('pdf'));
+      setActiveViewer({
+          isOpen: true,
+          url: rawUrl,
+          fileName: fileName,
+          fileType: isPdf ? 'pdf' : 'image'
+      });
+  };
+
+  const handleDownloadAttachment = async (att: { url?: string; data?: string; fileName?: string; name?: string }) => {
+      const rawUrl = att.url || att.data;
+      if (!rawUrl) return;
+      const fileName = att.fileName || att.name || 'پیوست';
+      await downloadAndOpenFile(rawUrl, fileName);
+  };
+
+  const handlePrintAttachment = (att: { url?: string; data?: string; fileName?: string; name?: string; type?: string }) => {
+      handleOpenViewer(att);
+  };
+
+  const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 150 * 1024 * 1024) {
+          alert("حجم فایل انتخابی بیش از حد مجاز (۱۵۰ مگابایت) است.");
+          return;
+      }
+
+      setUploadingArchive(true);
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+          try {
+              const base64 = ev.target?.result as string;
+              const res = await addOrderArchiveAttachment(currentOrder.id, {
+                  fileName: file.name,
+                  fileData: base64,
+                  size: file.size,
+                  type: file.type,
+                  uploadedBy: currentUser?.fullName || 'کاربر'
+              });
+              if (res && res.order) {
+                  setCurrentOrder(res.order);
+                  if (onOrderUpdated) onOrderUpdated(res.order);
+              }
+          } catch (err: any) {
+              console.error("Error adding archive attachment:", err);
+              alert('خطا در بارگذاری پیوست بایگانی: ' + (err?.message || 'نامشخص'));
+          } finally {
+              setUploadingArchive(false);
+              if (archiveFileInputRef.current) archiveFileInputRef.current.value = '';
+          }
+      };
+      reader.readAsDataURL(file);
+  };
+
+  const handleDeleteArchiveAtt = async (attachmentId?: string) => {
+      if (!attachmentId) return;
+      if (!confirm('آیا از حذف این پیوست از بایگانی اطمینان دارید؟')) return;
+      try {
+          const res = await deleteOrderArchiveAttachment(currentOrder.id, attachmentId);
+          if (res && res.order) {
+              setCurrentOrder(res.order);
+              if (onOrderUpdated) onOrderUpdated(res.order);
+          }
+      } catch (err: any) {
+          alert('خطا در حذف پیوست: ' + (err?.message || 'نامشخص'));
+      }
+  };
+
+  const allAttachments = [
+      ...(currentOrder.attachments || []).map((a, i) => ({ ...a, isArchive: false, originalIndex: i })),
+      ...(currentOrder.archiveAttachments || []).map((a, i) => ({ ...a, isArchive: true, originalIndex: i }))
+  ];
 
   const filteredContacts = settings?.savedContacts?.filter(c => 
     c.name.toLowerCase().includes(contactSearch.toLowerCase()) || 
@@ -324,8 +437,8 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
               case 'date_full': return dateFull;
               case 'amount_num': return amountStr;
               case 'amount_word': return amountWords;
-              case 'payee': return order.payee;
-              case 'description': return currentLine.description || order.description;
+              case 'payee': return currentOrder.payee;
+              case 'description': return currentLine.description || currentOrder.description;
               case 'place': return overridePlace;
               case 'source_account': return sourceBankConfig?.accountNumber || '';
               case 'source_sheba': return sourceBankConfig?.sheba || '';
@@ -335,7 +448,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
               case 'dest_owner': return currentLine.destinationOwner || '';
               case 'payment_id': return currentLine.paymentId || '';
               case 'cheque_no': return currentLine.chequeNumber || '';
-              case 'company_name': return order.payingCompany;
+              case 'company_name': return currentOrder.payingCompany;
               case 'company_id': return company?.nationalId || '';
               case 'company_reg': return company?.registrationNumber || '';
               case 'company_address': return company?.address || '';
@@ -380,7 +493,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
         className="printable-content bg-white print:bg-white border-2 border-gray-800 print:border-black print:!border-solid relative text-gray-900 flex flex-col justify-between overflow-hidden" 
         style={{ direction: 'rtl', width: '210mm', height: '148mm', padding: isCompact ? '4mm 6mm' : '8mm 10mm', boxSizing: 'border-box', margin: '0 auto', maxHeight: '148mm', overflow: 'hidden' }}
       >
-        {order.status === OrderStatus.REJECTED && (
+        {currentOrder.status === OrderStatus.REJECTED && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-9xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none">REJECTED</div>
         )}
         {isRevoked && (
@@ -394,26 +507,26 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
                 <div className="flex items-center gap-4 w-2/3">
                     {company?.logo ? <img src={company.logo} alt="Company Logo" className={`${isCompact ? 'h-11 w-11' : 'h-16 w-16'} object-contain mix-blend-multiply`} /> : <div className={`${isCompact ? 'h-11 w-11 text-[9px]' : 'h-16 w-16 text-xs'} bg-gray-100 text-gray-800 flex items-center justify-center rounded text-center border border-dashed border-gray-300`}>بدون لوگو</div>}
                     <div className="flex flex-col">
-                        <h1 className={`${isCompact ? 'text-base' : 'text-xl'} font-bold text-gray-900 print:text-black`}>{order.payingCompany || 'شرکت بازرگانی'}</h1>
+                        <h1 className={`${isCompact ? 'text-base' : 'text-xl'} font-bold text-gray-900 print:text-black`}>{currentOrder.payingCompany || 'شرکت بازرگانی'}</h1>
                         <p className="text-[10px] text-gray-500 font-bold mt-0.5 print:text-gray-800">سیستم مدیریت مالی و پرداخت</p>
                     </div>
                 </div>
                 <div className="text-left flex flex-col items-end gap-1 w-1/3">
                     <h2 className={`${isCompact ? 'text-xs px-2 py-0.5' : 'text-base px-3 py-1'} font-black bg-gray-100 print:bg-transparent border border-gray-200/50 print:border-black text-gray-800 print:text-black rounded-lg mb-1 whitespace-nowrap`}>رسید پرداخت وجه</h2>
-                    <div className="flex items-center gap-2 text-[10px]"><span className="font-bold text-gray-500 print:text-gray-700">شماره:</span><span className="font-mono font-bold text-sm print:text-black">{order.trackingNumber}</span></div>
-                    <div className="flex items-center gap-2 text-[10px]"><span className="font-bold text-gray-500 print:text-gray-700">تاریخ:</span><span className="font-bold text-gray-800 print:text-black">{formatDate(order.date)}</span></div>
+                    <div className="flex items-center gap-2 text-[10px]"><span className="font-bold text-gray-500 print:text-gray-700">شماره:</span><span className="font-mono font-bold text-sm print:text-black">{currentOrder.trackingNumber}</span></div>
+                    <div className="flex items-center gap-2 text-[10px]"><span className="font-bold text-gray-500 print:text-gray-700">تاریخ:</span><span className="font-bold text-gray-800 print:text-black">{formatDate(currentOrder.date)}</span></div>
                 </div>
             </div>
             <div className={`${isCompact ? 'space-y-1.5' : 'space-y-3'}`}>
                 <div className="grid grid-cols-2 gap-3">
-                    <div className={`bg-gray-100/50 border-2 border-black print:bg-transparent print:border-black print:!border-solid ${isCompact ? 'p-1 px-1.5' : 'p-2'} rounded print:rounded-none`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 print:text-black text-[9px] mb-0.5 font-bold underline underline-offset-2">در وجه (ذینفع):</span><span className={`font-bold text-gray-900 print:text-black ${isCompact ? 'text-xs' : 'text-base'}`}>{order.payee}</span></div>
-                    <div className={`bg-gray-100/50 border-2 border-black print:bg-transparent print:border-black print:!border-solid ${isCompact ? 'p-1 px-1.5' : 'p-2'} rounded print:rounded-none`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 print:text-black text-[9px] mb-0.5 font-bold underline underline-offset-2">مبلغ کل پرداختی:</span><span className={`font-bold text-gray-900 print:text-black ${isCompact ? 'text-xs' : 'text-base'}`}>{formatCurrency(order.totalAmount)}</span></div>
+                    <div className={`bg-gray-100/50 border-2 border-black print:bg-transparent print:border-black print:!border-solid ${isCompact ? 'p-1 px-1.5' : 'p-2'} rounded print:rounded-none`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 print:text-black text-[9px] mb-0.5 font-bold underline underline-offset-2">در وجه (ذینفع):</span><span className={`font-bold text-gray-900 print:text-black ${isCompact ? 'text-xs' : 'text-base'}`}>{currentOrder.payee}</span></div>
+                    <div className={`bg-gray-100/50 border-2 border-black print:bg-transparent print:border-black print:!border-solid ${isCompact ? 'p-1 px-1.5' : 'p-2'} rounded print:rounded-none`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 print:text-black text-[9px] mb-0.5 font-bold underline underline-offset-2">مبلغ کل پرداختی:</span><span className={`font-bold text-gray-900 print:text-black ${isCompact ? 'text-xs' : 'text-base'}`}>{formatCurrency(currentOrder.totalAmount)}</span></div>
                 </div>
-                <div className={`bg-gray-100/50 border-2 border-black print:border-black print:!border-solid ${isCompact ? 'p-1 px-1.5 min-h-[22px]' : 'p-2 min-h-[45px]'} rounded print:rounded-none`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 print:text-black text-[9px] mb-0.5 font-bold underline underline-offset-2">بابت (شرح پرداخت):</span><p className={`text-gray-800 print:text-black text-justify font-medium leading-tight ${isCompact ? 'text-[9px]' : 'text-xs'}`}>{order.description}</p></div>
+                <div className={`bg-gray-100/50 border-2 border-black print:border-black print:!border-solid ${isCompact ? 'p-1 px-1.5 min-h-[22px]' : 'p-2 min-h-[45px]'} rounded print:rounded-none`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 print:text-black text-[9px] mb-0.5 font-bold underline underline-offset-2">بابت (شرح پرداخت):</span><p className={`text-gray-800 print:text-black text-justify font-medium leading-tight ${isCompact ? 'text-[9px]' : 'text-xs'}`}>{currentOrder.description}</p></div>
                 <div className="border-2 border-black print:border-black print:!border-solid rounded print:rounded-none overflow-hidden" style={{borderStyle: 'solid', borderWidth: '2px'}}>
                     <table className={`w-full text-right ${isCompact ? 'text-[8.5px]' : 'text-[10px]'}`}>
                         <thead className="bg-gray-200 print:bg-transparent border-b border-black print:border-black" style={{borderBottomStyle: 'solid', borderBottomWidth: '2px'}}><tr><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-600 print:text-black w-6 text-center`}>#</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-600 print:text-black`}>نوع پرداخت</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-600 print:text-black`}>مبلغ</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-600 print:text-black`}>بانک / چک / شبا</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-600 print:text-black`}>توضیحات</th></tr></thead>
-                        <tbody className="divide-y divide-black">{order.paymentDetails.map((detail, idx) => (
+                        <tbody className="divide-y divide-black">{currentOrder.paymentDetails.map((detail, idx) => (
                             <tr key={detail.id}>
                                 <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} text-center`}>{idx + 1}</td>
                                 <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold`}>{detail.method}</td>
@@ -430,10 +543,10 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
         </div>
         <div className={`mt-auto ${isCompact ? 'pt-0.5' : 'pt-2'} border-t-2 border-gray-800 relative z-10`}>
             <div className="grid grid-cols-4 gap-2 text-center">
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full"><Stamp name={order.requester} title="درخواست کننده" /></div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">درخواست کننده</span></div></div>
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(order.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(order.status)) ? <Stamp name={order.approverFinancial || 'تایید شده'} title="تایید مالی" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیر مالی</span></div></div>
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(order.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(order.status)) ? <Stamp name={order.approverManager || 'تایید شده'} title="تایید مدیریت" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیریت</span></div></div>
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(order.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(order.status)) ? <Stamp name={order.approverCeo || 'تایید شده'} title="مدیر عامل" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیر عامل</span></div></div>
+                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full"><Stamp name={currentOrder.requester} title="درخواست کننده" /></div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">درخواست کننده</span></div></div>
+                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(currentOrder.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? <Stamp name={currentOrder.approverFinancial || 'تایید شده'} title="تایید مالی" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیر مالی</span></div></div>
+                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(currentOrder.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? <Stamp name={currentOrder.approverManager || 'تایید شده'} title="تایید مدیریت" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیریت</span></div></div>
+                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(currentOrder.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? <Stamp name={currentOrder.approverCeo || 'تایید شده'} title="مدیر عامل" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیر عامل</span></div></div>
             </div>
         </div>
       </div>
@@ -504,6 +617,119 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
                  </div>
              )}
 
+             {/* ATTACHMENTS & ARCHIVE SECTION */}
+             <div className="mt-2 border-t pt-2">
+                 <div className="flex items-center justify-between mb-1.5">
+                     <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                         <Paperclip size={14} className="text-blue-600" />
+                         <span>پیوست‌ها و اسناد بایگانی ({allAttachments.length})</span>
+                     </div>
+                     {canManageArchiveAttachments && (
+                         <div>
+                             <input 
+                                 type="file" 
+                                 ref={archiveFileInputRef} 
+                                 onChange={handleArchiveFileChange} 
+                                 className="hidden" 
+                                 accept="image/*,application/pdf"
+                             />
+                             <button 
+                                 type="button"
+                                 onClick={() => archiveFileInputRef.current?.click()}
+                                 disabled={uploadingArchive}
+                                 className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95"
+                             >
+                                 {uploadingArchive ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                                 <span>افزودن به بایگانی</span>
+                             </button>
+                         </div>
+                     )}
+                 </div>
+
+                 {allAttachments.length === 0 ? (
+                     <div className="p-2 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-center text-[11px] text-gray-400">
+                         هیچ فایلی برای این سند ضمیمه یا بایگانی نشده است.
+                     </div>
+                 ) : (
+                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
+                         {allAttachments.map((att, idx) => {
+                             const rawUrl = att.url || att.data || '';
+                             const fullUrl = resolveImageUrl(rawUrl);
+                             const fileName = att.fileName || att.name || `پیوست ${idx + 1}`;
+                             const isPdf = fileName.toLowerCase().endsWith('.pdf') || (att.type && att.type.includes('pdf'));
+                             
+                             return (
+                                 <div 
+                                     key={att.id || `att-${idx}`} 
+                                     className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-200 hover:border-blue-300 transition-all text-xs group"
+                                 >
+                                     <div 
+                                         className="flex items-center gap-2 overflow-hidden flex-1 cursor-pointer"
+                                         onClick={() => handleOpenViewer(att)}
+                                         title="مشاهده پیش‌نمایش"
+                                     >
+                                         <div className="w-8 h-8 rounded shrink-0 bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
+                                             {isPdf ? (
+                                                 <FileText size={16} className="text-red-500" />
+                                             ) : (
+                                                 <img 
+                                                     src={fullUrl} 
+                                                     alt="" 
+                                                     className="w-full h-full object-cover"
+                                                     onError={(e) => {
+                                                         (e.target as HTMLElement).style.display = 'none';
+                                                     }} 
+                                                 />
+                                             )}
+                                         </div>
+                                         <div className="flex flex-col truncate">
+                                             <span className="font-semibold text-gray-800 truncate text-[11px]">{fileName}</span>
+                                             <div className="flex items-center gap-1 text-[9px] text-gray-500">
+                                                 {att.isArchive ? (
+                                                     <span className="text-purple-600 bg-purple-50 px-1 rounded font-medium">بایگانی</span>
+                                                 ) : (
+                                                     <span className="text-blue-600 bg-blue-50 px-1 rounded font-medium">ثبت اولیه</span>
+                                                 )}
+                                                 {att.uploadedBy && <span>• {att.uploadedBy}</span>}
+                                             </div>
+                                         </div>
+                                     </div>
+
+                                     <div className="flex items-center gap-1 shrink-0 mr-1">
+                                         <button 
+                                             type="button" 
+                                             onClick={() => handleOpenViewer(att)}
+                                             className="p-1 hover:bg-blue-100 text-blue-600 rounded" 
+                                             title="پیش‌نمایش و چاپ"
+                                         >
+                                             <Eye size={13} />
+                                         </button>
+                                         <button 
+                                             type="button" 
+                                             onClick={() => handleDownloadAttachment(att)}
+                                             className="p-1 hover:bg-emerald-100 text-emerald-600 rounded" 
+                                             title="دانلود فایل"
+                                         >
+                                             <FileDown size={13} />
+                                         </button>
+                                         {att.isArchive && canManageArchiveAttachments && (
+                                             <button 
+                                                 type="button" 
+                                                 onClick={() => handleDeleteArchiveAtt(att.id)}
+                                                 className="p-1 hover:bg-red-100 text-red-600 rounded opacity-70 hover:opacity-100" 
+                                                 title="حذف از بایگانی"
+                                             >
+                                                 <Trash2 size={13} />
+                                             </button>
+                                         )}
+                                     </div>
+                                 </div>
+                             );
+                         })}
+                     </div>
+                 )}
+             </div>
+
              {printMode === 'bank_form' && (
                  <div className="col-span-2 md:col-span-4 flex flex-col gap-2 mt-2 bg-gray-50 p-2 rounded border animate-fade-in">
                      {paymentLines.length > 1 && (
@@ -542,6 +768,14 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, o
       <div className="flex-1 w-full overflow-y-auto flex justify-center pb-10" ref={containerWrapperRef}>
           <div style={{ width: (printMode === 'bank_form' && dynamicTemplate) ? `${dynamicTemplate.width || 210}mm` : '210mm', height: (printMode === 'bank_form' && dynamicTemplate) ? `${dynamicTemplate.height || 297}mm` : '148mm', backgroundColor: 'white', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: `${(1 - scale) * -100}px` }}>{contentToRender}</div>
       </div>
+
+      <FileViewerModal 
+          isOpen={activeViewer.isOpen}
+          onClose={() => setActiveViewer(prev => ({ ...prev, isOpen: false }))}
+          fileUrl={activeViewer.url}
+          fileName={activeViewer.fileName}
+          fileType={activeViewer.fileType}
+      />
     </div>,
     document.body
   );

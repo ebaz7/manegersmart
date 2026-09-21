@@ -22,14 +22,13 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Checking database schema or table list ===");
         const rows = await executeQuery(`
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            WHERE TABLE_NAME LIKE 'PAY_TBL_%'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log("Tables:", rows.map(r => r.TABLE_NAME));
     } catch (e) {
         console.error("Error:", e);
     }

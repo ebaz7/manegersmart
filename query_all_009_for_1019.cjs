@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying all PAY_TBL_009 rows for Employee 1019 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT * FROM PAY_TBL_009 
+            WHERE Field_004 = '1019'
+            ORDER BY CAST(Field_007 AS INT)
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

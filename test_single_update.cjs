@@ -8,6 +8,7 @@ async function main() {
     const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
 
     async function executeQuery(sql) {
+        console.log(`Executing: ${sql}`);
         const response = await fetch(finalUrl, {
             method: 'POST',
             headers: {
@@ -18,18 +19,18 @@ async function main() {
             body: JSON.stringify({ query: sql })
         });
         const data = await response.json();
+        console.log("Response:", JSON.stringify(data, null, 2));
         return data.data || [];
     }
 
     try {
-        console.log("=== Listing all database tables ===");
-        const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+        console.log("=== Testing Single UPDATE for Factor 77 ===");
+        const f77_formula = "LEAVEREMAINED[CALC[[CP155]*[CP35]+SUM[175,1]+[CP175]-(SUM[177,2]+[CP177])],[CP10],1]";
+        await executeQuery(`
+            UPDATE PAY_TBL_002
+            SET Field_013 = N'${f77_formula}', Field_015 = N'${f77_formula}'
+            WHERE Field_003 = '11' AND Field_001 = '77'
         `);
-        console.log(JSON.stringify(rows, null, 2));
     } catch (e) {
         console.error("Error:", e);
     }

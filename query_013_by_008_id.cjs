@@ -22,14 +22,19 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying PAY_TBL_013 for Field_014 = '21449' ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT * FROM PAY_TBL_013 
+            WHERE Field_014 = '21449'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log(`Found ${rows.length} rows.`);
+        for (const r of rows) {
+            console.log(`ID: ${r.Field_001} | Employee: ${r.Field_005} | Field_013: ${r.Field_013} | Field_014: ${r.Field_014}`);
+            const parts = r.Field_015.split('|').map(x => x.trim());
+            console.log("  " + parts[0]);
+            const leaveRemain = parts.find(p => p.startsWith('مانده مرخصی:'));
+            if (leaveRemain) console.log("  " + leaveRemain);
+        }
     } catch (e) {
         console.error("Error:", e);
     }

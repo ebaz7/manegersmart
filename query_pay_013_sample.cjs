@@ -22,13 +22,8 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
-        const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
-        `);
+        console.log("=== Top 10 rows of PAY_TBL_013 ===");
+        const rows = await executeQuery("SELECT TOP 10 Field_001, Field_005, Field_006, Field_011, Field_013, Field_014, LEFT(Field_015, 200) as f15 FROM PAY_TBL_013");
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {
         console.error("Error:", e);

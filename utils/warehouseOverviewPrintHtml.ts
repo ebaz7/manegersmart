@@ -13,6 +13,7 @@ export interface WarehousePrintDataset {
         currentTotalWeight?: number;
         containersTotal?: number | string;
         dollarsTotal?: number | string;
+        ceoSignature?: string;
     };
     yarnItems: any[];
     rawItems: any[];
@@ -49,6 +50,7 @@ export const buildWarehouseOverviewPrintHtml = (
     const reportDate = summary.reportDate || '۱۴۰۵/۰۵/۳۱';
     const r1Label = summary.report1Label || 'منتهی به سال ۱۴۰۴';
     const r2Label = summary.report2Label || 'وضعیت فعلی سال ۱۴۰۵';
+    const ceoSignature = summary.ceoSignature || 'جناب آقای مهندس سلیمی';
 
     // Summary calculations
     const yLast = summary.lastYearYarnsWeight || 0;
@@ -104,9 +106,11 @@ export const buildWarehouseOverviewPrintHtml = (
     const buildLogisticsRows = (items: any[]) => {
         if (!items || items.length === 0) return '';
         return items.map((item, idx) => `
-            <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; font-size: 8.5pt;">
+            <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; font-size: 8.5pt; page-break-inside: avoid;">
                 <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; color: #64748b;">${idx + 1}</td>
                 <td style="padding: 5px 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold; color: #1e293b;">${item.name || '-'}</td>
+                <td style="padding: 5px 8px; border: 1px solid #cbd5e1; text-align: center; font-family: 'Vazirmatn', sans-serif;">${item.proforma || '-'}</td>
+                <td style="padding: 5px 8px; border: 1px solid #cbd5e1; text-align: center; font-family: 'Vazirmatn', sans-serif;">${item.registrationNumber || '-'}</td>
                 <td style="padding: 5px 8px; border: 1px solid #cbd5e1; text-align: center;">${item.status || 'در راه / گمرک'}</td>
                 <td style="padding: 5px 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #0284c7;">${item.containers ? `${item.containers} کانتینر` : '-'}</td>
                 <td style="padding: 5px 8px; border: 1px solid #cbd5e1; text-align: center;">${item.currentValue || item.diffValue || '-'}</td>
@@ -199,9 +203,12 @@ export const buildWarehouseOverviewPrintHtml = (
                 html, body {
                     width: 100%;
                     margin: 0;
-                    padding: 0;
+                    padding: 0 !important;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
+                }
+                body {
+                    padding: 0 !important;
                 }
                 .no-print {
                     display: none !important;
@@ -209,6 +216,10 @@ export const buildWarehouseOverviewPrintHtml = (
                 .page-break {
                     page-break-before: always !important;
                     break-before: page !important;
+                }
+                tr, table, .kpi-grid, .section-head, .sig-table {
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
                 }
             }
             * {
@@ -495,7 +506,9 @@ export const buildWarehouseOverviewPrintHtml = (
                     <thead>
                         <tr>
                             <th style="width: 30px;">#</th>
-                            <th style="text-align: right;">شرح محموله / پروفرما</th>
+                            <th style="text-align: right;">شرح محموله</th>
+                            <th style="width: 100px;">پروفرما</th>
+                            <th style="width: 100px;">ثبت سفارش</th>
                             <th style="width: 110px;">وضعیت</th>
                             <th style="width: 90px;">تعداد کانتینر</th>
                             <th style="width: 110px;">مقدار / ارزش</th>
@@ -604,7 +617,7 @@ export const buildWarehouseOverviewPrintHtml = (
                     </td>
                     <td class="sig-box">
                         <div class="sig-title">رویت و تاییدیه مدیریت عامل</div>
-                        <div class="sig-name">جناب آقای مهندس سلیمی</div>
+                        <div class="sig-name">${ceoSignature}</div>
                     </td>
                 </tr>
             </table>

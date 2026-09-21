@@ -22,12 +22,10 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying Field_001 = '1487' in database ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT * FROM PAY_TBL_002 
+            WHERE Field_001 = '1487'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

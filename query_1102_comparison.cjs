@@ -22,14 +22,21 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying PAY_TBL_013 for Month 33 & 34 to see 1102 data ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_005, Field_013, Field_014, Field_015 
+            FROM PAY_TBL_013 
+            WHERE Field_005 = '1102' AND Field_014 IN ('33', '34')
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        for (const r of rows) {
+            console.log(`\nMonth Period: ${r.Field_014} | Contract Template: ${r.Field_013}`);
+            const parts = r.Field_015.split('|').map(x => x.trim());
+            parts.forEach(p => {
+                if (p.includes('مرخصی') || p.includes('کارکرد') || p.includes('بازخرید')) {
+                    console.log("  ", p);
+                }
+            });
+        }
     } catch (e) {
         console.error("Error:", e);
     }

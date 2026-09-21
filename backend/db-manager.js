@@ -287,8 +287,8 @@ export const getDb = () => {
     try {
         const defaultDb = { 
             settings: {
-                sayanApiUrl: "",
-                sayanApiKey: ""
+                sayanApiUrl: process.env.SAYAN_API_URL || "http://80.210.31.176:5000/api/external/v1",
+                sayanApiKey: process.env.SAYAN_API_KEY || "s_gate_live_vgr182bwtpoa"
             }, 
             users: [
                 { id: '1', username: 'admin', password: '123', fullName: 'مدیر سیستم', role: 'admin', roles: ['admin'], canManageTrade: true }
@@ -324,10 +324,10 @@ export const getDb = () => {
                 // Populate default Sayan credentials if missing
                 if (!MEMORY_DB_CACHE.settings) MEMORY_DB_CACHE.settings = {};
                 if (!MEMORY_DB_CACHE.settings.sayanApiUrl) {
-                    MEMORY_DB_CACHE.settings.sayanApiUrl = "";
+                    MEMORY_DB_CACHE.settings.sayanApiUrl = process.env.SAYAN_API_URL || "http://80.210.31.176:5000/api/external/v1";
                 }
                 if (!MEMORY_DB_CACHE.settings.sayanApiKey) {
-                    MEMORY_DB_CACHE.settings.sayanApiKey = "";
+                    MEMORY_DB_CACHE.settings.sayanApiKey = process.env.SAYAN_API_KEY || "s_gate_live_vgr182bwtpoa";
                 }
 
                 // Ensure companies and fiscalYears exist in settings

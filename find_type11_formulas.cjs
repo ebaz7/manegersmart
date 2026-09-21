@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying Sayan Payroll Formulas (PAY_TBL_002) for type 11 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_002, Field_003, Field_004 
+            FROM PAY_TBL_002 
+            WHERE Field_001 = '11' AND (Field_004 LIKE '%177%' OR Field_004 LIKE '%بازخرید%' OR Field_004 LIKE '%کسور%')
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

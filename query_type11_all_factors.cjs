@@ -22,12 +22,12 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying all factors and codes for Contract Type 11 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001 AS FactorId, Field_004 AS FactorName, Field_012 AS SayanCode
+            FROM PAY_TBL_002
+            WHERE Field_003 = '11'
+            ORDER BY CAST(Field_001 AS INT)
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

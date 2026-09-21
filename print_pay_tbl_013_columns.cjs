@@ -22,14 +22,19 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Finding Ali Asghar Heidari in payroll ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT TOP 100 * 
+            FROM PAY_TBL_013 
+            WHERE Field_015 LIKE N'%حیدری%' OR Field_012 LIKE N'%حیدری%'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log(`Found ${rows.length} rows.`);
+        rows.forEach(r => {
+            console.log(`ID: ${r.Field_001} | F005: ${r.Field_005} | F013: ${r.Field_013} | F014 (Month): ${r.Field_014}`);
+            // Let's print the name info from Field_015
+            const parts = r.Field_015.split('|');
+            console.log(parts.slice(0, 4).join(' | '));
+        });
     } catch (e) {
         console.error("Error:", e);
     }

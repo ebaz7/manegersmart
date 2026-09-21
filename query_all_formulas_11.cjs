@@ -22,14 +22,17 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying all formulas for Contract Type 11 (لپان بافت) ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_004, Field_007, Field_013 
+            FROM PAY_TBL_002 
+            WHERE Field_003 = '11'
+            ORDER BY CAST(Field_007 AS INT)
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log(`Found ${rows.length} rows.`);
+        rows.forEach(r => {
+            console.log(`Code/Order: ${r.Field_007} | Title: ${r.Field_004} | Formula: ${r.Field_013}`);
+        });
     } catch (e) {
         console.error("Error:", e);
     }

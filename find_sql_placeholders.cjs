@@ -22,14 +22,24 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Finding SQL variables/placeholders in PAY_TBL_002 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT DISTINCT Field_013 
+            FROM PAY_TBL_002 
+            WHERE Field_013 LIKE '%[[]%' AND Field_013 NOT LIKE '%[[]CP%'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log("Found rows:", rows.length);
+        const regex = /\[([^\]]+)\]/g;
+        const placeholders = new Set();
+        for (const r of rows) {
+            let match;
+            while ((match = regex.exec(r.Field_013)) !== null) {
+                if (!match[1].startsWith('CP') && isNaN(match[1])) {
+                    placeholders.add(match[1]);
+                }
+            }
+        }
+        console.log("Placeholders found:", Array.from(placeholders));
     } catch (e) {
         console.error("Error:", e);
     }

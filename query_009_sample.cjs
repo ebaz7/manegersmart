@@ -22,12 +22,9 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying PAY_TBL_009 sample rows ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT TOP 10 * FROM PAY_TBL_009
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

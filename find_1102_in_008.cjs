@@ -22,14 +22,17 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying PAY_TBL_008 for Employee 1102 in Month 33 & 34 ===");
+        // Wait, in PAY_TBL_008, what is the period or month?
+        // Let's find rows with Field_007 (Employee Code) = '1102'
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT * FROM PAY_TBL_008 
+            WHERE Field_007 = '1102'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log(`Found ${rows.length} rows.`);
+        for (const r of rows) {
+            console.log(`ID: ${r.Field_001} | Employee: ${r.Field_007} | Contract Type: ${r.Field_008} | Template: ${r.Field_013} | Period: ${r.Field_004}`);
+        }
     } catch (e) {
         console.error("Error:", e);
     }

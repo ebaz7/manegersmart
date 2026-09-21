@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying active contract rows for Employee 1019 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_004, Field_007, Field_008, Field_013, Field_014, Field_015 
+            FROM PAY_TBL_008 
+            WHERE Field_007 = '1019'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

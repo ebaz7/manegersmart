@@ -22,14 +22,17 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Comparing Field_013 and Field_015 across Type 11 factors ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_004, Field_012, Field_013, Field_015
+            FROM PAY_TBL_002
+            WHERE Field_003 = '11' AND Field_013 IS NOT NULL AND Field_013 <> ''
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        rows.forEach(r => {
+            console.log(`\nFactor ID ${r.Field_001} (${r.Field_004}) | Sayan Code: ${r.Field_012}:`);
+            console.log(`  Field_013: ${JSON.stringify(r.Field_013)}`);
+            console.log(`  Field_015: ${JSON.stringify(r.Field_015)}`);
+        });
     } catch (e) {
         console.error("Error:", e);
     }

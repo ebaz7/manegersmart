@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying all formulas containing CALC ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_003, Field_004, Field_007, Field_013 
+            FROM PAY_TBL_002 
+            WHERE Field_013 LIKE '%CALC%'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

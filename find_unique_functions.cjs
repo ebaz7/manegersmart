@@ -22,14 +22,23 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying all unique functions in PAY_TBL_002 formulas ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_004, Field_013 
+            FROM PAY_TBL_002 
+            WHERE Field_013 LIKE '%[[]%'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        const regex = /([A-Za-z0-9_]+)\[/g;
+        const funcs = new Set();
+        for (const r of rows) {
+            let match;
+            while ((match = regex.exec(r.Field_013)) !== null) {
+                if (!match[1].startsWith('CP')) {
+                    funcs.add(match[1]);
+                }
+            }
+        }
+        console.log("Functions found:", Array.from(funcs));
     } catch (e) {
         console.error("Error:", e);
     }

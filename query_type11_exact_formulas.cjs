@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying exact formulas for Contract Type 11 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_003, Field_004, Field_006, Field_007, Field_008, Field_012
+            FROM PAY_TBL_002
+            WHERE Field_003 = '11' AND Field_001 IN ('77', '78', '79', '203', '205')
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

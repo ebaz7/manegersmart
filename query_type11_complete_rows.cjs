@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying complete row fields for Contract Type 11 Leave ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT *
+            FROM PAY_TBL_002
+            WHERE Field_003 = '11' AND Field_001 IN ('77', '78', '79', '203', '205')
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

@@ -22,12 +22,12 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Finding formulas containing 'بازخرید' or 'باز خرید' or 'مرخصی' for Contract Type 11 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_004, Field_007, Field_013 
+            FROM PAY_TBL_002 
+            WHERE Field_003 = '11' AND (Field_004 LIKE N'%بازخرید%' OR Field_004 LIKE N'%باز خرید%' OR Field_004 LIKE N'%مرخصی%')
+            ORDER BY CAST(Field_007 AS INT)
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

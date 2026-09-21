@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying templates in PAY_TBL_008 to find what 1487 and 1235 are ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_004, Field_007, Field_008, Field_013, Field_014, Field_015, Field_016, Field_017 
+            FROM PAY_TBL_008 
+            WHERE Field_001 IN ('33', '34') OR Field_007 IN ('1487', '1235')
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

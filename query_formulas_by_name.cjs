@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying formulas by name in PAY_TBL_002 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_003, Field_004, Field_005 
+            FROM PAY_TBL_002
+            WHERE Field_004 LIKE N'%مرخصی%' OR Field_004 LIKE N'%بازخرید%' OR Field_001 IN ('177', '180')
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

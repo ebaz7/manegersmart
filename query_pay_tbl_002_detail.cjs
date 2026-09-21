@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying a single formula detail from PAY_TBL_002 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT * 
+            FROM PAY_TBL_002
+            WHERE Field_003 = '11' AND Field_001 = '180'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

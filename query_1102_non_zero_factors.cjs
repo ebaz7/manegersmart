@@ -22,14 +22,18 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
-        const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+        console.log("=== All Factors for Employee 1102 in Month 34 ===");
+        const rows34 = await executeQuery(`
+            SELECT Field_015 FROM PAY_TBL_013 WHERE Field_005 = '1102' AND Field_014 = '34'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        if (rows34.length > 0) {
+            rows34[0].Field_015.split('|').forEach(p => {
+                const valStr = p.split(':')[1]?.trim();
+                if (valStr && valStr !== '0' && valStr !== '' && valStr !== 'خیر') {
+                    console.log(p.trim());
+                }
+            });
+        }
     } catch (e) {
         console.error("Error:", e);
     }

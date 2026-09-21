@@ -22,13 +22,15 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying templates in PAY_TBL_002 with Field_003 as template id ===");
+        // The contract template key for 1102 in month 33/34 is '1487'.
+        // Let's see if we can find any rows with Field_003 = '1487' or '1235' (which are the template IDs in PAY_TBL_013.Field_013).
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_003, Field_004, Field_007, Field_013 
+            FROM PAY_TBL_002 
+            WHERE Field_003 IN ('1487', '1235')
         `);
+        console.log(`Found ${rows.length} rows.`);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {
         console.error("Error:", e);

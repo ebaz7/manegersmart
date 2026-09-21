@@ -22,12 +22,9 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying current database info ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT DB_NAME() AS CurrentDatabase, @@VERSION AS SqlVersion
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

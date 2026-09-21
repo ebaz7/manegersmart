@@ -35,6 +35,7 @@ interface CustomCargoItem {
     container: number;
     dollars: number;
     statusBadge?: string;
+    registrationNumber?: string;
 }
 
 interface CommercialGoodItem {
@@ -45,6 +46,8 @@ interface CommercialGoodItem {
     weight: number;
     container: number;
     dollars: number;
+    proforma?: string;
+    registrationNumber?: string;
 }
 
 export const WarehouseOverviewTab: React.FC = () => {
@@ -97,6 +100,7 @@ export const WarehouseOverviewTab: React.FC = () => {
     // Metadata & Configurable Reporting Dates
     const [reportDate, setReportDate] = useState("۱۴۰۵/۰۵/۳۱");
     const [signature, setSignature] = useState("محمد ابراهیم حیدری");
+    const [ceoSignature, setCeoSignature] = useState("جناب آقای مهندس سلیمی");
 
     // Configurable Labels and Query Dates
     const [report1Label, setReport1Label] = useState("منتهی به سال ۱۴۰۴");
@@ -316,6 +320,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                     id: `com_${record.id}`,
                     cargoType: record.goodsName || 'کالای بازرگانی',
                     proforma: record.fileNumber || '',
+                    registrationNumber: record.registrationNumber || '',
                     weight: getRecordWeight(record),
                     cartons: getRecordCartons(record),
                     container: 0,
@@ -333,6 +338,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                     id: `com_${record.id}`,
                     cargoType: record.goodsName || 'کالای بازرگانی',
                     proforma: record.fileNumber || '',
+                    registrationNumber: record.registrationNumber || '',
                     weight: getRecordWeight(record),
                     cartons: getRecordCartons(record),
                     container: 0,
@@ -545,6 +551,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                 if (dbData.meta) {
                     if (dbData.meta.reportDate) setReportDate(dbData.meta.reportDate);
                     if (dbData.meta.signature) setSignature(dbData.meta.signature);
+                    if (dbData.meta.ceoSignature) setCeoSignature(dbData.meta.ceoSignature);
                     
                     if (dbData.meta.report1Label) setReport1Label(dbData.meta.report1Label);
                     if (dbData.meta.report1Jalali) setReport1Jalali(dbData.meta.report1Jalali);
@@ -657,6 +664,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                 meta: {
                     reportDate,
                     signature,
+                    ceoSignature,
                     report1Label,
                     report1Jalali,
                     report1Miladi,
@@ -1272,9 +1280,42 @@ export const WarehouseOverviewTab: React.FC = () => {
         }));
 
         const logisticsItems = [
-            ...goodsInCustoms.map(r => ({ ...r, category: 'customs', categoryLabel: 'بارهای در گمرک', status: r.statusBadge || 'در گمرک' })),
-            ...purchasingGoods.map(r => ({ ...r, category: 'purchasing', categoryLabel: 'بارهای در حال خرید و در راه', status: r.statusBadge || 'در حال خرید / در راه' })),
-            ...commercialGoods.map(r => ({ ...r, category: 'commercial', categoryLabel: 'کالای تجاری / متفرقه', status: 'انبار تجاری' }))
+            ...goodsInCustoms.map(r => ({
+                ...r,
+                name: r.cargoType,
+                containers: r.container,
+                proforma: r.proforma || '',
+                registrationNumber: r.registrationNumber || '',
+                currentValue: r.weight ? `${r.weight.toLocaleString('fa-IR')} kg` : `${r.dollars.toLocaleString('fa-IR')} $`,
+                currency: r.dollars > 0 ? 'USD' : 'IRR',
+                category: 'customs',
+                categoryLabel: 'بارهای در گمرک',
+                status: r.statusBadge || 'در گمرک'
+            })),
+            ...purchasingGoods.map(r => ({
+                ...r,
+                name: r.cargoType,
+                containers: r.container,
+                proforma: r.proforma || '',
+                registrationNumber: r.registrationNumber || '',
+                currentValue: r.weight ? `${r.weight.toLocaleString('fa-IR')} kg` : `${r.dollars.toLocaleString('fa-IR')} $`,
+                currency: r.dollars > 0 ? 'USD' : 'IRR',
+                category: 'purchasing',
+                categoryLabel: 'بارهای در حال خرید و در راه',
+                status: r.statusBadge || 'در حال خرید / در راه'
+            })),
+            ...commercialGoods.map(r => ({
+                ...r,
+                name: r.itemName,
+                containers: r.container,
+                proforma: r.proforma || '',
+                registrationNumber: r.registrationNumber || '',
+                currentValue: r.weight ? `${r.weight.toLocaleString('fa-IR')} kg` : `${r.dollars.toLocaleString('fa-IR')} $`,
+                currency: r.dollars > 0 ? 'USD' : 'IRR',
+                category: 'commercial',
+                categoryLabel: 'کالای تجاری / متفرقه',
+                status: 'انبار تجاری'
+            }))
         ];
 
         const summary = {
@@ -1282,6 +1323,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             report1Label,
             report2Label,
             signature,
+            ceoSignature,
             lastYearYarnsWeight: totalLastYearYarnsWeight,
             currentYarnsWeight: totalCurrentYarnsWeight,
             yarnsDiffWeight: diffYarnsWeight,
@@ -1539,6 +1581,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             id: 'cargo_' + Date.now() + Math.random().toString(36).substr(2, 4),
             cargoType: 'نخ جدید',
             proforma: '',
+            registrationNumber: '',
             weight: 0,
             cartons: 0,
             container: 0,
@@ -1571,7 +1614,7 @@ export const WarehouseOverviewTab: React.FC = () => {
 
     const updateCustomCell = (type: 'transit' | 'customs' | 'purchase', id: string, field: string, value: any) => {
         const list = type === 'customs' ? goodsInCustoms : purchasingGoods;
-        const next = list.map(r => r.id === id ? { ...r, [field]: field === 'cargoType' || field === 'proforma' ? value : parseFloat(value || '0') } : r);
+        const next = list.map(r => r.id === id ? { ...r, [field]: field === 'cargoType' || field === 'proforma' || field === 'registrationNumber' ? value : parseFloat(value || '0') } : r);
 
         if (type === 'transit' || type === 'purchase') {
             setPurchasingGoods(next);
@@ -2620,11 +2663,12 @@ export const WarehouseOverviewTab: React.FC = () => {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[620px] text-xs text-center border-collapse">
+                        <table className="w-full min-w-[720px] text-xs text-center border-collapse">
                             <thead>
                                 <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                                     <th className="py-3 px-3 text-right whitespace-nowrap">نوع بار</th>
                                     <th className="py-3 px-2 whitespace-nowrap">پروفرم / حواله</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">ثبت سفارش</th>
                                     <th className="py-3 px-2 whitespace-nowrap">وزن (kg)</th>
                                     <th className="py-3 px-2 whitespace-nowrap">تعداد کارتن</th>
                                     <th className="py-3 px-2 whitespace-nowrap">کانتینر</th>
@@ -2635,7 +2679,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {goodsInCustoms.length === 0 ? (
                                     <tr>
-                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ بار دارای کوتاژ یا اعلامیه ورود در گمرک ثبت نشده است.</td>
+                                        <td colSpan={isEditMode ? 8 : 7} className="py-6 text-center text-slate-400 font-medium">هیچ بار دارای کوتاژ یا اعلامیه ورود در گمرک ثبت نشده است.</td>
                                     </tr>
                                 ) : (
                                     goodsInCustoms.map((item) => {
@@ -2675,6 +2719,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                                                             className="w-full text-center py-1 px-2 border rounded border-slate-200 focus:outline-none"
                                                         />
                                                     ) : item.proforma || '-'}
+                                                </td>
+                                                <td className="py-2.5 px-2">
+                                                    {isEditMode && !isCommercial ? (
+                                                        <input 
+                                                            type="text" 
+                                                            value={item.registrationNumber || ''} 
+                                                            onChange={(e) => updateCustomCell('customs', item.id, 'registrationNumber', e.target.value)}
+                                                            className="w-full text-center py-1 px-2 border rounded border-slate-200 focus:outline-none"
+                                                            placeholder="ثبت سفارش"
+                                                        />
+                                                    ) : item.registrationNumber || '-'}
                                                 </td>
                                                 <td className="py-2.5 px-2 font-mono">
                                                     {isEditMode && !isCommercial ? (
@@ -2736,7 +2791,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                             {goodsInCustoms.length > 0 && (
                                 <tfoot>
                                     <tr className="bg-sky-950 !text-white font-extrabold border-t-2 border-sky-700" style={{ backgroundColor: '#082f49' }}>
-                                        <td className="py-3 px-3 text-right !text-white font-bold" style={{ color: '#ffffff', fontWeight: 900 }} colSpan={2}>جمع بارهای در گمرک</td>
+                                        <td className="py-3 px-3 text-right !text-white font-bold" style={{ color: '#ffffff', fontWeight: 900 }} colSpan={3}>جمع بارهای در گمرک</td>
                                         <td className="py-3 px-2 font-mono !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>{calculateCustomTableSum(goodsInCustoms, 'weight').toLocaleString('fa-IR')}</td>
                                         <td className="py-3 px-2 font-mono !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>{calculateCustomTableSum(goodsInCustoms, 'cartons').toLocaleString('fa-IR')}</td>
                                         <td className="py-3 px-2 font-mono !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>{calculateCustomTableSum(goodsInCustoms, 'container').toLocaleString('fa-IR')}</td>
@@ -2773,11 +2828,12 @@ export const WarehouseOverviewTab: React.FC = () => {
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[620px] text-xs text-center border-collapse">
+                        <table className="w-full min-w-[720px] text-xs text-center border-collapse">
                             <thead>
                                 <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                                     <th className="py-3 px-3 text-right whitespace-nowrap">نوع بار</th>
                                     <th className="py-3 px-2 whitespace-nowrap">پروفرم / حواله</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">ثبت سفارش</th>
                                     <th className="py-3 px-2 whitespace-nowrap">وزن (kg)</th>
                                     <th className="py-3 px-2 whitespace-nowrap">تعداد کارتن</th>
                                     <th className="py-3 px-2 whitespace-nowrap">کانتینر</th>
@@ -2788,7 +2844,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {purchasingGoods.length === 0 ? (
                                     <tr>
-                                        <td colSpan={isEditMode ? 7 : 6} className="py-6 text-center text-slate-400 font-medium">هیچ بار در حال خرید یا در راه با شرایط خرید ارز/تخصیص ثبت نشده است.</td>
+                                        <td colSpan={isEditMode ? 8 : 7} className="py-6 text-center text-slate-400 font-medium">هیچ بار در حال خرید یا در راه با شرایط خرید ارز/تخصیص ثبت نشده است.</td>
                                     </tr>
                                 ) : (
                                     purchasingGoods.map((item) => {
@@ -2828,6 +2884,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                                                             className="w-full text-center py-1 px-2 border rounded border-slate-200 focus:outline-none"
                                                         />
                                                     ) : item.proforma || '-'}
+                                                </td>
+                                                <td className="py-2.5 px-2">
+                                                    {isEditMode && !isCommercial ? (
+                                                        <input 
+                                                            type="text" 
+                                                            value={item.registrationNumber || ''} 
+                                                            onChange={(e) => updateCustomCell('purchase', item.id, 'registrationNumber', e.target.value)}
+                                                            className="w-full text-center py-1 px-2 border rounded border-slate-200 focus:outline-none"
+                                                            placeholder="ثبت سفارش"
+                                                        />
+                                                    ) : item.registrationNumber || '-'}
                                                 </td>
                                                 <td className="py-2.5 px-2 font-mono">
                                                     {isEditMode && !isCommercial ? (
@@ -2889,7 +2956,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                             {purchasingGoods.length > 0 && (
                                 <tfoot>
                                     <tr className="bg-indigo-950 !text-white font-extrabold border-t-2 border-indigo-800" style={{ backgroundColor: '#1e1b4b' }}>
-                                        <td className="py-3 px-3 text-right !text-white font-bold" style={{ color: '#ffffff', fontWeight: 900 }} colSpan={2}>جمع کل بارهای در حال خرید و در راه</td>
+                                        <td className="py-3 px-3 text-right !text-white font-bold" style={{ color: '#ffffff', fontWeight: 900 }} colSpan={3}>جمع کل بارهای در حال خرید و در راه</td>
                                         <td className="py-3 px-2 font-mono !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>{calculateCustomTableSum(purchasingGoods, 'weight').toLocaleString('fa-IR')}</td>
                                         <td className="py-3 px-2 font-mono !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>{calculateCustomTableSum(purchasingGoods, 'cartons').toLocaleString('fa-IR')}</td>
                                         <td className="py-3 px-2 font-mono !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>{calculateCustomTableSum(purchasingGoods, 'container').toLocaleString('fa-IR')}</td>
@@ -3220,20 +3287,39 @@ export const WarehouseOverviewTab: React.FC = () => {
                 </div>
 
                 {/* Signature Box */}
-                <div className="pt-6 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500 font-bold">
-                    <div>تهیه و تنظیم گزارش: انبارداری مرکزی و تامین خارجی</div>
-                    <div className="flex items-center gap-1 text-slate-800">
-                        <span>با تشکر -</span>
-                        {isEditMode ? (
-                            <input 
-                                type="text"
-                                value={signature}
-                                onChange={(e) => setSignature(e.target.value)}
-                                className="bg-transparent border-b border-blue-400 font-bold focus:outline-none"
-                            />
-                        ) : (
-                            <span className="font-black text-slate-900">{signature}</span>
-                        )}
+                <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center text-xs text-slate-500 font-bold">
+                    <div className="flex flex-col gap-1">
+                        <div>تهیه و تنظیم گزارش: انبارداری مرکزی و تامین خارجی</div>
+                        <div className="flex items-center gap-1 text-slate-800 mt-1">
+                            <span>تنظیم‌کننده:</span>
+                            {isEditMode ? (
+                                <input 
+                                    type="text"
+                                    value={signature}
+                                    onChange={(e) => setSignature(e.target.value)}
+                                    className="bg-transparent border-b border-blue-400 font-bold focus:outline-none w-44 text-right"
+                                />
+                            ) : (
+                                <span className="font-black text-slate-900">{signature}</span>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <div className="flex flex-col gap-1 items-start sm:items-end">
+                        <div>تایید نهایی:</div>
+                        <div className="flex items-center gap-1 text-slate-800 mt-1">
+                            <span>جناب آقای:</span>
+                            {isEditMode ? (
+                                <input 
+                                    type="text"
+                                    value={ceoSignature}
+                                    onChange={(e) => setCeoSignature(e.target.value)}
+                                    className="bg-transparent border-b border-blue-400 font-bold focus:outline-none w-44 text-right"
+                                />
+                            ) : (
+                                <span className="font-black text-slate-900">{ceoSignature}</span>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

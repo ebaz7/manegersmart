@@ -22,14 +22,13 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Checking PAY_TBL_009 columns ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'PAY_TBL_009'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        console.log("Columns of PAY_TBL_009:", rows.map(r => r.COLUMN_NAME));
     } catch (e) {
         console.error("Error:", e);
     }

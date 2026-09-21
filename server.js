@@ -1689,6 +1689,66 @@ app.post('/api/sayan-proxy', async (req, res) => {
     }
 });
 
+app.post('/api/sayan/test-connection', async (req, res) => {
+    try {
+        const db = getDb();
+        const settings = db.settings || {};
+        const url = (req.body && req.body.url) || settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
+        const apiKey = (req.body && req.body.apiKey) !== undefined ? req.body.apiKey : (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vgr182bwtpoa');
+
+        if (!url) {
+            return res.status(400).json({ success: false, error: 'آدرس سرور یا IP وب‌سرویس سایان وارد نشده است.' });
+        }
+
+        const cleanUrl = url.replace(/\/$/, '');
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        };
+        if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+            headers['x-api-key'] = apiKey;
+        }
+
+        const response = await fetch(`${cleanUrl}/query`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ query: 'SELECT 1 AS ping' }),
+            signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+
+        const latency = Date.now() - startTime;
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            const errMessage = errData.message || errData.error || `پاسخ وب‌سرویس با کد ${response.status} بازگشت داده شد.`;
+            return res.json({
+                success: false,
+                error: errMessage,
+                status: response.status,
+                latency
+            });
+        }
+
+        const data = await response.json().catch(() => ({}));
+        return res.json({
+            success: true,
+            message: `اتصال به وب‌سرویس سایان با موفقیت برقرار شد.`,
+            latency,
+            data: data.data || []
+        });
+    } catch (e) {
+        return res.json({
+            success: false,
+            error: e.name === 'AbortError' ? 'مهلت زمان برقراری ارتباط (Timeout) با سرور سایان به پایان رسید.' : (e.message || 'خطا در ارتباط با سرور سایان')
+        });
+    }
+});
+
 // =========================================================================
 // SAYAN ORDER AUTOMATION (53 -> 57) API ENDPOINTS
 // =========================================================================

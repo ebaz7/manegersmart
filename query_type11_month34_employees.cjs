@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying all employees in Month 34 under Contract Type 11 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_005 AS EmpId, Field_006 AS NationalCode
+            FROM PAY_TBL_013
+            WHERE Field_003 = '11' AND Field_014 = '34'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

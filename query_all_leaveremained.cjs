@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Searching for leave formulas across all contract types ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_003, Field_004, Field_012, Field_013
+            FROM PAY_TBL_002
+            WHERE Field_013 LIKE '%LEAVEREMAINED%'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

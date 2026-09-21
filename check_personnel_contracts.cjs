@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Checking contract templates of personnel 1102 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT Field_001, Field_002, Field_003, Field_004, Field_005, Field_006, Field_007, Field_008
+            FROM PAY_TBL_001
+            WHERE Field_001 = '1102' OR Field_002 = '1102' OR Field_005 = '1102'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

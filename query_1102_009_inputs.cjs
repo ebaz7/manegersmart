@@ -22,12 +22,13 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying PAY_TBL_009 inputs for Employee 1102 in Month 33 and 34 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT i.Field_007 AS MonthId, i.Field_005 AS FactorId, f.Field_004 AS FactorName, i.Field_006 AS InputValue
+            FROM PAY_TBL_009 i
+            LEFT JOIN PAY_TBL_002 f ON i.Field_005 = f.Field_001 AND f.Field_003 = '11'
+            WHERE i.Field_004 = '1102' AND i.Field_007 IN ('33', '34')
+            ORDER BY CAST(i.Field_007 AS INT), CAST(i.Field_005 AS INT)
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

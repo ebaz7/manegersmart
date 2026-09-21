@@ -295,8 +295,8 @@ const Settings: React.FC<SettingsProps> = ({
     smsSenderNumber: "",
     googleCalendarId: "",
     whatsappNumber: "",
-    sayanApiUrl: "http://192.168.41.225:3000/api/external/v1",
-    sayanApiKey: "s_gate_live_urp2vvxzpik4",
+    sayanApiUrl: "http://80.210.31.176:5000/api/external/v1",
+    sayanApiKey: "s_gate_live_vgr182bwtpoa",
     geminiApiKey: "",
     geminiBaseUrl: "",
     warehouseSequences: {},
@@ -321,6 +321,46 @@ const Settings: React.FC<SettingsProps> = ({
   const [sendingManualSalesYesterday, setSendingManualSalesYesterday] = useState(false);
   const [sendingManualCheques, setSendingManualCheques] = useState(false);
   const [sendingManualChequesMatured, setSendingManualChequesMatured] = useState(false);
+
+  const [showSayanKey, setShowSayanKey] = useState(false);
+  const [testingSayan, setTestingSayan] = useState(false);
+  const [sayanTestResult, setSayanTestResult] = useState<{ success: boolean; message: string; latency?: number; status?: number } | null>(null);
+
+  const handleTestSayan = async () => {
+    if (!settings.sayanApiUrl?.trim()) {
+      setSayanTestResult({ success: false, message: 'لطفاً ابتدا آدرس IP یا وب‌سرویس سایان را وارد کنید.' });
+      return;
+    }
+    setTestingSayan(true);
+    setSayanTestResult(null);
+    try {
+      const res = await apiCall<{ success: boolean; message?: string; error?: string; latency?: number; status?: number }>('/sayan/test-connection', 'POST', {
+        url: settings.sayanApiUrl.trim(),
+        apiKey: settings.sayanApiKey?.trim() || ''
+      });
+      if (res.success) {
+        setSayanTestResult({
+          success: true,
+          message: res.message || 'ارتباط با سرور سایان با موفقیت برقرار شد.',
+          latency: res.latency
+        });
+      } else {
+        setSayanTestResult({
+          success: false,
+          message: res.error || 'خطا در ارتباط با سرور سایان',
+          latency: res.latency,
+          status: res.status
+        });
+      }
+    } catch (err: any) {
+      setSayanTestResult({
+        success: false,
+        message: err.message || 'عدم امکان برقراری ارتباط با وب‌سرویس سایان'
+      });
+    } finally {
+      setTestingSayan(false);
+    }
+  };
 
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
@@ -1219,6 +1259,13 @@ const Settings: React.FC<SettingsProps> = ({
           normalizedSettings.activeFiscalYearId = "fy_1404";
         }
 
+        if (!normalizedSettings.sayanApiUrl) {
+          normalizedSettings.sayanApiUrl = "http://80.210.31.176:5000/api/external/v1";
+        }
+        if (!normalizedSettings.sayanApiKey) {
+          normalizedSettings.sayanApiKey = "s_gate_live_vgr182bwtpoa";
+        }
+
         setSettings(normalizedSettings);
         hasInitializedRef.current = true;
       }
@@ -1353,6 +1400,13 @@ const Settings: React.FC<SettingsProps> = ({
       if (safeData.customBgAdapt !== undefined) {
         setCustomBgAdapt(safeData.customBgAdapt);
         localStorage.setItem('app_custom_bg_adapt', safeData.customBgAdapt ? 'true' : 'false');
+      }
+
+      if (!safeData.sayanApiUrl) {
+        safeData.sayanApiUrl = "http://80.210.31.176:5000/api/external/v1";
+      }
+      if (!safeData.sayanApiKey) {
+        safeData.sayanApiKey = "s_gate_live_vgr182bwtpoa";
       }
 
       setSettings(safeData);
@@ -7623,6 +7677,190 @@ const Settings: React.FC<SettingsProps> = ({
 
             {activeCategory === "integrations" && (
               <div className="space-y-6 animate-fade-in">
+                {/* 1. Sayan ERP Connection & Web Service Configuration */}
+                <div className="glass-panel p-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 shadow-sm bg-gradient-to-br from-indigo-50/40 via-white to-sky-50/30 dark:from-gray-900 dark:via-gray-850 dark:to-indigo-950/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-indigo-100 dark:border-gray-700 pb-4 mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center shadow-md shadow-indigo-200 dark:shadow-none shrink-0">
+                        <Server size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-black text-gray-800 dark:text-gray-100 text-base">
+                            اتصال به وب‌سرویس و سرور سایان ERP
+                          </h3>
+                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            اتصال اصلی و IP سرور
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          تنظیمات آدرس IP، پورت، مسیر API و کلید امنیتی (API Key) وب‌سرویس سایان
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                      <button
+                        type="button"
+                        onClick={handleTestSayan}
+                        disabled={testingSayan}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        {testingSayan ? <Loader2 size={16} className="animate-spin" /> : <Wifi size={16} />}
+                        {testingSayan ? "در حال بررسی ارتباط..." : "تست آنلاین ارتباط با سایان"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sayan Connection Test Result Banner */}
+                  {sayanTestResult && (
+                    <div className={`mb-6 p-4 rounded-xl border flex items-start gap-3 transition-all ${
+                      sayanTestResult.success 
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200" 
+                        : "bg-rose-50 border-rose-200 text-rose-900 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-200"
+                    }`}>
+                      {sayanTestResult.success ? (
+                        <CheckCircle2 size={22} className="text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle size={22} className="text-rose-600 shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 text-xs leading-relaxed font-medium">
+                        <div className="font-bold text-sm mb-1">
+                          {sayanTestResult.success ? "اتصال با سرور سایان برقرار است ✅" : "عدم موفقیت در برقراری ارتباط با سرور سایان ❌"}
+                        </div>
+                        <div>{sayanTestResult.message}</div>
+                        {sayanTestResult.latency !== undefined && (
+                          <div className="mt-1 font-mono text-[11px] opacity-80 dir-ltr text-right">
+                            Latency: {sayanTestResult.latency} ms {sayanTestResult.status ? `(HTTP ${sayanTestResult.status})` : ''}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSayanTestResult(null)}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1"
+                        title="بستن پیام"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Inputs for Sayan URL & API Key */}
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+                        <label className="text-xs font-black text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                          <Globe size={15} className="text-indigo-600" />
+                          آدرس IP، پورت و لینک سرور سایان (Sayan Server IP / Base URL)
+                        </label>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] text-gray-400">تنظیم سریع:</span>
+                          <button
+                            type="button"
+                            onClick={() => setSettings({ ...settings, sayanApiUrl: "http://80.210.31.176:5000/api/external/v1" })}
+                            className="text-[10px] font-mono px-2 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg text-indigo-700 dark:text-indigo-300 transition-colors border border-indigo-100 dark:border-gray-700 cursor-pointer"
+                            title="سرور پابلیک اینترنتی سایان"
+                          >
+                            80.210.31.176:5000 (اصلی)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSettings({ ...settings, sayanApiUrl: "http://192.168.41.225:3000/api/external/v1" })}
+                            className="text-[10px] font-mono px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 transition-colors border border-gray-200 dark:border-gray-700 cursor-pointer"
+                            title="سرور لوکال شبکه داخلی"
+                          >
+                            192.168.41.225:3000 (محلی)
+                          </button>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="http://80.210.31.176:5000/api/external/v1"
+                          className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-900 rounded-xl p-3 text-sm font-mono dir-ltr focus:ring-4 ring-indigo-50/50 outline-none transition-all pr-10 text-gray-800 dark:text-gray-100"
+                          value={settings.sayanApiUrl || ""}
+                          onChange={(e) => setSettings({ ...settings, sayanApiUrl: e.target.value })}
+                        />
+                        <div className="absolute right-3 top-3.5 text-indigo-500">
+                          <Server size={18} />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
+                        آدرس کامل وب‌سرویس سایان شامل پروتکل، IP سرور، پورت و مسیر (مثال: <code className="dir-ltr inline-block font-mono bg-indigo-50 dark:bg-gray-800 px-1.5 py-0.5 rounded text-indigo-700 dark:text-indigo-300 font-bold">http://80.210.31.176:5000/api/external/v1</code>)
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-black text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                          <Lock size={15} className="text-indigo-600" />
+                          کلید امنیتی وب‌سرویس سایان (Sayan API Key / Token)
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showSayanKey ? "text" : "password"}
+                          placeholder="s_gate_live_..."
+                          className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-900 rounded-xl p-3 text-sm font-mono dir-ltr focus:ring-4 ring-indigo-50/50 outline-none transition-all pl-10 pr-10 text-gray-800 dark:text-gray-100"
+                          value={settings.sayanApiKey || ""}
+                          onChange={(e) => setSettings({ ...settings, sayanApiKey: e.target.value })}
+                        />
+                        <div className="absolute right-3 top-3.5 text-indigo-500">
+                          <Shield size={18} />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowSayanKey(!showSayanKey)}
+                          className="absolute left-3 top-3.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                          title={showSayanKey ? "مخفی‌سازی کلید" : "نمایش کلید"}
+                        >
+                          {showSayanKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                        کلید توکن امنیتی وب‌سرویس سایان جهت ارسال در هدرهای احراز هویت (Authorization / x-api-key).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Sayan Operational Switches */}
+                  <div className="mt-6 pt-5 border-t border-indigo-100 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-3 cursor-pointer p-3.5 bg-white dark:bg-gray-800/80 border border-indigo-100 dark:border-gray-700 rounded-xl shadow-xs hover:border-indigo-300 transition-colors">
+                      <div className="relative">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only" 
+                          checked={settings.sayanOnlineExitPermitsEnabled || false}
+                          onChange={(e) => setSettings({ ...settings, sayanOnlineExitPermitsEnabled: e.target.checked })}
+                        />
+                        <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanOnlineExitPermitsEnabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                        <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanOnlineExitPermitsEnabled ? 'transform translate-x-4' : ''}`}></div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-gray-800 dark:text-gray-200">یکپارچگی آنلاین حواله فروش سایان (خروج کارخانه)</div>
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">در صورت فعال بودن، در بخش خروج کارخانه و تاییدات انبار با وب‌سرویس سایان تبادل آنلاین انجام می‌شود.</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer p-3.5 bg-white dark:bg-gray-800/80 border border-rose-100 dark:border-gray-700 rounded-xl shadow-xs hover:border-rose-300 transition-colors">
+                      <div className="relative">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only" 
+                          checked={settings.sayanYearClosed || false}
+                          onChange={(e) => setSettings({ ...settings, sayanYearClosed: e.target.checked })}
+                        />
+                        <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanYearClosed ? 'bg-rose-600' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                        <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanYearClosed ? 'transform translate-x-4' : ''}`}></div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-gray-800 dark:text-gray-200">سال مالی سایان بسته شده است (سند افتتاحیه جدید)</div>
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">سیستم موجودی اول دوره را از ابتدای سال جدید محاسبه می‌کند تا آمار سال قبل تکرار نشود.</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="glass-panel p-6 rounded-2xl border border-gray-200 shadow-sm">
                   <h3 className="font-bold text-gray-800 mb-6 border-b pb-3 flex items-center gap-2">
                     <Cpu size={22} className="text-blue-600" /> کنترل پنل هوش
@@ -7818,45 +8056,9 @@ const Settings: React.FC<SettingsProps> = ({
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-4">
-                      <div>
-                        <label className="flex items-center gap-2 cursor-pointer p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
-                          <div className="relative">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only" 
-                              checked={settings.sayanOnlineExitPermitsEnabled || false}
-                              onChange={(e) => setSettings({ ...settings, sayanOnlineExitPermitsEnabled: e.target.checked })}
-                            />
-                            <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanOnlineExitPermitsEnabled ? 'bg-indigo-600' : 'bg-gray-300'}`}></div>
-                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanOnlineExitPermitsEnabled ? 'transform translate-x-4' : ''}`}></div>
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-indigo-900">فعال‌سازی یکپارچگی آنلاین حواله فروش سایان (خروج کارخانه)</div>
-                            <div className="text-xs text-indigo-700 mt-0.5">در صورت فعال بودن، در بخش خروج کارخانه و تاییدات انبار با سایان ارتباط برقرار می‌شود.</div>
-                          </div>
-                        </label>
-                        
-                        <label className="flex items-center gap-2 cursor-pointer p-3 bg-rose-50 border border-rose-100 rounded-xl mt-3">
-                          <div className="relative">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only" 
-                              checked={settings.sayanYearClosed || false}
-                              onChange={(e) => setSettings({ ...settings, sayanYearClosed: e.target.checked })}
-                            />
-                            <div className={`block w-10 h-6 rounded-full transition-colors ${settings.sayanYearClosed ? 'bg-rose-600' : 'bg-gray-300'}`}></div>
-                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settings.sayanYearClosed ? 'transform translate-x-4' : ''}`}></div>
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-rose-900">سال مالی سایان بسته شده است (صدور سند افتتاحیه جدید)</div>
-                            <div className="text-xs text-rose-700 mt-0.5">با فعال کردن این گزینه، سیستم موجودی اول دوره را از ابتدای سال جدید محاسبه می‌کند تا آمار سال قبل دوباره جمع زده نشود.</div>
-                          </div>
-                        </label>
-                      </div>
 
-                      {/* Cheque Workflow & Approval Settings in Sayan */}
-                      <div className="border-t border-indigo-100 pt-4 mt-2 space-y-4">
+                    {/* Cheque Workflow & Approval Settings in Sayan */}
+                    <div className="border-t border-indigo-100 pt-4 mt-2 space-y-4">
                         <div className="flex items-center gap-2">
                           <CheckSquare size={18} className="text-indigo-600" />
                           <h4 className="text-sm font-black text-gray-800">
@@ -7971,7 +8173,6 @@ const Settings: React.FC<SettingsProps> = ({
                           </div>
                         </div>
                       </div>
-                    </div>
                     <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex gap-3 items-start">
                       <div className="glass-panel p-2 rounded-lg text-indigo-600 shadow-sm">
                         <Globe size={20} />

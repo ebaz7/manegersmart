@@ -22,14 +22,25 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
-        const rows = await executeQuery(`
+        console.log("=== Searching for Row with Field_001 = 1487 ===");
+        const tablesRes = await executeQuery(`
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            WHERE TABLE_NAME LIKE 'PAY_TBL_%'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        const tables = tablesRes.map(t => t.TABLE_NAME);
+
+        for (const t of tables) {
+            try {
+                const rows = await executeQuery(`
+                    SELECT * FROM ${t} 
+                    WHERE Field_001 = 1487
+                `);
+                if (rows.length > 0) {
+                    console.log(`Found in table ${t}:`, JSON.stringify(rows, null, 2));
+                }
+            } catch (err) {}
+        }
     } catch (e) {
         console.error("Error:", e);
     }

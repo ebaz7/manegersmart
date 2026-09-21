@@ -22,12 +22,12 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Listing first 20 employees in Month 34 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT DISTINCT Field_005 AS EmpId, Field_006 AS EmpName
+            FROM PAY_TBL_013
+            WHERE Field_014 = '34'
+            ORDER BY Field_005
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

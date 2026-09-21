@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying employees containing Ali Asghar ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT DISTINCT Field_005 AS EmpId, Field_006 AS EmpName
+            FROM PAY_TBL_013
+            WHERE Field_006 LIKE N'%علی اصغر%' OR Field_006 LIKE N'%حیدری%'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

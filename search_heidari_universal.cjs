@@ -22,14 +22,29 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
-        const rows = await executeQuery(`
+        console.log("=== Searching for 'حیدری' in all database tables ===");
+        const tablesRes = await executeQuery(`
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            WHERE TABLE_NAME LIKE 'PAY_TBL_%'
         `);
-        console.log(JSON.stringify(rows, null, 2));
+        const tables = tablesRes.map(t => t.TABLE_NAME);
+
+        for (const t of tables) {
+            try {
+                const colsRes = await executeQuery(`
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = '${t}' AND DATA_TYPE IN ('nvarchar', 'varchar')
+                `);
+                if (colsRes.length === 0) continue;
+                const matchConditions = colsRes.map(c => `CAST(${c.COLUMN_NAME} AS NVARCHAR(MAX)) LIKE N'%حیدری%'`).join(' OR ');
+                const rows = await executeQuery(`SELECT TOP 5 * FROM ${t} WHERE ${matchConditions}`);
+                if (rows.length > 0) {
+                    console.log(`Found in table ${t}:`, JSON.stringify(rows, null, 2));
+                }
+            } catch (err) {}
+        }
     } catch (e) {
         console.error("Error:", e);
     }

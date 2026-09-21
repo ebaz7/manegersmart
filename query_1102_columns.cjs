@@ -22,12 +22,11 @@ async function main() {
     }
 
     try {
-        console.log("=== Listing all database tables ===");
+        console.log("=== Querying columns of PAY_TBL_013 for 1102 in Month 34 ===");
         const rows = await executeQuery(`
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
+            SELECT *
+            FROM PAY_TBL_013
+            WHERE Field_005 = '1102' AND Field_014 = '34'
         `);
         console.log(JSON.stringify(rows, null, 2));
     } catch (e) {

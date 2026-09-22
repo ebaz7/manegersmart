@@ -188,6 +188,9 @@ import {
   PlusCircle,
   CheckCircle2,
   SlidersHorizontal,
+  Table,
+  Minus,
+  FileSignature,
 } from "lucide-react";
 
 import {

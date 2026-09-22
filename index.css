@@ -2719,11 +2719,381 @@ main {
   -webkit-backface-visibility: hidden;
 }
 
-/* Smooth non-blocking scrolling for tables and containers */
-.smooth-scroll-container {
+/* --- QUILL TOOLBAR & SECRETARIAT EDITOR ENHANCEMENTS --- */
+#letter-custom-quill-toolbar {
+  border-top-left-radius: 0.75rem;
+  border-top-right-radius: 0.75rem;
+  font-family: inherit;
+}
+
+#letter-custom-quill-toolbar .ql-formats {
+  margin-right: 0 !important;
+  margin-left: 8px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Fix Quill button icons color & contrast in both Light & Dark modes */
+#letter-custom-quill-toolbar .ql-stroke {
+  stroke: #334155 !important;
+}
+
+.dark #letter-custom-quill-toolbar .ql-stroke {
+  stroke: #cbd5e1 !important;
+}
+
+#letter-custom-quill-toolbar .ql-fill {
+  fill: #334155 !important;
+}
+
+.dark #letter-custom-quill-toolbar .ql-fill {
+  fill: #cbd5e1 !important;
+}
+
+#letter-custom-quill-toolbar .ql-picker {
+  color: #334155 !important;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker {
+  color: #cbd5e1 !important;
+}
+
+#letter-custom-quill-toolbar .ql-picker-label {
+  border-radius: 6px;
+  padding: 2px 6px !important;
+  border: 1px solid #e2e8f0;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker-label {
+  border-color: #334155;
+  background-color: #1e293b;
+}
+
+#letter-custom-quill-toolbar .ql-picker-options {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+  padding: 4px !important;
+  z-index: 100 !important;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker-options {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+#letter-custom-quill-toolbar button {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 4px !important;
+  border-radius: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease-in-out;
+}
+
+#letter-custom-quill-toolbar button:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.dark #letter-custom-quill-toolbar button:hover {
+  background-color: #334155 !important;
+}
+
+#letter-custom-quill-toolbar button.ql-active {
+  background-color: #ede9fe !important;
+}
+
+#letter-custom-quill-toolbar button.ql-active .ql-stroke {
+  stroke: #7c3aed !important;
+}
+
+#letter-custom-quill-toolbar button.ql-active .ql-fill {
+  fill: #7c3aed !important;
+}
+
+.dark #letter-custom-quill-toolbar button.ql-active {
+  background-color: #581c87 !important;
+}
+
+.dark #letter-custom-quill-toolbar button.ql-active .ql-stroke {
+  stroke: #c084fc !important;
+}
+
+.dark #letter-custom-quill-toolbar button.ql-active .ql-fill {
+  fill: #c084fc !important;
+}
+
+/* Quill Editor Inner Typography & Resizable Images */
+.google-docs-paper .ql-editor {
+  min-height: 220mm;
+  font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 2 !important;
+  font-size: 14px;
+}
+
+.google-docs-paper .ql-editor img {
+  cursor: pointer;
+  transition: outline 0.15s ease-in-out;
+  border-radius: 6px;
+  margin: 12px auto;
+}
+
+.google-docs-paper .ql-editor img:hover {
+  outline: 2px dashed #9333ea;
+}
+
+.google-docs-paper .ql-editor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  border: 1px solid #cbd5e1;
+}
+
+.google-docs-paper .ql-editor table td,
+.google-docs-paper .ql-editor table th {
+  border: 1px solid #cbd5e1;
+  padding: 8px 12px;
+  text-align: right;
+}
+
+.google-docs-paper .ql-editor table th {
+  background-color: #f1f5f9;
+  font-weight: bold;
+}
+
+.dark .google-docs-paper .ql-editor table,
+.dark .google-docs-paper .ql-editor table td,
+.dark .google-docs-paper .ql-editor table th {
+  border-color: #475569;
+}
+
+.dark .google-docs-paper .ql-editor table th {
+  background-color: #1e293b;
+}
+
+
+/* ==========================================================================
+   MICROSOFT WORD & GOOGLE DOCS STYLE QUILL TOOLBAR & EDITOR
+   Ensures 100% visible, high-contrast buttons, dropdowns, and image handles
+   ========================================================================== */
+#letter-custom-quill-toolbar {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px 8px 0 0;
+  background-color: #f8fafc;
+  padding: 6px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.dark #letter-custom-quill-toolbar {
+  border-color: #334155;
+  background-color: #0f172a;
+}
+
+#letter-custom-quill-toolbar .ql-formats {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0 !important;
+  margin-left: 6px !important;
+  gap: 2px;
+}
+
+#letter-custom-quill-toolbar button {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155 !important;
+  border: 1px solid transparent;
+  transition: all 0.15s ease-in-out;
+}
+
+.dark #letter-custom-quill-toolbar button {
+  color: #e2e8f0 !important;
+}
+
+#letter-custom-quill-toolbar button:hover {
+  background-color: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #1e293b !important;
+}
+
+.dark #letter-custom-quill-toolbar button:hover {
+  background-color: #334155;
+  border-color: #475569;
+  color: #ffffff !important;
+}
+
+#letter-custom-quill-toolbar button.ql-active,
+#letter-custom-quill-toolbar .ql-picker-label.ql-active {
+  background-color: #ede9fe !important;
+  border-color: #a78bfa !important;
+  color: #6d28d9 !important;
+}
+
+.dark #letter-custom-quill-toolbar button.ql-active,
+.dark #letter-custom-quill-toolbar .ql-picker-label.ql-active {
+  background-color: #4c1d95 !important;
+  border-color: #7c3aed !important;
+  color: #ede9fe !important;
+}
+
+#letter-custom-quill-toolbar .ql-stroke {
+  stroke: #334155 !important;
+  stroke-width: 2 !important;
+}
+
+.dark #letter-custom-quill-toolbar .ql-stroke {
+  stroke: #e2e8f0 !important;
+}
+
+#letter-custom-quill-toolbar button:hover .ql-stroke,
+#letter-custom-quill-toolbar button.ql-active .ql-stroke {
+  stroke: #6d28d9 !important;
+}
+
+.dark #letter-custom-quill-toolbar button:hover .ql-stroke,
+.dark #letter-custom-quill-toolbar button.ql-active .ql-stroke {
+  stroke: #a78bfa !important;
+}
+
+#letter-custom-quill-toolbar .ql-fill {
+  fill: #334155 !important;
+}
+
+.dark #letter-custom-quill-toolbar .ql-fill {
+  fill: #e2e8f0 !important;
+}
+
+#letter-custom-quill-toolbar button:hover .ql-fill,
+#letter-custom-quill-toolbar button.ql-active .ql-fill {
+  fill: #6d28d9 !important;
+}
+
+.dark #letter-custom-quill-toolbar button:hover .ql-fill,
+.dark #letter-custom-quill-toolbar button.ql-active .ql-fill {
+  fill: #a78bfa !important;
+}
+
+/* Dropdown Pickers (Font, Size, Align, Header) */
+#letter-custom-quill-toolbar .ql-picker {
+  height: 28px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  color: #1e293b;
+  margin: 0 2px;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker {
+  border-color: #475569;
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
+#letter-custom-quill-toolbar .ql-picker-label {
+  padding: 3px 8px;
+  display: flex;
+  align-items: center;
+  border: none !important;
+  border-radius: 6px;
+  color: inherit !important;
+}
+
+#letter-custom-quill-toolbar .ql-picker-label svg {
+  right: auto !important;
+  left: 4px !important;
+}
+
+#letter-custom-quill-toolbar .ql-picker-options {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  padding: 4px !important;
+  z-index: 100 !important;
+  max-height: 220px;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker-options {
+  background-color: #0f172a !important;
+  border-color: #334155 !important;
+}
+
+#letter-custom-quill-toolbar .ql-picker-item {
+  padding: 4px 8px !important;
+  border-radius: 4px;
+  color: #334155 !important;
+  font-size: 12px !important;
+  text-align: right !important;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker-item {
+  color: #e2e8f0 !important;
+}
+
+#letter-custom-quill-toolbar .ql-picker-item:hover,
+#letter-custom-quill-toolbar .ql-picker-item.ql-selected {
+  background-color: #ede9fe !important;
+  color: #6d28d9 !important;
+  font-weight: 700;
+}
+
+.dark #letter-custom-quill-toolbar .ql-picker-item:hover,
+.dark #letter-custom-quill-toolbar .ql-picker-item.ql-selected {
+  background-color: #4c1d95 !important;
+  color: #ede9fe !important;
+}
+
+/* Quill Editor Canvas */
+.ql-container.ql-snow {
+  border: none !important;
+  font-family: inherit !important;
+}
+
+.ql-editor {
+  min-height: 480px;
+  font-size: 14px;
+  line-height: 1.9;
+  padding: 12px 16px;
+  direction: rtl;
+  text-align: right;
+  font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+}
+
+.ql-editor p {
+  margin-bottom: 0.75rem;
+}
+
+.ql-editor img {
+  cursor: pointer;
+  transition: outline 0.15s ease;
+}
+
+.ql-editor img:hover {
+  outline: 2px dashed #9333ea;
+  outline-offset: 2px;
+}
+
+.ql-editor img.selected-img-in-editor {
+  outline: 2px solid #7c3aed !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.2) !important;
 }
 
 

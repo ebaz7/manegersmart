@@ -156,6 +156,38 @@ import {
   CheckCheck,
   XSquare,
   Download,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  Columns,
+  Smartphone,
+  Monitor,
+  Undo,
+  Redo,
+  AlignRight,
+  AlignCenter,
+  AlignLeft,
+  AlignJustify,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Subscript,
+  Superscript,
+  Palette,
+  Highlighter,
+  Type,
+  ListOrdered,
+  List,
+  Indent,
+  Outdent,
+  Link as LinkIcon,
+  Tag,
+  PlusCircle,
+  CheckCircle2,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import {
@@ -169,6 +201,7 @@ import {
   SecretariatLetterAttachment,
   SecretariatCompanySettings,
   SecretariatTemplate,
+  CompanyStampItem,
 } from "../types";
 
 import {
@@ -259,9 +292,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const [editingLetterId, setEditingLetterId] = useState<string | null>(null);
   const [selectedLetterForView, setSelectedLetterForView] =
     useState<SecretariatLetter | null>(null);
+  const [letterViewZoom, setLetterViewZoom] = useState<number>(100);
+  const [letterViewFullscreen, setLetterViewFullscreen] = useState(false);
+  const [letterViewMobileTab, setLetterViewMobileTab] = useState<"preview" | "actions">("preview");
+  const [letterViewWideMode, setLetterViewWideMode] = useState(false);
+
   const [isPrintMode, setIsPrintMode] = useState<SecretariatLetter | null>(
     null,
   );
+  const [printPreviewZoom, setPrintPreviewZoom] = useState<number>(100);
+  const [printPreviewFullscreen, setPrintPreviewFullscreen] = useState(false);
   const [isSharingLetter, setIsSharingLetter] = useState(false);
 
   const handleShareSecretariatLetterToChat = async (targetLetter?: SecretariatLetter | null) => {
@@ -302,8 +342,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     type: "internal" as "internal" | "incoming" | "outgoing",
     attachments: [] as SecretariatLetterAttachment[],
     addCompanyStamp: false,
+    selectedStampIds: [] as string[],
     isPrivate: false,
-    signOffText: "با تشکر",
+    signOffText: "با احترام",
     signers: [] as { name: string; title: string; userId?: string }[],
     paperSize: "A4" as "A4" | "A5",
     orientation: "portrait" as "portrait" | "landscape",
@@ -315,7 +356,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const [newLetterForm, setNewLetterForm] = useState(initialFormState);
 
   const resetForm = () => {
-    setNewLetterForm(initialFormState);
+    const activeSettings = secSettings.find(
+      (s) => s.companyId === selectedCompany?.id,
+    );
+    const defaultSignOff = activeSettings?.defaultSignOffText || "با احترام";
+    setNewLetterForm({
+      ...initialFormState,
+      signOffText: defaultSignOff,
+    });
     setEditingLetterId(null);
   };
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
@@ -334,7 +382,22 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const [importingDocxFile, setImportingDocxFile] = useState(false);
   const docxImportInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Google Docs Style States & Handlers ---
+  // --- Image Upload in Editor Ref ---
+  const editorImageInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Image Selection & Word-Style Resizing in Editor ---
+  const [selectedImgEl, setSelectedImgEl] = useState<HTMLImageElement | null>(null);
+  const [selectedImgWidth, setSelectedImgWidth] = useState<string>("100%");
+  const [selectedImgAlign, setSelectedImgAlign] = useState<"right" | "center" | "left">("center");
+  const [selectedImgBorder, setSelectedImgBorder] = useState<"none" | "rounded" | "bordered" | "shadow">("rounded");
+
+  // --- Color & Highlight Pickers ---
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  const [showBgColorPicker, setShowBgColorPicker] = useState(false);
+  const [activeTextColor, setActiveTextColor] = useState("#000000");
+  const [activeBgColor, setActiveBgColor] = useState("#fef08a");
+
+  // --- Google Docs & Word Style States & Handlers ---
   const quillRef = useRef<any>(null);
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [findText, setFindText] = useState("");
@@ -419,15 +482,176 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     }
   };
 
+  const applyCustomColor = (color: string) => {
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      quill.format("color", color);
+      setActiveTextColor(color);
+    }
+    setShowTextColorPicker(false);
+  };
+
+  const applyCustomBackground = (color: string) => {
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      quill.format("background", color);
+      setActiveBgColor(color);
+    }
+    setShowBgColorPicker(false);
+  };
+
+  // Image manipulation in editor
+  const updateSelectedImageWidth = (widthPercent: string) => {
+    if (!selectedImgEl) return;
+    selectedImgEl.style.width = widthPercent;
+    selectedImgEl.style.maxWidth = "100%";
+    selectedImgEl.style.height = "auto";
+    setSelectedImgWidth(widthPercent);
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      setNewLetterForm((prev) => ({
+        ...prev,
+        content: quill.root.innerHTML,
+      }));
+    }
+  };
+
+  const updateSelectedImageAlign = (align: "right" | "center" | "left") => {
+    if (!selectedImgEl) return;
+    selectedImgEl.style.display = "block";
+    if (align === "right") {
+      selectedImgEl.style.marginLeft = "auto";
+      selectedImgEl.style.marginRight = "0";
+    } else if (align === "center") {
+      selectedImgEl.style.marginLeft = "auto";
+      selectedImgEl.style.marginRight = "auto";
+    } else {
+      selectedImgEl.style.marginLeft = "0";
+      selectedImgEl.style.marginRight = "auto";
+    }
+    setSelectedImgAlign(align);
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      setNewLetterForm((prev) => ({
+        ...prev,
+        content: quill.root.innerHTML,
+      }));
+    }
+  };
+
+  const updateSelectedImageBorder = (borderStyle: "none" | "rounded" | "bordered" | "shadow") => {
+    if (!selectedImgEl) return;
+    if (borderStyle === "none") {
+      selectedImgEl.style.borderRadius = "0px";
+      selectedImgEl.style.border = "none";
+      selectedImgEl.style.boxShadow = "none";
+    } else if (borderStyle === "rounded") {
+      selectedImgEl.style.borderRadius = "8px";
+      selectedImgEl.style.border = "none";
+      selectedImgEl.style.boxShadow = "none";
+    } else if (borderStyle === "bordered") {
+      selectedImgEl.style.borderRadius = "4px";
+      selectedImgEl.style.border = "1px solid #cbd5e1";
+      selectedImgEl.style.padding = "4px";
+      selectedImgEl.style.boxShadow = "none";
+    } else if (borderStyle === "shadow") {
+      selectedImgEl.style.borderRadius = "8px";
+      selectedImgEl.style.border = "none";
+      selectedImgEl.style.boxShadow = "0 10px 15px -3px rgba(0, 0, 0, 0.15)";
+    }
+    setSelectedImgBorder(borderStyle);
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      setNewLetterForm((prev) => ({
+        ...prev,
+        content: quill.root.innerHTML,
+      }));
+    }
+  };
+
+  const deleteSelectedImage = () => {
+    if (!selectedImgEl) return;
+    selectedImgEl.remove();
+    setSelectedImgEl(null);
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      setNewLetterForm((prev) => ({
+        ...prev,
+        content: quill.root.innerHTML,
+      }));
+    }
+  };
+
+  const handleEditorImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target?.result as string;
+      if (base64) {
+        insertHTML(`<img src="${base64}" alt="تصویر پیوست" style="width: 60%; display: block; margin: 12px auto; border-radius: 8px; max-width: 100%; height: auto;" />`);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // Click listener for images inside editor
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleEditorClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && target.tagName === "IMG" && target.closest(".ql-editor")) {
+        setSelectedImgEl(target as HTMLImageElement);
+        const curWidth = (target as HTMLImageElement).style.width || "100%";
+        setSelectedImgWidth(curWidth);
+      } else if (!target.closest("#image-floating-toolbar") && !target.closest("#letter-custom-quill-toolbar")) {
+        setSelectedImgEl(null);
+      }
+    };
+    document.addEventListener("click", handleEditorClick);
+    return () => document.removeEventListener("click", handleEditorClick);
+  }, []);
+
   // Close menus on click outside
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleOutsideClick = () => {
-      setActiveMenu(null);
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("#color-picker-dropdown") && !target.closest("#color-picker-btn")) {
+        setShowTextColorPicker(false);
+      }
+      if (!target.closest("#bg-picker-dropdown") && !target.closest("#bg-picker-btn")) {
+        setShowBgColorPicker(false);
+      }
+      if (!target.closest(".google-docs-menu-item")) {
+        setActiveMenu(null);
+      }
     };
     window.addEventListener("click", handleOutsideClick);
     return () => window.removeEventListener("click", handleOutsideClick);
   }, []);
+
+  // --- Normalized Stamps Helper ---
+  const getNormalizedStamps = (settings?: SecretariatCompanySettings | null): CompanyStampItem[] => {
+    if (!settings) return [];
+    if (settings.stamps && settings.stamps.length > 0) {
+      return settings.stamps;
+    }
+    if (settings.companyStampUrl) {
+      return [
+        {
+          id: "default-stamp",
+          name: "مهر رسمی شرکت",
+          url: settings.companyStampUrl,
+          isDefault: true,
+          opacity: settings.companyStampOpacity ?? 75,
+          width: settings.companyStampSize ?? 120,
+        },
+      ];
+    }
+    return [];
+  };
 
   // --- Settings Tab Form State ---
   const [companySettingsForm, setCompanySettingsForm] =
@@ -441,10 +665,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       wordLetterheadUrl: "",
       letterheadFontFamily: "Vazirmatn",
       meetingMinutesTemplate: "",
+      defaultSignOffText: "با احترام",
       companyStampUrl: "",
       companyStampSize: 120,
       companyStampOpacity: 75,
       companyStampPosition: "bottom_left",
+      stamps: [],
       marginTop: 40,
       marginBottom: 25,
       marginLeft: 20,
@@ -469,6 +695,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const pdfLetterheadInputRef = useRef<HTMLInputElement>(null);
   const [uploadingStamp, setUploadingStamp] = useState(false);
   const stampInputRef = useRef<HTMLInputElement>(null);
+  const newStampInputRef = useRef<HTMLInputElement>(null);
+  const [newStampName, setNewStampName] = useState("مهر جدید");
+  const [editingStampId, setEditingStampId] = useState<string | null>(null);
 
   // Load Initial Data
   const loadData = async () => {
@@ -521,10 +750,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         wordLetterheadUrl: "",
         letterheadFontFamily: "Vazirmatn",
         meetingMinutesTemplate: "",
+        defaultSignOffText: "با احترام",
         companyStampUrl: "",
         companyStampSize: 120,
         companyStampOpacity: 75,
         companyStampPosition: "bottom_left",
+        stamps: [],
         marginTop: 40,
         marginBottom: 25,
         marginLeft: 20,
@@ -543,6 +774,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         numberingPadLength: 4,
         hideAutoFooter: false,
       };
+
+      const normalizedStamps = getNormalizedStamps(activeSettings);
+
       setCompanySettingsForm({
         ...activeSettings,
         headquartersAccessTokens: activeSettings.headquartersAccessTokens || [],
@@ -569,7 +803,17 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         companyStampOpacity: activeSettings.companyStampOpacity ?? 75,
         companyStampPosition: activeSettings.companyStampPosition || "bottom_left",
         letterheadFontFamily: activeSettings.letterheadFontFamily || "Vazirmatn",
+        defaultSignOffText: activeSettings.defaultSignOffText || "با احترام",
+        stamps: normalizedStamps,
       });
+
+      // Update form default sign off text if creating new letter
+      if (!editingLetterId) {
+        setNewLetterForm((prev) => ({
+          ...prev,
+          signOffText: activeSettings.defaultSignOffText || prev.signOffText || "با احترام",
+        }));
+      }
     }
   }, [selectedCompany, secSettings]);
 
@@ -602,10 +846,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       wordLetterheadUrl: "",
       letterheadFontFamily: "Vazirmatn",
       meetingMinutesTemplate: "",
+      defaultSignOffText: "با احترام",
       companyStampUrl: "",
       companyStampSize: 120,
       companyStampOpacity: 75,
       companyStampPosition: "bottom_left",
+      stamps: [],
       marginTop: 40,
       marginBottom: 25,
       marginLeft: 20,
@@ -640,9 +886,15 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
           companySettingsForm.companyStampUrl ||
           baseSettings.companyStampUrl ||
           "",
+        stamps: companySettingsForm.stamps?.length
+          ? companySettingsForm.stamps
+          : getNormalizedStamps(baseSettings),
       };
     }
-    return baseSettings;
+    return {
+      ...baseSettings,
+      stamps: getNormalizedStamps(baseSettings),
+    };
   };
   const canEditLetters =
     isSuperUser ||
@@ -3312,157 +3564,307 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
             {/* 4. COMPANY STAMP & SIGNATURE CONFIGURATION */}
             {settingsSubTab === "stamp" && (
               <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 shadow-xs p-4 sm:p-6 space-y-6">
-                <div className="border-b dark:border-slate-700/80 pb-4">
-                  <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
-                    <Stamp className="text-purple-600" size={18} />
-                    تنظیمات مهر رسمی شرکت و جایگاه امضاها
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    تصویر مهر حقوقی شرکت را آپلود کرده و اندازه، شفافیت و جایگاه پیش‌فرض آن را تعیین کنید.
-                  </p>
+                <div className="border-b dark:border-slate-700/80 pb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white flex items-center gap-2">
+                      <Stamp className="text-purple-600" size={18} />
+                      مدیریت مهرهای رسمی شرکت و عبارات پایانی
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      می‌توانید چندین مهر با نام‌های مختلف (مانند مهر رسمی، مهر مالی، مهر مدیرعامل و...) تعریف نموده و متن پیش‌فرض پایان نامه‌ها را مشخص کنید.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                  {/* Stamp Upload & Controls */}
-                  <div className="space-y-4">
-                    <div className="p-4 border dark:border-slate-700 rounded-xl space-y-3 bg-slate-50 dark:bg-slate-900/60">
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        تصویر مهر رسمی شرکت (PNG بدون پس‌زمینه)
-                      </label>
-                      <input
-                        type="file"
-                        ref={stampInputRef}
-                        onChange={handleStampUpload}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                      <div className="flex items-center gap-2">
+                {/* Default Sign-Off Text */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-xl border dark:border-slate-700 space-y-3">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <FileSignature size={15} className="text-purple-600" />
+                    متن پیش‌فرض پایان نامه‌ها (عبارت احترام‌آمیز)
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={companySettingsForm.defaultSignOffText || "با احترام"}
+                      onChange={(e) =>
+                        setCompanySettingsForm((prev) => ({
+                          ...prev,
+                          defaultSignOffText: e.target.value,
+                        }))
+                      }
+                      placeholder="مثال: با احترام"
+                      className="flex-1 min-w-[200px] border dark:border-slate-700 dark:bg-slate-800 rounded-xl px-3 py-2 text-xs font-bold"
+                    />
+                    <div className="flex flex-wrap items-center gap-1">
+                      {["با احترام", "با تشکر و احترام", "با سپاس فراوان", "با آرزوی توفیق الهی", "ارادتمند"].map((phrase) => (
                         <button
+                          key={phrase}
                           type="button"
-                          onClick={() => stampInputRef.current?.click()}
-                          disabled={uploadingStamp}
-                          className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5"
+                          onClick={() =>
+                            setCompanySettingsForm((prev) => ({
+                              ...prev,
+                              defaultSignOffText: phrase,
+                            }))
+                          }
+                          className={`text-[11px] px-2.5 py-1.5 rounded-lg font-bold border transition-colors ${
+                            (companySettingsForm.defaultSignOffText || "با احترام") === phrase
+                              ? "bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800"
+                              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                          }`}
                         >
-                          {uploadingStamp ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Upload size={14} />
-                          )}
-                          انتخاب و آپلود تصویر مهر
+                          {phrase}
                         </button>
-                        {companySettingsForm.companyStampUrl && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!selectedCompany) return;
-                              const updatedForm = {
-                                ...companySettingsForm,
-                                companyId: selectedCompany.id,
-                                companyStampUrl: "",
-                              };
-                              setCompanySettingsForm(updatedForm);
-                              try {
-                                const updated = await saveSecretariatSettings(updatedForm);
-                                setSecSettings(updated);
-                                alert("تصویر مهر شرکت حذف شد.");
-                              } catch (err) {
-                                console.error(err);
-                              }
-                            }}
-                            className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-2 rounded-xl text-xs font-bold"
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add New Stamp Section */}
+                <div className="p-4 bg-purple-50/60 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                      <PlusCircle size={15} />
+                      افزودن مهر جدید به شرکت
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      value={newStampName}
+                      onChange={(e) => setNewStampName(e.target.value)}
+                      placeholder="نام مهر (مثال: مهر امور مالی، مهر کارخانه، مهر مدیرعامل)"
+                      className="flex-1 min-w-[220px] border border-purple-200 dark:border-purple-800 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs font-bold"
+                    />
+                    <input
+                      type="file"
+                      ref={newStampInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !selectedCompany) return;
+                        setUploadingStamp(true);
+                        const reader = new FileReader();
+                        reader.onload = async (ev) => {
+                          const base64 = ev.target?.result as string;
+                          try {
+                            const res = await uploadFile(file.name, base64);
+                            const newStampItem: CompanyStampItem = {
+                              id: `stamp-${Date.now()}`,
+                              name: newStampName.trim() || "مهر رسمی شرکت",
+                              url: res.url,
+                              isDefault: (companySettingsForm.stamps?.length || 0) === 0,
+                              opacity: 75,
+                              width: 120,
+                            };
+                            const updatedStamps = [
+                              ...(companySettingsForm.stamps || []),
+                              newStampItem,
+                            ];
+                            const updatedForm: SecretariatCompanySettings = {
+                              ...companySettingsForm,
+                              companyId: selectedCompany.id,
+                              stamps: updatedStamps,
+                              companyStampUrl: updatedStamps[0]?.url || "",
+                            };
+                            setCompanySettingsForm(updatedForm);
+                            const updatedSettings = await saveSecretariatSettings(updatedForm);
+                            setSecSettings(updatedSettings);
+                            setNewStampName("مهر جدید");
+                            alert(`مهر "${newStampItem.name}" با موفقیت ذخیره شد.`);
+                          } catch (err) {
+                            console.error(err);
+                            alert("خطا در ذخیره مهر جدید");
+                          } finally {
+                            setUploadingStamp(false);
+                            if (e.target) e.target.value = "";
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => newStampInputRef.current?.click()}
+                      disabled={uploadingStamp}
+                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      {uploadingStamp ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Upload size={14} />
+                      )}
+                      انتخاب فایل تصویر و ذخیره مهر
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of Defined Stamps */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    مهرهای ثبت شده برای این شرکت ({companySettingsForm.stamps?.length || (companySettingsForm.companyStampUrl ? 1 : 0)})
+                  </h4>
+
+                  {(() => {
+                    const currentStamps = getNormalizedStamps(companySettingsForm);
+                    if (currentStamps.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-xs text-slate-400 border border-dashed rounded-2xl bg-slate-50 dark:bg-slate-900/40">
+                          هنوز هیچ مهری برای این شرکت تعریف نشده است. با استفاده از بخش بالا اولین مهر شرکت را اضافه کنید.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {currentStamps.map((stamp, idx) => (
+                          <div
+                            key={stamp.id || idx}
+                            className={`p-4 rounded-2xl border transition-all ${
+                              stamp.isDefault
+                                ? "border-purple-300 dark:border-purple-800 bg-purple-50/20 dark:bg-purple-950/20"
+                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                            } space-y-4`}
                           >
-                            حذف مهر
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                            <div className="flex items-center justify-between gap-2 border-b dark:border-slate-800 pb-2">
+                              <div className="flex items-center gap-2 flex-1">
+                                <Stamp size={15} className="text-purple-600 shrink-0" />
+                                <input
+                                  type="text"
+                                  value={stamp.name}
+                                  onChange={(e) => {
+                                    const updated = [...currentStamps];
+                                    updated[idx] = { ...updated[idx], name: e.target.value };
+                                    setCompanySettingsForm((prev) => ({
+                                      ...prev,
+                                      stamps: updated,
+                                    }));
+                                  }}
+                                  placeholder="نام مهر..."
+                                  className="w-full text-xs font-bold bg-transparent border-b border-dashed border-slate-300 dark:border-slate-700 pb-0.5 focus:border-purple-500 outline-none"
+                                />
+                              </div>
+                              {stamp.isDefault ? (
+                                <span className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300 px-2 py-0.5 rounded-full font-black flex items-center gap-1">
+                                  <Check size={10} /> پیش‌فرض
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = currentStamps.map((s, i) => ({
+                                      ...s,
+                                      isDefault: i === idx,
+                                    }));
+                                    setCompanySettingsForm((prev) => ({
+                                      ...prev,
+                                      stamps: updated,
+                                      companyStampUrl: updated[idx].url,
+                                    }));
+                                  }}
+                                  className="text-[10px] text-slate-500 hover:text-purple-600 font-bold underline"
+                                >
+                                  تنظیم به عنوان پیش‌فرض
+                                </button>
+                              )}
+                            </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                        <span>اندازه مهر در چاپ:</span>
-                        <span className="font-mono text-purple-600 font-black">
-                          {companySettingsForm.companyStampSize ?? 120} px
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="60"
-                        max="220"
-                        value={companySettingsForm.companyStampSize ?? 120}
-                        onChange={(e) =>
-                          setCompanySettingsForm((prev) => ({
-                            ...prev,
-                            companyStampSize: parseInt(e.target.value),
-                          }))
-                        }
-                        className="w-full accent-purple-600"
-                      />
-                    </div>
+                            <div className="flex items-center gap-4">
+                              {/* Stamp Image Preview */}
+                              <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 border rounded-xl flex items-center justify-center p-2 shrink-0 relative overflow-hidden">
+                                {stamp.url ? (
+                                  <img
+                                    src={stamp.url}
+                                    alt={stamp.name}
+                                    className="max-h-full max-w-full object-contain mix-blend-multiply"
+                                    style={{
+                                      opacity: (stamp.opacity ?? 75) / 100,
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">بدون تصویر</span>
+                                )}
+                              </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                        <span>شفافیت مهر (Opacity):</span>
-                        <span className="font-mono text-purple-600 font-black">
-                          {companySettingsForm.companyStampOpacity ?? 75}%
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="20"
-                        max="100"
-                        value={companySettingsForm.companyStampOpacity ?? 75}
-                        onChange={(e) =>
-                          setCompanySettingsForm((prev) => ({
-                            ...prev,
-                            companyStampOpacity: parseInt(e.target.value),
-                          }))
-                        }
-                        className="w-full accent-purple-600"
-                      />
-                    </div>
+                              {/* Controls */}
+                              <div className="flex-1 space-y-2 text-xs">
+                                <div>
+                                  <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                    <span>اندازه:</span>
+                                    <span className="font-mono text-purple-600">{stamp.width ?? 120} px</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="60"
+                                    max="200"
+                                    value={stamp.width ?? 120}
+                                    onChange={(e) => {
+                                      const updated = [...currentStamps];
+                                      updated[idx] = { ...updated[idx], width: parseInt(e.target.value) };
+                                      setCompanySettingsForm((prev) => ({
+                                        ...prev,
+                                        stamps: updated,
+                                      }));
+                                    }}
+                                    className="w-full accent-purple-600"
+                                  />
+                                </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        جایگاه پیش‌فرض مهر در زیر نامه
-                      </label>
-                      <select
-                        value={companySettingsForm.companyStampPosition || "bottom_left"}
-                        onChange={(e) =>
-                          setCompanySettingsForm((prev) => ({
-                            ...prev,
-                            companyStampPosition: e.target.value as any,
-                          }))
-                        }
-                        className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-xl px-3 py-2 text-xs"
-                      >
-                        <option value="bottom_left">پایین چپ (استاندارد اداری)</option>
-                        <option value="bottom_center">پایین وسط</option>
-                        <option value="bottom_right">پایین راست</option>
-                      </select>
-                    </div>
-                  </div>
+                                <div>
+                                  <div className="flex justify-between text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                    <span>شفافیت:</span>
+                                    <span className="font-mono text-purple-600">{stamp.opacity ?? 75}%</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="20"
+                                    max="100"
+                                    value={stamp.opacity ?? 75}
+                                    onChange={(e) => {
+                                      const updated = [...currentStamps];
+                                      updated[idx] = { ...updated[idx], opacity: parseInt(e.target.value) };
+                                      setCompanySettingsForm((prev) => ({
+                                        ...prev,
+                                        stamps: updated,
+                                      }));
+                                    }}
+                                    className="w-full accent-purple-600"
+                                  />
+                                </div>
+                              </div>
+                            </div>
 
-                  {/* Stamp Live Preview */}
-                  <div className="bg-slate-50 dark:bg-slate-900/60 p-6 rounded-2xl border dark:border-slate-700 flex flex-col items-center justify-center space-y-3 min-h-[260px]">
-                    <div className="text-xs font-bold text-slate-500">پیش‌نمایش مهر رسمی</div>
-                    {companySettingsForm.companyStampUrl ? (
-                      <div className="p-4 bg-white dark:bg-slate-800 border rounded-2xl shadow-inner flex items-center justify-center">
-                        <img
-                          src={companySettingsForm.companyStampUrl}
-                          className="object-contain mix-blend-multiply"
-                          style={{
-                            height: `${companySettingsForm.companyStampSize ?? 120}px`,
-                            width: `${companySettingsForm.companyStampSize ?? 120}px`,
-                            opacity: (companySettingsForm.companyStampOpacity ?? 75) / 100,
-                          }}
-                        />
+                            <div className="flex items-center justify-between pt-2 border-t dark:border-slate-800">
+                              <span className="text-[10px] text-slate-400">
+                                شناسه: {stamp.id || `stamp-${idx}`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!window.confirm(`آیا از حذف مهر "${stamp.name}" اطمینان دارید؟`)) return;
+                                  const updated = currentStamps.filter((_, i) => i !== idx);
+                                  const updatedForm: SecretariatCompanySettings = {
+                                    ...companySettingsForm,
+                                    stamps: updated,
+                                    companyStampUrl: updated[0]?.url || "",
+                                  };
+                                  setCompanySettingsForm(updatedForm);
+                                  if (selectedCompany) {
+                                    const saved = await saveSecretariatSettings(updatedForm);
+                                    setSecSettings(saved);
+                                  }
+                                }}
+                                className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1 hover:bg-red-50 dark:hover:bg-red-950/40 px-2 py-1 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={13} />
+                                حذف این مهر
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ) : (
-                      <div className="text-xs text-slate-400 text-center">
-                        هنوز تصویری برای مهر آپلود نشده است.
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -4586,85 +4988,401 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     </div>
                   )}
 
-                  {/* Docked Fixed Formatting Ribbon Toolbar (Stationary above paper canvas) */}
+                  {/* Hidden Input for Instant Local Image Insert */}
+                  <input
+                    type="file"
+                    ref={editorImageInputRef}
+                    accept="image/*"
+                    onChange={handleEditorImageUpload}
+                    className="hidden"
+                  />
+
+                  {/* Docked Word-Style Formatting Ribbon Toolbar */}
                   <div
                     id="letter-custom-quill-toolbar"
-                    className="ql-toolbar ql-snow bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-1 flex flex-wrap items-center gap-1 shrink-0 select-none z-30"
+                    className="ql-toolbar ql-snow bg-slate-100 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5 shrink-0 select-none z-30 shadow-xs"
                   >
-                    <span className="ql-formats">
-                      <select className="ql-font" defaultValue="Vazirmatn">
-                        <option value="Vazirmatn">وزیر متن</option>
-                        <option value="Shabnam">شبنم</option>
-                        <option value="Sahel">ساحل</option>
-                        <option value="Gandom">گندم</option>
-                        <option value="Estedad">استعداد</option>
-                        <option value="Samim">صمیم</option>
-                        <option value="Tanha">تنها</option>
-                        <option value="Tahoma">تاهوما</option>
-                        <option value="Arial">Arial</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                        <option value="Courier New">Courier New</option>
-                      </select>
-                      <select className="ql-size" defaultValue="14px">
-                        <option value="9px">۹ ریز</option>
-                        <option value="10px">۱۰</option>
-                        <option value="11px">۱۱</option>
-                        <option value="12px">۱۲</option>
-                        <option value="13px">۱۳</option>
-                        <option value="14px">۱۴ استاندارد</option>
-                        <option value="15px">۱۵</option>
-                        <option value="16px">۱۶ بزرگ</option>
-                        <option value="17px">۱۷</option>
-                        <option value="18px">۱۸ تیتر ریز</option>
-                        <option value="20px">۲۰ متوسط</option>
-                        <option value="22px">۲۲ سربرگ</option>
-                        <option value="24px">۲۴ تیتر</option>
-                        <option value="28px">۲۸</option>
-                        <option value="32px">۳۲</option>
-                        <option value="36px">۳۶</option>
-                        <option value="48px">۴۸</option>
-                      </select>
-                      <select className="ql-header" defaultValue="">
-                        <option value="1">تیتر ۱</option>
-                        <option value="2">تیتر ۲</option>
-                        <option value="3">تیتر ۳</option>
-                        <option value="">متن عادی</option>
-                      </select>
-                    </span>
+                    {/* Section 1: Undo / Redo & History */}
+                    <div className="flex items-center gap-0.5 border-l dark:border-slate-700 pl-2">
+                      <button
+                        type="button"
+                        onClick={handleUndo}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+                        title="بازگشت به عقب - Undo (Ctrl+Z)"
+                      >
+                        <Undo size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRedo}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+                        title="تکرار مجدد - Redo (Ctrl+Y)"
+                      >
+                        <Redo size={15} />
+                      </button>
+                    </div>
 
-                    <span className="ql-formats">
-                      <button className="ql-bold" title="درشت (Bold)" />
-                      <button className="ql-italic" title="کج (Italic)" />
-                      <button className="ql-underline" title="زیرخط (Underline)" />
-                      <button className="ql-strike" title="خط‌خورده (Strike)" />
-                    </span>
+                    {/* Section 2: Font Family & Font Size */}
+                    <div className="flex items-center gap-1 border-l dark:border-slate-700 pl-2">
+                      <span className="ql-formats">
+                        <select className="ql-font" defaultValue="Vazirmatn" title="انتخاب قلم (Font)">
+                          <option value="Vazirmatn">وزیر متن</option>
+                          <option value="Shabnam">شبنم</option>
+                          <option value="Sahel">ساحل</option>
+                          <option value="Gandom">گندم</option>
+                          <option value="Estedad">استعداد</option>
+                          <option value="Samim">صمیم</option>
+                          <option value="Tanha">تنها</option>
+                          <option value="Tahoma">تاهوما</option>
+                          <option value="Arial">Arial</option>
+                          <option value="Times New Roman">Times New Roman</option>
+                          <option value="Courier New">Courier New</option>
+                        </select>
+                        <select className="ql-size" defaultValue="14px" title="اندازه قلم (Font Size)">
+                          <option value="9px">۹ ریز</option>
+                          <option value="10px">۱۰</option>
+                          <option value="11px">۱۱</option>
+                          <option value="12px">۱۲</option>
+                          <option value="13px">۱۳</option>
+                          <option value="14px">۱۴ استاندارد</option>
+                          <option value="15px">۱۵</option>
+                          <option value="16px">۱۶ بزرگ</option>
+                          <option value="17px">۱۷</option>
+                          <option value="18px">۱۸ تیتر ریز</option>
+                          <option value="20px">۲۰ متوسط</option>
+                          <option value="22px">۲۲ سربرگ</option>
+                          <option value="24px">۲۴ تیتر</option>
+                          <option value="28px">۲۸</option>
+                          <option value="32px">۳۲</option>
+                          <option value="36px">۳۶</option>
+                          <option value="48px">۴۸</option>
+                        </select>
+                        <select className="ql-header" defaultValue="" title="عنوان و سبک">
+                          <option value="1">تیتر ۱</option>
+                          <option value="2">تیتر ۲</option>
+                          <option value="3">تیتر ۳</option>
+                          <option value="">متن عادی</option>
+                        </select>
+                      </span>
+                    </div>
 
-                    <span className="ql-formats">
-                      <select className="ql-color" title="رنگ متن" />
-                      <select className="ql-background" title="رنگ پس‌زمینه" />
-                    </span>
+                    {/* Section 3: Formatting (Bold, Italic, Underline, Strike, Script) */}
+                    <div className="flex items-center gap-0.5 border-l dark:border-slate-700 pl-2">
+                      <span className="ql-formats">
+                        <button className="ql-bold" title="درشت (Bold - Ctrl+B)" />
+                        <button className="ql-italic" title="مورب (Italic - Ctrl+I)" />
+                        <button className="ql-underline" title="زیرخط (Underline - Ctrl+U)" />
+                        <button className="ql-strike" title="خط‌خورده (Strikethrough)" />
+                        <button className="ql-script" value="sub" title="زیرنویس" />
+                        <button className="ql-script" value="super" title="بالانویس" />
+                      </span>
+                    </div>
 
-                    <span className="ql-formats">
-                      <select className="ql-align" defaultValue="" title="چینش متن" />
-                      <button className="ql-direction" value="rtl" title="جهت راست به چپ" />
-                    </span>
+                    {/* Section 4: High-Contrast Color & Highlighter Pickers */}
+                    <div className="flex items-center gap-1.5 border-l dark:border-slate-700 pl-2 relative">
+                      {/* Text Color Dropdown */}
+                      <div className="relative">
+                        <button
+                          id="color-picker-btn"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowTextColorPicker(!showTextColorPicker);
+                            setShowBgColorPicker(false);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-xs"
+                          title="رنگ قلم متن"
+                        >
+                          <span className="font-black text-sm">A</span>
+                          <span
+                            className="w-3.5 h-1.5 rounded-xs"
+                            style={{ backgroundColor: activeTextColor }}
+                          />
+                        </button>
+                        {showTextColorPicker && (
+                          <div
+                            id="color-picker-dropdown"
+                            className="absolute top-full mt-1.5 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 shadow-2xl z-50 w-52 space-y-2 text-right"
+                          >
+                            <span className="text-[10px] font-bold text-slate-500 block border-b pb-1 dark:border-slate-700">
+                              انتخاب رنگ قلم:
+                            </span>
+                            <div className="grid grid-cols-6 gap-1.5">
+                              {[
+                                "#000000", "#334155", "#64748b", "#94a3b8", "#dc2626", "#ea580c",
+                                "#d97706", "#65a30d", "#16a34a", "#0d9488", "#0284c7", "#2563eb",
+                                "#7c3aed", "#c026d3", "#db2777", "#991b1b", "#1e3a8a", "#064e3b"
+                              ].map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => applyCustomColor(c)}
+                                  className="w-6 h-6 rounded-md border border-slate-300 dark:border-slate-600 hover:scale-110 transition-transform shadow-2xs"
+                                  style={{ backgroundColor: c }}
+                                  title={c}
+                                />
+                              ))}
+                            </div>
+                            <div className="pt-2 border-t dark:border-slate-700 flex items-center justify-between text-[11px]">
+                              <span className="text-slate-500">رنگ سفارشی:</span>
+                              <input
+                                type="color"
+                                value={activeTextColor}
+                                onChange={(e) => applyCustomColor(e.target.value)}
+                                className="w-7 h-7 rounded cursor-pointer p-0.5 border"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
-                    <span className="ql-formats">
-                      <button className="ql-list" value="ordered" title="لیست شماره‌دار" />
-                      <button className="ql-list" value="bullet" title="لیست نشانه‌دار" />
-                      <button className="ql-indent" value="-1" title="کاهش تورفتگی" />
-                      <button className="ql-indent" value="+1" title="افزایش تورفتگی" />
-                    </span>
+                      {/* Highlight Background Color Dropdown */}
+                      <div className="relative">
+                        <button
+                          id="bg-picker-btn"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowBgColorPicker(!showBgColorPicker);
+                            setShowTextColorPicker(false);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-xs"
+                          title="رنگ هایلایت و پس‌زمینه"
+                        >
+                          <Highlighter size={13} className="text-amber-500" />
+                          <span
+                            className="w-3.5 h-1.5 rounded-xs"
+                            style={{ backgroundColor: activeBgColor }}
+                          />
+                        </button>
+                        {showBgColorPicker && (
+                          <div
+                            id="bg-picker-dropdown"
+                            className="absolute top-full mt-1.5 right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 shadow-2xl z-50 w-52 space-y-2 text-right"
+                          >
+                            <span className="text-[10px] font-bold text-slate-500 block border-b pb-1 dark:border-slate-700">
+                              رنگ هایلایت متن:
+                            </span>
+                            <div className="grid grid-cols-6 gap-1.5">
+                              {[
+                                "transparent", "#fef08a", "#bbf7d0", "#bae6fd", "#fbcfe8", "#fed7aa",
+                                "#e9d5ff", "#fecdd3", "#fef9c3", "#d9f99d", "#a7f3d0", "#99f6e4"
+                              ].map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => applyCustomBackground(c === "transparent" ? "" : c)}
+                                  className="w-6 h-6 rounded-md border border-slate-300 dark:border-slate-600 hover:scale-110 transition-transform flex items-center justify-center text-[9px] font-bold"
+                                  style={{ backgroundColor: c === "transparent" ? "#ffffff" : c }}
+                                  title={c === "transparent" ? "بدون هایلایت" : c}
+                                >
+                                  {c === "transparent" ? "X" : ""}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="pt-2 border-t dark:border-slate-700 flex items-center justify-between text-[11px]">
+                              <span className="text-slate-500">سفارشی:</span>
+                              <input
+                                type="color"
+                                value={activeBgColor}
+                                onChange={(e) => applyCustomBackground(e.target.value)}
+                                className="w-7 h-7 rounded cursor-pointer p-0.5 border"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
-                    <span className="ql-formats">
-                      <button className="ql-script" value="sub" title="زیرنویس" />
-                      <button className="ql-script" value="super" title="بالانویس" />
-                      <button className="ql-blockquote" title="نقل قول" />
-                      <button className="ql-link" title="پیوند اینترنتی" />
-                      <button className="ql-image" title="درج تصویر" />
-                      <button className="ql-clean" title="حذف فرمت‌بندی" />
-                    </span>
+                    {/* Section 5: Alignment & Paragraph List */}
+                    <div className="flex items-center gap-0.5 border-l dark:border-slate-700 pl-2">
+                      <span className="ql-formats">
+                        <select className="ql-align" defaultValue="" title="چینش متن" />
+                        <button className="ql-direction" value="rtl" title="جهت متن راست‌به‌چپ (RTL)" />
+                        <button className="ql-list" value="ordered" title="لیست شماره‌دار" />
+                        <button className="ql-list" value="bullet" title="لیست نشانه‌دار" />
+                        <button className="ql-indent" value="-1" title="کاهش تورفتگی" />
+                        <button className="ql-indent" value="+1" title="افزایش تورفتگی" />
+                      </span>
+                    </div>
+
+                    {/* Section 6: Insert Media, Table, Line & Actions */}
+                    <div className="flex items-center gap-1 border-l dark:border-slate-700 pl-2">
+                      <button
+                        type="button"
+                        onClick={() => editorImageInputRef.current?.click()}
+                        className="p-1.5 rounded-lg text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/60 border border-purple-200 dark:border-purple-800 transition-colors flex items-center gap-1 text-[11px] font-bold"
+                        title="درج تصویر از کامپیوتر یا گوشی (با قابلیت تغییر اندازه و جابجایی)"
+                      >
+                        <ImageIcon size={14} />
+                        <span>عکس</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          insertHTML(`
+                            <table style="width: 100%; border-collapse: collapse; margin: 16px 0; border: 1px solid #cbd5e1;">
+                              <thead>
+                                <tr style="background-color: #f1f5f9;">
+                                  <th style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; text-align: center; width: 10%;">ردیف</th>
+                                  <th style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; text-align: right; width: 60%;">شرح / موضوع</th>
+                                  <th style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; text-align: center; width: 30%;">توضیحات</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">۱</td>
+                                  <td style="border: 1px solid #cbd5e1; padding: 8px;"></td>
+                                  <td style="border: 1px solid #cbd5e1; padding: 8px;"></td>
+                                </tr>
+                                <tr>
+                                  <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">۲</td>
+                                  <td style="border: 1px solid #cbd5e1; padding: 8px;"></td>
+                                  <td style="border: 1px solid #cbd5e1; padding: 8px;"></td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <p><br></p>
+                          `);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 text-[11px] font-bold"
+                        title="درج جدول استاندارد اداری"
+                      >
+                        <Table size={14} />
+                        <span>جدول</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          insertHTML('<hr style="border: none; border-top: 1px solid #cbd5e1; margin: 16px 0;" /><p><br></p>');
+                        }}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors"
+                        title="درج خط افقی جداکننده"
+                      >
+                        <Minus size={14} />
+                      </button>
+
+                      <span className="ql-formats">
+                        <button className="ql-link" title="پیوند اینترنتی (Link)" />
+                        <button className="ql-blockquote" title="نقل قول" />
+                        <button className="ql-clean" title="حذف تمام فرمت‌بندی‌ها" />
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Floating / Docked Word-Style Image Manipulation Bar when an Image is clicked */}
+                  {selectedImgEl && (
+                    <div
+                      id="image-floating-toolbar"
+                      className="bg-purple-950 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xl z-40 border-b border-purple-800 animate-slide-down"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold flex items-center gap-1 text-purple-300">
+                          <ImageIcon size={15} />
+                          تنظیمات تصویر انتخاب شده:
+                        </span>
+                      </div>
+
+                      {/* Width / Size Presets */}
+                      <div className="flex items-center gap-1 bg-purple-900/80 px-2 py-1 rounded-lg border border-purple-700">
+                        <span className="text-[10px] text-purple-200">اندازه عرض:</span>
+                        {["25%", "50%", "75%", "100%"].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => updateSelectedImageWidth(pct)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                              selectedImgWidth === pct
+                                ? "bg-white text-purple-950"
+                                : "hover:bg-purple-800 text-white"
+                            }`}
+                          >
+                            {pct}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Alignment */}
+                      <div className="flex items-center gap-1 bg-purple-900/80 px-2 py-1 rounded-lg border border-purple-700">
+                        <span className="text-[10px] text-purple-200">چینش:</span>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageAlign("right")}
+                          className={`p-1 rounded text-[10px] font-bold ${
+                            selectedImgAlign === "right" ? "bg-white text-purple-950" : "hover:bg-purple-800"
+                          }`}
+                          title="راست‌چین"
+                        >
+                          <AlignRight size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageAlign("center")}
+                          className={`p-1 rounded text-[10px] font-bold ${
+                            selectedImgAlign === "center" ? "bg-white text-purple-950" : "hover:bg-purple-800"
+                          }`}
+                          title="وسط‌چین"
+                        >
+                          <AlignCenter size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageAlign("left")}
+                          className={`p-1 rounded text-[10px] font-bold ${
+                            selectedImgAlign === "left" ? "bg-white text-purple-950" : "hover:bg-purple-800"
+                          }`}
+                          title="چپ‌چین"
+                        >
+                          <AlignLeft size={13} />
+                        </button>
+                      </div>
+
+                      {/* Frame Style */}
+                      <div className="flex items-center gap-1 bg-purple-900/80 px-2 py-1 rounded-lg border border-purple-700">
+                        <span className="text-[10px] text-purple-200">قالب:</span>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageBorder("rounded")}
+                          className="px-2 py-0.5 rounded text-[10px] hover:bg-purple-800"
+                        >
+                          گرد
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageBorder("bordered")}
+                          className="px-2 py-0.5 rounded text-[10px] hover:bg-purple-800"
+                        >
+                          کادر
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageBorder("shadow")}
+                          className="px-2 py-0.5 rounded text-[10px] hover:bg-purple-800"
+                        >
+                          سایه‌دار
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedImageBorder("none")}
+                          className="px-2 py-0.5 rounded text-[10px] hover:bg-purple-800"
+                        >
+                          ساده
+                        </button>
+                      </div>
+
+                      {/* Delete */}
+                      <button
+                        type="button"
+                        onClick={deleteSelectedImage}
+                        className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1"
+                      >
+                        <Trash2 size={13} />
+                        حذف عکس
+                      </button>
+                    </div>
+                  )}
 
                   {/* Virtual Paper Workspace Canvas - Maximized Full Area */}
                   <div className="flex-1 min-h-0 bg-slate-200/90 dark:bg-slate-950 p-4 sm:p-8 overflow-y-auto flex justify-center w-full relative custom-scrollbar">
@@ -4868,12 +5586,119 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                 </div>
               </div>
 
+              {/* Multi-Stamp Selection & Configuration */}
+              {(() => {
+                const compSettings = getCompanySettingsForLetter(newLetterForm.company);
+                const normStamps = getNormalizedStamps(compSettings);
+                return (
+                  <div className="space-y-2 border-t dark:border-slate-800 pt-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] text-slate-700 dark:text-slate-300 font-bold flex items-center gap-1.5">
+                        <Award size={14} className="text-purple-600" />
+                        الصاق مهر سازمانی بر روی نامه
+                      </label>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newLetterForm.addCompanyStamp !== false}
+                          onChange={(e) =>
+                            setNewLetterForm({
+                              ...newLetterForm,
+                              addCompanyStamp: e.target.checked,
+                            })
+                          }
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+
+                    {newLetterForm.addCompanyStamp !== false && (
+                      <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border dark:border-slate-700 space-y-2">
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                          انتخاب مهر مورد نظر برای این نامه:
+                        </div>
+                        {normStamps.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {normStamps.map((stamp) => {
+                              const isSelected =
+                                newLetterForm.selectedStampId === stamp.id ||
+                                (!newLetterForm.selectedStampId && (stamp.isDefault || normStamps[0]?.id === stamp.id));
+                              return (
+                                <button
+                                  key={stamp.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setNewLetterForm({
+                                      ...newLetterForm,
+                                      selectedStampId: stamp.id,
+                                    })
+                                  }
+                                  className={`flex items-center gap-2 p-2 rounded-lg border text-right transition-all ${
+                                    isSelected
+                                      ? "border-purple-600 bg-purple-50/80 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-bold shadow-xs"
+                                      : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300"
+                                  }`}
+                                >
+                                  {stamp.imageUrl ? (
+                                    <img
+                                      src={stamp.imageUrl}
+                                      alt={stamp.title}
+                                      className="w-9 h-9 object-contain rounded bg-white p-0.5 border"
+                                    />
+                                  ) : (
+                                    <div className="w-9 h-9 rounded bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400">
+                                      <Award size={16} />
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs truncate">{stamp.title || "مهر بدون نام"}</div>
+                                    {stamp.isDefault && (
+                                      <span className="text-[9px] text-purple-600 font-medium">پیش‌فرض شرکت</span>
+                                    )}
+                                  </div>
+                                  {isSelected && <CheckCircle size={14} className="text-purple-600 shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-200 dark:border-amber-800">
+                            مهری در تنظیمات این شرکت ثبت نشده است. می‌توانید از بخش تنظیمات سربرگ و مهر، مهرهای مختلف را با نام دلخواه آپلود نمایید.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Sign-off text and Signers */}
               <div className="space-y-3 border-t dark:border-slate-800 pt-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
-                    متن پایانی نامه (عبارت احترام‌آمیز)
-                  </label>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
+                      متن پایانی نامه (عبارت احترام‌آمیز)
+                    </label>
+                    {/* Quick Presets */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {["با احترام", "با تشکر", "با احترام و آرزوی توفیق", "با تشکر و تجدید احترام"].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() =>
+                            setNewLetterForm({
+                              ...newLetterForm,
+                              signOffText: preset,
+                            })
+                          }
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 hover:bg-purple-100 text-slate-600 hover:text-purple-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-purple-950/60 transition-colors"
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <textarea
                     rows={2}
                     value={newLetterForm.signOffText}
@@ -5043,18 +5868,22 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl max-w-6xl w-full p-4 sm:p-5 shadow-2xl flex flex-col max-h-[92vh] text-right"
+              className={`bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-2xl flex flex-col text-right transition-all duration-200 ${
+                letterViewFullscreen
+                  ? "fixed inset-0 w-full h-full max-w-none max-h-none rounded-none p-2.5 sm:p-4 z-50 overflow-hidden"
+                  : "rounded-2xl max-w-6xl w-full p-3 sm:p-5 max-h-[94vh]"
+              }`}
               dir="rtl"
             >
               {/* Modal Top Bar */}
-              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-gray-800 dark:text-white flex items-center gap-1.5">
-                    <FileText size={18} className="text-purple-600" />
-                    نامه اداری شماره: {selectedLetterForView.letterNumber}
+              <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2.5 shrink-0 gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  <h3 className="text-sm sm:text-base font-black text-gray-800 dark:text-white flex items-center gap-1.5 truncate">
+                    <FileText size={18} className="text-purple-600 shrink-0" />
+                    <span className="truncate">نامه شماره: {selectedLetterForView.letterNumber}</span>
                   </h3>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
                       selectedLetterForView.type === "internal"
                         ? "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
                         : selectedLetterForView.type === "incoming"
@@ -5069,24 +5898,24 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         : "صادره"}
                   </span>
                   {selectedLetterForView.isPrivate && (
-                    <span className="text-[10px] bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <span className="text-[10px] bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
                       <Lock size={10} /> محرمانه
                     </span>
                   )}
                   {selectedLetterForView.status === SecretariatLetterStatus.ARCHIVED && (
-                    <span className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <span className="text-[10px] bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
                       <Archive size={10} /> بایگانی‌شده
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 sm:gap-2">
+                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                   {canEditLetters && (
                     <button
                       onClick={() =>
                         handleEditLetterClick(selectedLetterForView)
                       }
-                      className="p-1.5 text-amber-600 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                      className="p-1.5 text-amber-600 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
                       title="ویرایش نامه"
                     >
                       <Edit size={14} /> <span className="hidden sm:inline">ویرایش</span>
@@ -5097,7 +5926,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       onClick={() =>
                         handleDeleteLetter(selectedLetterForView.id)
                       }
-                      className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                      className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800/40 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
                       title="حذف نامه"
                     >
                       <Trash2 size={14} /> <span className="hidden sm:inline">حذف</span>
@@ -5105,10 +5934,10 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   )}
                   <button
                     onClick={() => setIsPrintMode(selectedLetterForView)}
-                    className="p-1.5 text-slate-600 hover:text-slate-800 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                    className="p-1.5 text-slate-700 hover:text-slate-900 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
                     title="چاپ با بالاترین کیفیت"
                   >
-                    <Printer size={14} /> <span className="hidden sm:inline">چاپ و پیش‌نمایش</span>
+                    <Printer size={14} /> <span className="hidden sm:inline">چاپ و PDF</span>
                   </button>
                   <button
                     onClick={() => handleShareSecretariatLetterToChat(selectedLetterForView)}
@@ -5120,9 +5949,35 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <span className="hidden sm:inline">ارسال به گفتگو</span>
                   </button>
 
+                  {/* Desktop Wide Mode Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setLetterViewWideMode(!letterViewWideMode)}
+                    className={`hidden lg:flex p-1.5 rounded-lg border transition-colors items-center gap-1 text-xs font-bold cursor-pointer ${
+                      letterViewWideMode
+                        ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-200"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                    }`}
+                    title={letterViewWideMode ? "نمایش دو ستونه (با پنل ارجاعات)" : "نمایش عریض برگه نامه (تمام صفحه)"}
+                  >
+                    <Columns size={14} />
+                    <span className="hidden xl:inline">{letterViewWideMode ? "دو ستونه" : "برگه عریض"}</span>
+                  </button>
+
+                  {/* Fullscreen Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setLetterViewFullscreen(!letterViewFullscreen)}
+                    className="p-1.5 text-slate-700 hover:text-slate-900 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+                    title={letterViewFullscreen ? "خروج از حالت تمام صفحه" : "مشاهده تمام صفحه"}
+                  >
+                    {letterViewFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                    <span className="hidden sm:inline">{letterViewFullscreen ? "پنجره‌ای" : "تمام‌صفحه"}</span>
+                  </button>
+
                   <button
                     onClick={() => setSelectedLetterForView(null)}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1"
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 cursor-pointer"
                   >
                     <X size={20} />
                   </button>
@@ -5130,10 +5985,10 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
               </div>
 
               {/* Compact Metadata Ribbon (جمع و جور کردن مشخصات و موضوع نامه) */}
-              <div className="bg-slate-50 dark:bg-slate-800/80 border dark:border-slate-700/60 rounded-xl p-2.5 my-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs shrink-0">
+              <div className="bg-slate-50 dark:bg-slate-800/80 border dark:border-slate-700/60 rounded-xl p-2 sm:p-2.5 my-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 shrink-0">موضوع نامه:</span>
-                  <span className="font-black text-slate-800 dark:text-white truncate max-w-sm sm:max-w-md">{selectedLetterForView.subject}</span>
+                  <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 shrink-0">موضوع:</span>
+                  <span className="font-black text-slate-800 dark:text-white truncate max-w-xs sm:max-w-md">{selectedLetterForView.subject}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-slate-300">
                   <div><b className="text-slate-400 font-bold">فرستنده:</b> {selectedLetterForView.sender}</div>
@@ -5146,6 +6001,37 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                 </div>
               </div>
 
+              {/* Mobile View Switcher Tabs (برای گوشی‌های موبایل) */}
+              <div className="flex lg:hidden items-center justify-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-2 shrink-0 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setLetterViewMobileTab("preview")}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    letterViewMobileTab === "preview"
+                      ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                  }`}
+                >
+                  <FileText size={14} /> مشاهده برگه نامه
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLetterViewMobileTab("actions")}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    letterViewMobileTab === "actions"
+                      ? "bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                  }`}
+                >
+                  <UserCheck size={14} /> اقدامات و ارجاعات
+                  {selectedLetterForView.referredTo?.length ? (
+                    <span className="bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 text-[10px] px-1.5 py-0.2 rounded-full mr-1">
+                      {selectedLetterForView.referredTo.length}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
+
               {/* Main Two Column layout for Full Visibility */}
               {(() => {
                 const viewCompanySettings = getCompanySettingsForLetter(
@@ -5153,18 +6039,93 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   selectedLetterForView.companyId,
                 );
                 return (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0 overflow-hidden">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 flex-1 min-h-0 overflow-hidden">
                     {/* Left/Center: Letter Document Paper (High Priority & Space) */}
-                    <div className="lg:col-span-8 flex flex-col min-h-0 overflow-hidden bg-slate-100 dark:bg-slate-950/60 rounded-xl border dark:border-slate-800/80 p-2 sm:p-4">
-                      <div className="overflow-y-auto flex-1 flex flex-col items-center custom-scrollbar">
+                    <div
+                      className={`flex flex-col min-h-0 overflow-hidden bg-slate-100 dark:bg-slate-950/60 rounded-xl border dark:border-slate-800/80 p-2 sm:p-3 ${
+                        letterViewWideMode ? "lg:col-span-12" : "lg:col-span-8"
+                      } ${letterViewMobileTab === "preview" ? "flex" : "hidden lg:flex"}`}
+                    >
+                      {/* Zoom & View Controls Toolbar */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-slate-900/90 border dark:border-slate-800 px-3 py-1.5 rounded-lg mb-2 text-xs shrink-0 shadow-2xs">
+                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 text-[11px] font-bold">
+                          <FileText size={14} className="text-purple-600" />
+                          <span>پیش‌نمایش برگه نامه اداری</span>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setLetterViewZoom((prev) => Math.max(30, prev - 10))}
+                            className="p-1 text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded transition-colors cursor-pointer"
+                            title="کوچک‌نمایی (-)"
+                          >
+                            <ZoomOut size={13} />
+                          </button>
+
+                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200 min-w-[44px] justify-center">
+                            {letterViewZoom}%
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setLetterViewZoom((prev) => Math.min(180, prev + 10))}
+                            className="p-1 text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded transition-colors cursor-pointer"
+                            title="بزرگ‌نمایی (+)"
+                          >
+                            <ZoomIn size={13} />
+                          </button>
+
+                          <span className="text-slate-300 dark:text-slate-700 mx-0.5">|</span>
+
+                          <button
+                            type="button"
+                            onClick={() => setLetterViewZoom(typeof window !== "undefined" && window.innerWidth < 640 ? 45 : 68)}
+                            className="px-2 py-0.5 text-[11px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 rounded transition-colors cursor-pointer"
+                            title="مشاهده کامل و یکجای صفحه بدون اسکرول"
+                          >
+                            مشاهده یکجا
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setLetterViewZoom(100)}
+                            className="px-2 py-0.5 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded transition-colors cursor-pointer"
+                            title="اندازه واقعی ۱۰۰٪"
+                          >
+                            ۱۰۰٪
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setLetterViewZoom(100)}
+                            className="p-1 text-slate-500 hover:text-slate-800 dark:text-slate-400 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 rounded transition-colors cursor-pointer"
+                            title="بازنشانی زوم"
+                          >
+                            <RotateCcw size={12} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="overflow-y-auto overflow-x-auto flex-1 flex flex-col items-center custom-scrollbar p-1 sm:p-2">
                         <div
-                          className="bg-white text-slate-900 border border-slate-200 shadow-md rounded-xl w-full max-w-2xl min-h-[550px] flex flex-col justify-between text-right font-sans relative overflow-hidden"
                           style={{
-                            fontFamily:
-                              viewCompanySettings.letterheadFontFamily ||
-                              "sans-serif",
+                            transform: `scale(${letterViewZoom / 100})`,
+                            transformOrigin: "top center",
+                            transition: "transform 0.15s ease-out",
+                            width: "100%",
+                            maxWidth: "720px",
                           }}
+                          className="flex justify-center"
                         >
+                          <div
+                            className="bg-white text-slate-900 border border-slate-200 shadow-md rounded-xl w-full min-h-[550px] flex flex-col justify-between text-right font-sans relative overflow-hidden shrink-0"
+                            style={{
+                              fontFamily:
+                                viewCompanySettings.letterheadFontFamily ||
+                                "sans-serif",
+                            }}
+                          >
                           {/* Background Letterhead if uploaded */}
                           {getEffectiveLetterheadDisplayUrl(viewCompanySettings) && (
                             <img
@@ -5383,6 +6344,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                             </div>
                           </div>
                         </div>
+                      </div>
 
                         {/* Letter attachments view link */}
                     {selectedLetterForView.attachments?.length > 0 && (
@@ -5425,11 +6387,15 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         </div>
                       </div>
                     )}
+                    </div>
                   </div>
-                </div>
 
                 {/* Right: Side Actions, Referrals & Comments */}
-                <div className="lg:col-span-4 flex flex-col gap-3 overflow-y-auto pr-1 min-h-0 custom-scrollbar">
+                <div
+                  className={`flex flex-col gap-3 overflow-y-auto pr-1 min-h-0 custom-scrollbar ${
+                    letterViewWideMode ? "hidden" : "lg:col-span-4"
+                  } ${letterViewMobileTab === "actions" ? "flex" : "hidden lg:flex"}`}
+                >
                   {/* Approval Actions Panel */}
                   <div className="p-3.5 border dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 space-y-2.5 shadow-xs">
                     <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5 border-b dark:border-slate-800 pb-2">
@@ -5694,7 +6660,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                 initial={{ scale: 0.96, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.96, opacity: 0 }}
-                className="bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl flex flex-col max-h-[92vh] text-right space-y-4"
+                className={`bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-2xl flex flex-col text-right transition-all duration-200 ${
+                  printPreviewFullscreen
+                    ? "fixed inset-0 w-full h-full max-w-none max-h-none rounded-none p-3 sm:p-5 z-50 overflow-hidden"
+                    : "rounded-2xl max-w-5xl w-full p-4 sm:p-6 max-h-[94vh]"
+                }`}
                 dir="rtl"
               >
                 {/* UI controls that are hidden on print */}
@@ -5713,7 +6683,60 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    {/* Zoom in/out controls */}
+                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border dark:border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setPrintPreviewZoom((prev) => Math.max(30, prev - 10))}
+                        className="p-1 text-slate-600 hover:text-slate-900 dark:text-slate-300 rounded transition-colors cursor-pointer"
+                        title="کوچک‌نمایی (-)"
+                      >
+                        <ZoomOut size={14} />
+                      </button>
+
+                      <div className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200 px-1 min-w-[38px] text-center">
+                        {printPreviewZoom}%
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrintPreviewZoom((prev) => Math.min(180, prev + 10))}
+                        className="p-1 text-slate-600 hover:text-slate-900 dark:text-slate-300 rounded transition-colors cursor-pointer"
+                        title="بزرگ‌نمایی (+)"
+                      >
+                        <ZoomIn size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrintPreviewZoom(typeof window !== "undefined" && window.innerWidth < 640 ? 50 : 80)}
+                        className="px-2 py-0.5 text-[10px] font-bold bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 rounded shadow-2xs cursor-pointer"
+                        title="مشاهده یکجا"
+                      >
+                        یکجا
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrintPreviewZoom(100)}
+                        className="px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 rounded cursor-pointer"
+                        title="اندازه ۱۰۰٪"
+                      >
+                        ۱۰۰٪
+                      </button>
+                    </div>
+
+                    {/* Fullscreen Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setPrintPreviewFullscreen(!printPreviewFullscreen)}
+                      className="p-2 text-slate-700 hover:text-slate-900 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+                      title={printPreviewFullscreen ? "خروج از حالت تمام صفحه" : "تمام صفحه"}
+                    >
+                      {printPreviewFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                    </button>
+
                     <button
                       onClick={() => {
                         const style = document.createElement("style");
@@ -5770,25 +6793,25 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <a
                       href={`/api/secretariat/letters/${isPrintMode.id}/pdf`}
                       download={`Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.pdf`}
-                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="دانلود و چاپ مستقیم فایل PDF با سربرگ برداری با کیفیت فوق‌العاده ۳۰۰ DPI"
                     >
-                      <FileText size={15} /> دریافت PDF برداری سربرگ (۳۰۰ DPI)
+                      <FileText size={15} /> PDF سربرگ (۳۰۰ DPI)
                     </a>
 
                     <a
                       href={`/api/secretariat/letters/${isPrintMode.id}/docx`}
                       download={`Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.docx`}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="دانلود فایل رسمی Word بر اساس قالب سربرگ ورد"
                     >
-                      <FileText size={15} /> دریافت فایل Word رسمی (.docx)
+                      <FileText size={15} /> Word (.docx)
                     </a>
 
                     <button
                       onClick={() => handleShareSecretariatLetterToChat(isPrintMode)}
                       disabled={isSharingLetter}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="ارسال مستقیم تصویر و برگه نامه به گفتگوی سازمانی"
                     >
                       {isSharingLetter ? (
@@ -5801,7 +6824,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     <button
                       onClick={() => setIsPrintMode(null)}
-                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-3 py-2 rounded-xl transition-colors cursor-pointer"
                     >
                       بستن
                     </button>
@@ -5810,19 +6833,27 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                 {/* SCROLLABLE PREVIEW VIEWPORT (PREVENTS CUTOFFS) */}
                 <div className="flex-1 overflow-auto p-2 sm:p-4 bg-slate-100 dark:bg-slate-950/80 rounded-xl flex justify-center items-start custom-scrollbar min-h-0">
-                  {/* PRINTABLE AREA */}
                   <div
-                    id="print-content-section"
-                    className="bg-white text-black shadow-lg relative rounded-sm border border-slate-200 shrink-0"
                     style={{
-                      width: paperWidth,
-                      minHeight: paperHeight,
-                      maxWidth: "100%",
-                      fontFamily: printSettings.letterheadFontFamily || "sans-serif",
-                      overflow: "hidden",
-                      boxSizing: "border-box",
+                      transform: `scale(${printPreviewZoom / 100})`,
+                      transformOrigin: "top center",
+                      transition: "transform 0.15s ease-out",
                     }}
+                    className="flex justify-center"
                   >
+                    {/* PRINTABLE AREA */}
+                    <div
+                      id="print-content-section"
+                      className="bg-white text-black shadow-lg relative rounded-sm border border-slate-200 shrink-0"
+                      style={{
+                        width: paperWidth,
+                        minHeight: paperHeight,
+                        maxWidth: "100%",
+                        fontFamily: printSettings.letterheadFontFamily || "sans-serif",
+                        overflow: "hidden",
+                        boxSizing: "border-box",
+                      }}
+                    >
                     {/* Absolutely positioned metadata block if custom coordinates are defined, or custom letterhead is active */}
                     {(printSettings.letterheadUrl ||
                       printSettings.metadataTop !== undefined ||
@@ -6070,8 +7101,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     )}
                   </div>
                 </div>
-              </motion.div>
-            </div>
+              </div>
+            </motion.div>
+          </div>
           );
         })()}
       </AnimatePresence>

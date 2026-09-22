@@ -296,7 +296,7 @@ const Settings: React.FC<SettingsProps> = ({
     googleCalendarId: "",
     whatsappNumber: "",
     sayanApiUrl: "http://80.210.31.176:5000/api/external/v1",
-    sayanApiKey: "s_gate_live_vgr182bwtpoa",
+    sayanApiKey: "s_gate_live_vzje5nkn7q4u",
     geminiApiKey: "",
     geminiBaseUrl: "",
     warehouseSequences: {},
@@ -1263,7 +1263,7 @@ const Settings: React.FC<SettingsProps> = ({
           normalizedSettings.sayanApiUrl = "http://80.210.31.176:5000/api/external/v1";
         }
         if (!normalizedSettings.sayanApiKey) {
-          normalizedSettings.sayanApiKey = "s_gate_live_vgr182bwtpoa";
+          normalizedSettings.sayanApiKey = "s_gate_live_vzje5nkn7q4u";
         }
 
         setSettings(normalizedSettings);
@@ -1406,7 +1406,7 @@ const Settings: React.FC<SettingsProps> = ({
         safeData.sayanApiUrl = "http://80.210.31.176:5000/api/external/v1";
       }
       if (!safeData.sayanApiKey) {
-        safeData.sayanApiKey = "s_gate_live_vgr182bwtpoa";
+        safeData.sayanApiKey = "s_gate_live_vzje5nkn7q4u";
       }
 
       setSettings(safeData);
@@ -7759,9 +7759,17 @@ const Settings: React.FC<SettingsProps> = ({
                             type="button"
                             onClick={() => setSettings({ ...settings, sayanApiUrl: "http://80.210.31.176:5000/api/external/v1" })}
                             className="text-[10px] font-mono px-2 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg text-indigo-700 dark:text-indigo-300 transition-colors border border-indigo-100 dark:border-gray-700 cursor-pointer"
-                            title="سرور پابلیک اینترنتی سایان"
+                            title="سرور اصلی سایان"
                           >
                             80.210.31.176:5000 (اصلی)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSettings({ ...settings, sayanApiUrl: "http://80.210.31.176:5000/api/v1" })}
+                            className="text-[10px] font-mono px-2 py-1 bg-sky-50 hover:bg-sky-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg text-sky-700 dark:text-sky-300 transition-colors border border-sky-100 dark:border-gray-700 cursor-pointer"
+                            title="مسیر api/v1"
+                          >
+                            api/v1
                           </button>
                           <button
                             type="button"
@@ -7786,16 +7794,24 @@ const Settings: React.FC<SettingsProps> = ({
                         </div>
                       </div>
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
-                        آدرس کامل وب‌سرویس سایان شامل پروتکل، IP سرور، پورت و مسیر (مثال: <code className="dir-ltr inline-block font-mono bg-indigo-50 dark:bg-gray-800 px-1.5 py-0.5 rounded text-indigo-700 dark:text-indigo-300 font-bold">http://80.210.31.176:5000/api/external/v1</code>)
+                        آدرس کامل وب‌سرویس سایان شامل پروتکل، IP سرور، پورت و مسیر (مثال: <code className="dir-ltr inline-block font-mono bg-indigo-50 dark:bg-gray-800 px-1.5 py-0.5 rounded text-indigo-700 dark:text-indigo-300 font-bold">http://80.210.31.176:5000/api/external/v1</code> یا <code className="dir-ltr inline-block font-mono bg-indigo-50 dark:bg-gray-800 px-1.5 py-0.5 rounded text-indigo-700 dark:text-indigo-300 font-bold">http://80.210.31.176:5000/api/v1</code>)
                       </p>
                     </div>
 
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                         <label className="text-xs font-black text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                           <Lock size={15} className="text-indigo-600" />
                           کلید امنیتی وب‌سرویس سایان (Sayan API Key / Token)
                         </label>
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, sayanApiKey: "s_gate_live_vzje5nkn7q4u" })}
+                          className="text-[10px] font-mono px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 rounded text-emerald-700 dark:text-emerald-300 transition-colors border border-emerald-200 dark:border-emerald-800 cursor-pointer"
+                          title="درج کلید جدید فعال"
+                        >
+                          درج کلید جدید (s_gate_live_vzje...)
+                        </button>
                       </div>
                       <div className="relative">
                         <input

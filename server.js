@@ -1618,10 +1618,13 @@ const parseJalaliStrToGregorian = (jalaliStr) => {
 
 const executeSayanQuery = async (db, queryStr) => {
     const settings = db.settings || {};
-    const serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL;
-    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY;
+    let serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
+    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
         throw new Error('تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است.');
+    }
+    if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
+        serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
     }
     const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
     const response = await fetch(finalUrl, {
@@ -1645,11 +1648,15 @@ app.post('/api/sayan-proxy', async (req, res) => {
     try {
         const db = getDb();
         const settings = db.settings || {};
-        const serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL;
-        const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY;
+        let serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
+        const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
 
         if (!serverSayanBaseUrl || !serverSayanApiKey) {
             return res.status(400).json({ error: 'تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است.' });
+        }
+
+        if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
+            serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
         }
 
         const { path: targetPath, method: targetMethod, body: targetBody } = req.body;
@@ -1694,13 +1701,16 @@ app.post('/api/sayan/test-connection', async (req, res) => {
         const db = getDb();
         const settings = db.settings || {};
         const url = (req.body && req.body.url) || settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
-        const apiKey = (req.body && req.body.apiKey) !== undefined ? req.body.apiKey : (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vgr182bwtpoa');
+        const apiKey = (req.body && req.body.apiKey) !== undefined ? req.body.apiKey : (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u');
 
         if (!url) {
             return res.status(400).json({ success: false, error: 'آدرس سرور یا IP وب‌سرویس سایان وارد نشده است.' });
         }
 
-        const cleanUrl = url.replace(/\/$/, '');
+        let cleanUrl = url.replace(/\/$/, '');
+        if (cleanUrl.endsWith('/api/v1')) {
+            cleanUrl = cleanUrl.replace(/\/api\/v1$/, '/api/external/v1');
+        }
         const startTime = Date.now();
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);

@@ -70,8 +70,11 @@ export const addAutomationLog = (db, logEntry) => {
 export const executeSayanQuery = async (queryStr) => {
     const db = getDb();
     const settings = db.settings || {};
-    const serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
-    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vgr182bwtpoa';
+    let serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
+    if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
+        serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
+    }
+    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
 
     const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
     const response = await fetch(finalUrl, {

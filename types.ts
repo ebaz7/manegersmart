@@ -1725,6 +1725,16 @@ export enum SecretariatLetterStatus {
   ARCHIVED = 'بایگانی شده'
 }
 
+export interface CompanyStampItem {
+    id: string;
+    name: string;             // نام مهر (مانند: مهر اصلی شرکت، مهر مالی، مهر مدیرعامل)
+    url: string;              // آدرس تصویر مهر
+    size?: number;            // اندازه پیش‌فرض مهر (پیکسل)
+    opacity?: number;         // شفافیت پیش‌فرض مهر (درصد)
+    position?: 'bottom_left' | 'bottom_center' | 'bottom_right';
+    isDefault?: boolean;      // پیش‌فرض برای نامه‌های جدید
+}
+
 export interface SecretariatLetter {
     id: string;
     companyId: string; // The company this letter belongs to
@@ -1749,8 +1759,10 @@ export interface SecretariatLetter {
     comments: SecretariatLetterComment[];
     attachments: SecretariatLetterAttachment[];
     addCompanyStamp?: boolean; // تیک درج مهر شرکت پای نامه
+    selectedStampIds?: string[]; // شناسه‌های مهرهای انتخاب شده
+    selectedStamps?: CompanyStampItem[]; // آرایه مهرهای اختصاصی انتخاب شده
     isPrivate?: boolean; // تیک خصوصی بودن نامه
-    signOffText?: string; // متن با تشکر
+    signOffText?: string; // متن با تشکر / با احترام
     signers?: { name: string; title: string; userId?: string; }[]; // لیست امضاکنندگان و سمت‌ها
     paperSize?: 'A4' | 'A5';
     orientation?: 'portrait' | 'landscape';
@@ -1800,11 +1812,13 @@ export interface SecretariatCompanySettings {
     companyStampSize?: number;         // اندازه مهر رسمی (پیکسل)
     companyStampOpacity?: number;      // شفافیت مهر رسمی (درصد)
     companyStampPosition?: 'bottom_left' | 'bottom_center' | 'bottom_right'; // جایگاه پیش‌فرض مهر
+    stamps?: CompanyStampItem[];       // لیست چندگانه مهرهای شرکت با امکان نام‌گذاری و تغییر نام
     
     // General Letter Styles & Templates
     meetingMinutesTemplate?: string;   // قالب صورتجلسه
     hideAutoFooter?: boolean;          // عدم نمایش خودکار پاورقی در صورت داشتن سربرگ
     letterheadFontFamily?: string;     // نوع فونت بدنه نامه
+    defaultSignOffText?: string;       // عبارت پایانی پیش‌فرض (با احترام / با تشکر)
 }
 
 export interface SecretariatTemplate {
